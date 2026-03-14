@@ -1,0 +1,56 @@
+[gd_scene load_steps=2 format=3 uid="uid://burnbridgers_main_menu"]
+
+[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_main_menu"]
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_main_menu")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -120.0
+offset_top = -130.0
+offset_right = 120.0
+offset_bottom = 130.0
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="VBoxContainer"]
+text = "BURN BRIDGERS"
+horizontal_alignment = 1
+
+[node name="HostButton" type="Button" parent="VBoxContainer"]
+text = "Host Game"
+
+[node name="JoinButton" type="Button" parent="VBoxContainer"]
+text = "Join Game"
+
+[node name="JoinLobbyIdInput" type="LineEdit" parent="VBoxContainer"]
+placeholder_text = "Enter Lobby ID"
+visible = false
+
+[node name="ConfirmJoinButton" type="Button" parent="VBoxContainer"]
+text = "Connect"
+visible = false
+
+[node name="Separator" type="HSeparator" parent="VBoxContainer"]
+
+[node name="TestButton" type="Button" parent="VBoxContainer"]
+text = "Test (Offline)"
+
+[node name="ExitButton" type="Button" parent="VBoxContainer"]
+text = "Exit"
+
+[connection signal="pressed" from="VBoxContainer/HostButton" to="." method="_on_host_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/JoinButton" to="." method="_on_join_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/ConfirmJoinButton" to="." method="_on_confirm_join_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/TestButton" to="." method="_on_test_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/ExitButton" to="." method="_on_exit_button_pressed"]

@@ -1,0 +1,23 @@
+# Godot-generated cache and import data
+.godot/
+*.import
+*.translation
+
+# Export configuration (may contain sensitive data)
+export_presets.cfg
+
+# GodotSteam GDExtension binaries — install manually per SETUP.md
+addons/godotsteam/
+
+# Steam test app ID file — never commit
+steam_appid.txt
+
+# OS clutter
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.cursor/
+.vscode/
+*.swp

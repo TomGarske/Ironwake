@@ -1,0 +1,77 @@
+extends Node
+
+# ---------------------------------------------------------------------------
+# Enums & Constants
+# ---------------------------------------------------------------------------
+enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
+
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
+## Registry: peer_id (int) -> { steam_id: int, username: String, team: int }
+var players: Dictionary = {}
+var match_phase: MatchPhase = MatchPhase.LOBBY
+
+# ---------------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------------
+func _ready() -> void:
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+
+# ---------------------------------------------------------------------------
+# Player registration (called via RPC from clients)
+# ---------------------------------------------------------------------------
+## Any peer can call this; only the host processes it.
+@rpc("any_peer", "call_local", "reliable")
+func register_player_rpc(steam_id: int, username: String) -> void:
+	if not multiplayer.is_server():
+		return
+
+	var sender_id: int = multiplayer.get_remote_sender_id()
+	# Assign the next available team slot (0-based)
+	var team: int = players.size()
+	players[sender_id] = {
+		"steam_id": steam_id,
+		"username": username,
+		"team": team
+	}
+	print("[GameManager] Registered player '%s' as team %d (peer %d)" % [username, team, sender_id])
+
+# ---------------------------------------------------------------------------
+# Match flow
+# ---------------------------------------------------------------------------
+func start_match() -> void:
+	if not multiplayer.is_server():
+		push_warning("[GameManager] start_match called on non-host — ignoring.")
+		return
+	if players.size() < 2:
+		push_warning("[GameManager] Not enough players to start (%d registered)." % players.size())
+		return
+
+	match_phase = MatchPhase.IN_MATCH
+	print("[GameManager] Starting match with %d players." % players.size())
+	_load_tactical_map.rpc()
+
+@rpc("authority", "call_local", "reliable")
+func _load_tactical_map() -> void:
+	get_tree().change_scene_to_file("res://scenes/game/tactical_map.tscn")
+
+# ---------------------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------------------
+func _on_peer_disconnected(peer_id: int) -> void:
+	if players.has(peer_id):
+		print("[GameManager] Player '%s' (peer %d) disconnected." % [players[peer_id]["username"], peer_id])
+		players.erase(peer_id)
+
+func reset() -> void:
+	players.clear()
+	match_phase = MatchPhase.LOBBY
+
+## Populates two local test players for offline development — no Steam required.
+func setup_offline_test() -> void:
+	players.clear()
+	players[1] = {"steam_id": 0, "username": "Player 1 (Test)", "team": 0}
+	players[2] = {"steam_id": 0, "username": "Player 2 (Test)", "team": 1}
+	match_phase = MatchPhase.IN_MATCH
+	print("[GameManager] Offline test mode: 2 players registered.")
