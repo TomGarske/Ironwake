@@ -19,6 +19,7 @@ const NPC_TEAM: int = 999
 @onready var overlay: Node2D = $Overlay
 @onready var status_label: Label = $UI/StatusLabel
 @onready var end_turn_button: Button = $UI/EndTurnButton
+@onready var forfeit_button: Button = $UI/ForfeitButton
 
 # ---------------------------------------------------------------------------
 # State
@@ -41,6 +42,7 @@ func _ready() -> void:
 	turn_manager.turn_started.connect(_on_turn_started)
 	turn_manager.match_over.connect(_on_match_over)
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
+	forfeit_button.pressed.connect(_on_forfeit_button_pressed)
 
 	if multiplayer.is_server():
 		_spawn_all_units()
@@ -307,9 +309,16 @@ func _on_match_over(winner_id: int) -> void:
 		status_label.text = "Draw!"
 	elif winner_id == multiplayer.get_unique_id():
 		status_label.text = "Victory!"
+	elif winner_id == 0:
+		status_label.text = "Defeat!"
 	else:
 		var winner_name: String = GameManager.players.get(winner_id, {}).get("username", "Opponent")
 		status_label.text = "%s Wins!" % winner_name
+	
+	# Change forfeit button to "Return to Menu" after match ends
+	forfeit_button.text = "Return to Menu"
+	forfeit_button.disabled = false
+	GameManager.match_phase = GameManager.MatchPhase.GAME_OVER
 
 func _on_end_turn_pressed() -> void:
 	if not _can_take_action():
@@ -320,6 +329,62 @@ func _on_end_turn_pressed() -> void:
 		turn_manager.force_advance_turn()
 	else:
 		turn_manager.end_turn()
+
+func _on_forfeit_button_pressed() -> void:
+	_forfeit_match()
+
+func _forfeit_match() -> void:
+	DebugOverlay.log_message("[TacticalMap] Player forfeiting match...")
+	
+	# If host forfeits, end match for everyone
+	if multiplayer.is_server():
+		# Declare opponent as winner (or draw if no opponent)
+		var opponent_id: int = -1
+		for peer_id: int in GameManager.players:
+			if peer_id != multiplayer.get_unique_id():
+				opponent_id = peer_id
+				break
+		if opponent_id != -1:
+			turn_manager.declare_match_over(opponent_id)
+		else:
+			turn_manager.declare_match_over(-1)
+		# Wait a moment for match over message, then return to menu
+		await get_tree().create_timer(2.0).timeout
+		_return_to_main_menu()
+	else:
+		# Client forfeits - notify host and return to menu
+		_notify_forfeit.rpc_id(1)
+		_return_to_main_menu()
+
+@rpc("any_peer", "reliable")
+func _notify_forfeit() -> void:
+	if not multiplayer.is_server():
+		return
+	var forfeiter_id: int = multiplayer.get_remote_sender_id()
+	DebugOverlay.log_message("[TacticalMap] Player %d forfeited." % forfeiter_id)
+	# Declare opponent as winner
+	var opponent_id: int = -1
+	for peer_id: int in GameManager.players:
+		if peer_id != forfeiter_id:
+			opponent_id = peer_id
+			break
+	if opponent_id != -1:
+		turn_manager.declare_match_over(opponent_id)
+	else:
+		turn_manager.declare_match_over(-1)
+
+func _return_to_main_menu() -> void:
+	DebugOverlay.log_message("[TacticalMap] Returning to main menu...")
+	
+	# Clean up Steam lobby (this also closes multiplayer peer)
+	if SteamManager != null:
+		SteamManager.leave_lobby()
+	
+	# Reset game manager state
+	GameManager.reset()
+	
+	# Return to main menu
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -30,3 +30,10 @@ offset_right = 160.0
 offset_bottom = 88.0
 text = "End Turn"
 disabled = true
+
+[node name="ForfeitButton" type="Button" parent="UI"]
+offset_left = 16.0
+offset_top = 96.0
+offset_right = 160.0
+offset_bottom = 128.0
+text = "Forfeit"
