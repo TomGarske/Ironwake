@@ -321,9 +321,14 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 	if Input.is_action_pressed(_ACTIONS.down):  move.y += 1.0
 
 	if move.length_squared() > 0.0:
-		move         = move.normalized()
-		p.wx        += move.x * SPEED * delta
-		p.wy        += move.y * SPEED * delta
+		move = move.normalized()
+		var current_tile: int = _terrain_renderer.get_tile_at(p.wx, p.wy)
+		var spd: float = SPEED * (0.5 if current_tile == IsoTerrainRenderer.T_WATER else 1.0)
+		var new_wx: float = p.wx + move.x * spd * delta
+		var new_wy: float = p.wy + move.y * spd * delta
+		if _terrain_renderer.get_tile_at(new_wx, new_wy) != IsoTerrainRenderer.T_DEEP:
+			p.wx = new_wx
+			p.wy = new_wy
 		p.dir        = move
 		p.moving     = true
 		p.walk_time += delta
