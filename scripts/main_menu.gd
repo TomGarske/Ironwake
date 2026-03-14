@@ -6,10 +6,10 @@ extends Control
 @onready var join_input: LineEdit = $VBoxContainer/JoinLobbyIdInput
 @onready var confirm_join_button: Button = $VBoxContainer/ConfirmJoinButton
 @onready var host_button: Button = $VBoxContainer/HostButton
-@onready var lobby_list_title: Label = $VBoxContainer/LobbyListTitle
-@onready var refresh_lobbies_button: Button = $VBoxContainer/RefreshLobbiesButton
-@onready var lobby_list_status: Label = $VBoxContainer/LobbyListStatus
-@onready var lobby_list: VBoxContainer = $VBoxContainer/LobbyListScroll/LobbyList
+@onready var lobby_list_title: Label = $RightLobbyPanel/VBoxContainer/LobbyListTitle
+@onready var refresh_lobbies_button: Button = $RightLobbyPanel/VBoxContainer/RefreshLobbiesButton
+@onready var lobby_list_status: Label = $RightLobbyPanel/VBoxContainer/LobbyListStatus
+@onready var lobby_list: VBoxContainer = $RightLobbyPanel/VBoxContainer/LobbyListScroll/LobbyList
 
 # ---------------------------------------------------------------------------
 # Lifecycle

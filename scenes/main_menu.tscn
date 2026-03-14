@@ -11,15 +11,13 @@ script = ExtResource("1_main_menu")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="."]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
+anchors_preset = 4
 anchor_top = 0.5
-anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -120.0
-offset_top = -130.0
-offset_right = 120.0
-offset_bottom = 130.0
+offset_left = 90.0
+offset_top = -140.0
+offset_right = 330.0
+offset_bottom = 140.0
 alignment = 1
 theme_override_constants/separation = 12
 
@@ -41,24 +39,6 @@ visible = false
 text = "Connect"
 visible = false
 
-[node name="LobbyListTitle" type="Label" parent="VBoxContainer"]
-text = "Public BurnBridgers Lobbies"
-horizontal_alignment = 1
-
-[node name="RefreshLobbiesButton" type="Button" parent="VBoxContainer"]
-text = "Refresh Lobbies"
-
-[node name="LobbyListStatus" type="Label" parent="VBoxContainer"]
-text = "Searching for BurnBridgers lobbies..."
-autowrap_mode = 2
-
-[node name="LobbyListScroll" type="ScrollContainer" parent="VBoxContainer"]
-custom_minimum_size = Vector2(0, 130)
-
-[node name="LobbyList" type="VBoxContainer" parent="VBoxContainer/LobbyListScroll"]
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
 [node name="Separator" type="HSeparator" parent="VBoxContainer"]
 
 [node name="TestButton" type="Button" parent="VBoxContainer"]
@@ -66,6 +46,40 @@ text = "Test (Offline)"
 
 [node name="ExitButton" type="Button" parent="VBoxContainer"]
 text = "Exit"
+
+[node name="RightLobbyPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -410.0
+offset_top = -180.0
+offset_right = -20.0
+offset_bottom = 180.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="RightLobbyPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LobbyListTitle" type="Label" parent="RightLobbyPanel/VBoxContainer"]
+text = "Public BurnBridgers Lobbies"
+horizontal_alignment = 1
+
+[node name="RefreshLobbiesButton" type="Button" parent="RightLobbyPanel/VBoxContainer"]
+text = "Refresh Lobbies"
+
+[node name="LobbyListStatus" type="Label" parent="RightLobbyPanel/VBoxContainer"]
+text = "Searching for BurnBridgers lobbies..."
+autowrap_mode = 2
+
+[node name="LobbyListScroll" type="ScrollContainer" parent="RightLobbyPanel/VBoxContainer"]
+custom_minimum_size = Vector2(0, 250)
+
+[node name="LobbyList" type="VBoxContainer" parent="RightLobbyPanel/VBoxContainer/LobbyListScroll"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
 
 [node name="DebugPanel" type="PanelContainer" parent="."]
 visible = false
