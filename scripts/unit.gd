@@ -10,8 +10,10 @@ const TEAM_COLORS: Array = [Color.CORNFLOWER_BLUE, Color.TOMATO]
 # ---------------------------------------------------------------------------
 # Exported fields (set at spawn time by TacticalMap)
 # ---------------------------------------------------------------------------
-@export var max_health: int = 3
+@export var max_health: int = 2
 @export var move_range: int = 3
+## Attack range in Manhattan distance tiles. 1 = melee (POC). Ranged support is a future extension.
+@export var attack_range: int = 1
 
 # ---------------------------------------------------------------------------
 # Runtime state
@@ -80,9 +82,9 @@ func can_move_to(target: Vector2i) -> bool:
 func can_attack(target_pos: Vector2i) -> bool:
 	if has_attacked:
 		return false
-	# Melee range: Manhattan distance of 1
+	# TODO: ranged attack (attack_range > 1) is a future extension; see docs/systems/combat_system.md
 	var dist: int = abs(target_pos.x - grid_pos.x) + abs(target_pos.y - grid_pos.y)
-	return dist == 1
+	return dist > 0 and dist <= attack_range
 
 # ---------------------------------------------------------------------------
 # Internal

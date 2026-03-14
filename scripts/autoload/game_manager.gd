@@ -3,6 +3,8 @@ extends Node
 # ---------------------------------------------------------------------------
 # Enums & Constants
 # ---------------------------------------------------------------------------
+# GAME_OVER is set when the match ends (currently only win/draw is handled via TurnManager signal).
+# TODO: assign GAME_OVER in _on_match_over handler once end-match UI flow is implemented.
 enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
 
 # ---------------------------------------------------------------------------

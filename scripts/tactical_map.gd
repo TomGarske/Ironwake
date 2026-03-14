@@ -355,7 +355,4 @@ func _is_tile_in_bounds(pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.x < GRID_WIDTH and pos.y >= 0 and pos.y < GRID_HEIGHT
 
 func _is_cell_occupied(pos: Vector2i) -> bool:
-	for unit: Node in units.values():
-		if unit.grid_pos == pos:
-			return true
-	return false
+	return _get_unit_at(pos) != null
