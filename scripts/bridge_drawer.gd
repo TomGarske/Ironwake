@@ -4,9 +4,22 @@ extends Node2D
 var bridge_points: Array[Vector2] = []
 var time: float = 0.0
 
+func set_bridge_data(points: Array[Vector2], current_time: float) -> void:
+	bridge_points = points
+	time = current_time
+
+func _ready() -> void:
+	# Make sure we're visible
+	visible = true
+	z_index = -100
+
 func _draw() -> void:
 	if bridge_points.size() < 2:
+		# Draw a test circle to verify drawing works
+		draw_circle(Vector2(100, 100), 20, Color.RED)
 		return
+	
+	print("[BridgeDrawer] Drawing bridge with ", bridge_points.size(), " points")
 	
 	# Draw bridge structure
 	var bridge_color = Color(0.3, 0.25, 0.2)  # Dark brown/stone
