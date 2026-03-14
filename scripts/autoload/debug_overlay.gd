@@ -1,12 +1,15 @@
 extends Node
 
 const MAX_LINES: int = 300
+const _EXPANDED_HEIGHT: float = 208.0
+const _COLLAPSED_HEIGHT: float = 36.0
 
 var _canvas: CanvasLayer
 var _panel: PanelContainer
 var _log: RichTextLabel
 var _log_container: MarginContainer
 var _collapse_button: Button
+var _root: VBoxContainer
 var _connected_to_steam: bool = false
 var _collapsed: bool = false
 
@@ -49,13 +52,14 @@ func _build_ui() -> void:
 	_panel = PanelContainer.new()
 	_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	_panel.offset_left = 12
-	_panel.offset_top = -220
+	_panel.offset_top = -_EXPANDED_HEIGHT - 12
 	_panel.offset_right = -12
 	_panel.offset_bottom = -12
 	_canvas.add_child(_panel)
 
 	var root := VBoxContainer.new()
 	_panel.add_child(root)
+	_root = root
 
 	var header := HBoxContainer.new()
 	root.add_child(header)
@@ -108,5 +112,12 @@ func _on_steam_debug_message(message: String, is_error: bool) -> void:
 
 func _on_toggle_collapsed() -> void:
 	_collapsed = not _collapsed
+	_apply_collapsed_state()
+
+func _apply_collapsed_state() -> void:
 	_log_container.visible = not _collapsed
 	_collapse_button.text = "+" if _collapsed else "-"
+	# Resize the panel itself so the background collapses too.
+	var target_height: float = _COLLAPSED_HEIGHT if _collapsed else _EXPANDED_HEIGHT
+	_panel.offset_top = -(target_height + 12.0)
+	_root.queue_sort()
