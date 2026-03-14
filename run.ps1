@@ -6,14 +6,18 @@
 .PARAMETER Mode
     editor  - Open the Godot editor with this project (default)
     offline - Open the editor and immediately run in offline test mode via --scene arg
+    debug   - Run via console binary and stream logs to file (best for multiplayer/Steam issues)
 
 .EXAMPLE
     .\run.ps1
     .\run.ps1 -Mode offline
+    .\run.ps1 -Mode debug
 #>
 param(
-    [ValidateSet("editor", "offline")]
-    [string]$Mode = "editor"
+    [ValidateSet("editor", "offline", "debug")]
+    [string]$Mode = "editor",
+    [switch]$NoLogCapture,
+    [switch]$NoLogWindow
 )
 
 $ProjectRoot = $PSScriptRoot
@@ -68,6 +72,13 @@ Then restart your terminal and try again.
 
 Write-Host "[BurnBridgers] Using Godot: $Godot" -ForegroundColor Cyan
 
+# Prefer console binary in debug mode so script errors are visible.
+$GodotConsole = $Godot -replace '\.exe$', '_console.exe'
+if ($Mode -eq "debug" -and -not (Test-Path $GodotConsole)) {
+    Write-Warning "[BurnBridgers] Console binary not found at: $GodotConsole. Falling back to standard executable."
+    $GodotConsole = $Godot
+}
+
 # ---------------------------------------------------------------------------
 # 2. Check required files
 # ---------------------------------------------------------------------------
@@ -94,6 +105,33 @@ if ($Mode -eq "offline") {
     # Pass a flag via a user arg so the game can read it (future) —
     # for now, editor opens normally; press Test (Offline) in the main menu.
     Write-Host "[BurnBridgers] Opening editor. Press 'Test (Offline)' in the main menu to skip Steam." -ForegroundColor Green
+}
+
+if ($Mode -eq "debug") {
+    $args += @("--verbose")
+    $logsDir = Join-Path $ProjectRoot "logs"
+    if (-not (Test-Path $logsDir)) {
+        New-Item -Path $logsDir -ItemType Directory | Out-Null
+    }
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $logFile = Join-Path $logsDir "godot-debug-$timestamp.log"
+
+    Write-Host "[BurnBridgers] Launching debug mode with live logs..." -ForegroundColor Cyan
+    Write-Host "[BurnBridgers] Log file: $logFile" -ForegroundColor Yellow
+
+    if ($NoLogCapture) {
+        & $GodotConsole @args
+    } else {
+        if (-not $NoLogWindow) {
+            $tailCommand = "Get-Content -Path '$logFile' -Wait"
+            Start-Process powershell -ArgumentList @("-NoExit", "-Command", $tailCommand)
+            Write-Host "[BurnBridgers] Opened live log window." -ForegroundColor Green
+        }
+        # Tee both stdout/stderr so errors can be shared for debugging.
+        # Convert to plain text to avoid PowerShell NativeCommandError wrappers.
+        & $GodotConsole @args 2>&1 | ForEach-Object { $_.ToString() } | Tee-Object -FilePath $logFile
+    }
+    exit $LASTEXITCODE
 }
 
 Write-Host "[BurnBridgers] Launching... (mode: $Mode)" -ForegroundColor Cyan

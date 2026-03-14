@@ -46,7 +46,7 @@ func start_match() -> void:
 	if not multiplayer.is_server():
 		push_warning("[GameManager] start_match called on non-host — ignoring.")
 		return
-	if players.size() < 2:
+	if players.size() < 1:
 		push_warning("[GameManager] Not enough players to start (%d registered)." % players.size())
 		return
 

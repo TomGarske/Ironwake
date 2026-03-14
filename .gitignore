@@ -12,6 +12,9 @@ addons/godotsteam/
 # Steam test app ID file — never commit
 steam_appid.txt
 
+# Local debug log output from run.ps1 -Mode debug
+logs/
+
 # OS clutter
 .DS_Store
 Thumbs.db

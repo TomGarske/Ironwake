@@ -23,6 +23,20 @@ Short version:
 
 The main menu includes a **Test (Offline)** button that skips Steam entirely and loads a local two-player session. Both sides are controlled by the same keyboard/mouse. Useful for testing game logic without a second machine.
 
+### Debug Logging (Steam/Lobby Issues)
+
+Use the project launcher in debug mode to auto-capture runtime errors:
+
+```powershell
+.\run.ps1 -Mode debug
+```
+
+This runs Godot with verbose console output and writes logs to:
+
+`logs/godot-debug-<timestamp>.log`
+
+Share the latest log file when host/join fails so issues can be diagnosed quickly.
+
 ---
 
 ## Tech Stack

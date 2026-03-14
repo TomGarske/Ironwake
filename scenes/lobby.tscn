@@ -27,14 +27,36 @@ theme_override_constants/separation = 16
 text = "Lobby ID: ..."
 horizontal_alignment = 1
 
+[node name="LobbyStatusLabel" type="Label" parent="VBoxContainer"]
+text = "Lobby Members: 0/4"
+horizontal_alignment = 1
+
 [node name="PlayersTitle" type="Label" parent="VBoxContainer"]
 text = "Players:"
 
 [node name="PlayerList" type="VBoxContainer" parent="VBoxContainer"]
 theme_override_constants/separation = 4
 
+[node name="FriendsTitle" type="Label" parent="VBoxContainer"]
+text = "Invite Online Friends:"
+
+[node name="FriendsScroll" type="ScrollContainer" parent="VBoxContainer"]
+custom_minimum_size = Vector2(0, 120)
+
+[node name="FriendsList" type="VBoxContainer" parent="VBoxContainer/FriendsScroll"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="InviteNoteLabel" type="Label" parent="VBoxContainer"]
+text = "Note: Invites appear as Spacewar while using Steam App ID 480."
+autowrap_mode = 2
+
 [node name="StartButton" type="Button" parent="VBoxContainer"]
 text = "Start Match"
 visible = false
+
+[node name="RefreshTimer" type="Timer" parent="."]
+wait_time = 2.0
+autostart = false
 
 [connection signal="pressed" from="VBoxContainer/StartButton" to="." method="_on_start_button_pressed"]
