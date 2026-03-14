@@ -2,6 +2,7 @@
 .godot/
 *.import
 *.translation
+*.uid
 
 # Export configuration (may contain sensitive data)
 export_presets.cfg

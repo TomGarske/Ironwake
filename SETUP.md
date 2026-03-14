@@ -51,5 +51,3 @@ This file is git-ignored and must never be committed.
 - Press **F5** (Run Project) in Godot
 - To test multiplayer: run two separate exports, or use two machines on the same LAN logged into Steam
 
-## Project Structure
-See `PLAN.md` for the full architecture overview.
