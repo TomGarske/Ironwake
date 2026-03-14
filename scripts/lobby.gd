@@ -15,6 +15,8 @@ extends Control
 @onready var back_button: Button = $VBoxContainer/BackButton
 @onready var refresh_timer: Timer = $RefreshTimer
 
+var _lobby_members_updated_handler: Callable
+
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
@@ -30,7 +32,8 @@ func _ready() -> void:
 	# Refresh list when peers connect/disconnect
 	SteamManager.peer_connected.connect(_refresh_player_list)
 	SteamManager.peer_disconnected.connect(_refresh_player_list)
-	SteamManager.lobby_members_updated.connect(_refresh_player_list.bind(0))
+	_lobby_members_updated_handler = _refresh_player_list.bind(0)
+	SteamManager.lobby_members_updated.connect(_lobby_members_updated_handler)
 	SteamManager.handshake_status_updated.connect(_on_handshake_status_updated)
 	SteamManager.avatar_texture_updated.connect(_on_avatar_texture_updated)
 
@@ -40,6 +43,20 @@ func _ready() -> void:
 	handshake_status_label.text = SteamManager.get_handshake_status_row()
 	_refresh_player_list(0)
 	_refresh_online_friends()
+
+func _exit_tree() -> void:
+	if SteamManager == null:
+		return
+	if SteamManager.peer_connected.is_connected(_refresh_player_list):
+		SteamManager.peer_connected.disconnect(_refresh_player_list)
+	if SteamManager.peer_disconnected.is_connected(_refresh_player_list):
+		SteamManager.peer_disconnected.disconnect(_refresh_player_list)
+	if _lobby_members_updated_handler.is_valid() and SteamManager.lobby_members_updated.is_connected(_lobby_members_updated_handler):
+		SteamManager.lobby_members_updated.disconnect(_lobby_members_updated_handler)
+	if SteamManager.handshake_status_updated.is_connected(_on_handshake_status_updated):
+		SteamManager.handshake_status_updated.disconnect(_on_handshake_status_updated)
+	if SteamManager.avatar_texture_updated.is_connected(_on_avatar_texture_updated):
+		SteamManager.avatar_texture_updated.disconnect(_on_avatar_texture_updated)
 
 # ---------------------------------------------------------------------------
 # Player list
@@ -116,6 +133,10 @@ func _refresh_online_friends() -> void:
 
 		var status_label := Label.new()
 		var friend_status := SteamManager.get_friend_status(friend_id)
+		var has_invite_state: bool = SteamManager.invited_friend_ids.has(friend_id)
+		var invite_state: SteamManager.InviteState = SteamManager.InviteState.INVITED
+		if has_invite_state:
+			invite_state = SteamManager.get_invite_state(friend_id)
 		var friend_game_app_id: int = int(friend.get("game_app_id", 0))
 		if friend_game_app_id > 0 and friend_game_app_id != SteamManager.get_current_app_id():
 			friend_status = "In Other Game"
@@ -126,17 +147,17 @@ func _refresh_online_friends() -> void:
 		var invite_button := Button.new()
 		invite_button.text = "Invite"
 		invite_button.disabled = friend_status == "In Lobby"
-		if friend_status == "Invited":
+		if has_invite_state and invite_state == SteamManager.InviteState.INVITED:
 			invite_button.text = "Reinvite"
-		elif friend_status == "Accepted":
+		elif has_invite_state and invite_state == SteamManager.InviteState.ACCEPTED:
 			invite_button.text = "Accepted"
-		elif friend_status == "Joining":
+		elif has_invite_state and invite_state == SteamManager.InviteState.JOINING:
 			invite_button.text = "Joining"
 		elif friend_status == "In Lobby":
 			invite_button.text = "Joined"
 		elif friend_status == "In Other Game":
 			invite_button.text = "Invite Anyway"
-		elif friend_status == "Failed":
+		elif has_invite_state and invite_state == SteamManager.InviteState.FAILED:
 			invite_button.text = "Retry Invite"
 		invite_button.pressed.connect(_on_invite_friend_pressed.bind(friend_id))
 		row.add_child(invite_button)

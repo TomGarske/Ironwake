@@ -13,6 +13,7 @@ enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
 ## Registry: peer_id (int) -> { steam_id: int, username: String, team: int }
 var players: Dictionary = {}
 var match_phase: MatchPhase = MatchPhase.LOBBY
+var _next_team_id: int = 1
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -30,8 +31,10 @@ func register_player_rpc(steam_id: int, username: String) -> void:
 		return
 
 	var sender_id: int = multiplayer.get_remote_sender_id()
-	# Assign the next available team slot (0-based)
-	var team: int = players.size()
+	if players.has(sender_id):
+		return
+	var team: int = _next_team_id
+	_next_team_id += 1
 	players[sender_id] = {
 		"steam_id": steam_id,
 		"username": username,
@@ -72,11 +75,13 @@ func _on_peer_disconnected(peer_id: int) -> void:
 func reset() -> void:
 	players.clear()
 	match_phase = MatchPhase.LOBBY
+	_next_team_id = 1
 
 ## Populates two local test players for offline development — no Steam required.
 func setup_offline_test() -> void:
 	players.clear()
 	players[1] = {"steam_id": 0, "username": "Player 1 (Test)", "team": 0}
 	players[2] = {"steam_id": 0, "username": "Player 2 (Test)", "team": 1}
+	_next_team_id = 2
 	match_phase = MatchPhase.IN_MATCH
 	print("[GameManager] Offline test mode: 2 players registered.")

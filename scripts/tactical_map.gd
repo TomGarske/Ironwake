@@ -4,9 +4,6 @@ extends Node2D
 # Constants
 # ---------------------------------------------------------------------------
 const UNIT_SCENE: PackedScene = preload("res://scenes/game/unit.tscn")
-const TILE_SIZE: int = 64
-const GRID_WIDTH: int = 10
-const GRID_HEIGHT: int = 20
 const PLAYER_START_COLUMNS: int = 2
 const NPC_START_COLUMNS: int = 4
 const UNITS_PER_PLAYER: int = 2
@@ -106,8 +103,8 @@ func _calculate_valid_tiles() -> void:
 	if selected_unit == null:
 		return
 	if not selected_unit.has_moved:
-		for x in range(GRID_WIDTH):
-			for y in range(GRID_HEIGHT):
+		for x in range(GameConstants.GRID_WIDTH):
+			for y in range(GameConstants.GRID_HEIGHT):
 				var pos := Vector2i(x, y)
 				if selected_unit.can_move_to(pos) and not _is_cell_occupied(pos):
 					valid_move_tiles.append(pos)
@@ -179,7 +176,7 @@ func _server_validate_attack(sender_id: int, attacker_id: int, target_id: int) -
 		return
 	if not attacker.can_attack(target.grid_pos):
 		return
-	apply_attack.rpc(attacker_id, target_id, 1)
+	apply_attack.rpc(attacker_id, target_id, attacker.attack_damage)
 
 @rpc("authority", "call_local", "reliable")
 func apply_attack(attacker_id: int, target_id: int, damage: int) -> void:
@@ -194,7 +191,9 @@ func apply_attack(attacker_id: int, target_id: int, damage: int) -> void:
 # Unit spawning (host only)
 # ---------------------------------------------------------------------------
 func _spawn_all_units() -> void:
-	var player_peer_ids: Array = GameManager.players.keys()
+	var player_peer_ids: Array[int] = []
+	for peer_id in GameManager.players.keys():
+		player_peer_ids.append(int(peer_id))
 	player_peer_ids.sort()
 	var player_unit_count: int = player_peer_ids.size() * UNITS_PER_PLAYER
 	var player_spawn_positions: Array[Vector2i] = _build_player_spawn_positions(player_unit_count)
@@ -221,7 +220,7 @@ func _spawn_all_units() -> void:
 func _build_player_spawn_positions(unit_count: int) -> Array[Vector2i]:
 	var positions: Array[Vector2i] = []
 	for x in range(PLAYER_START_COLUMNS):
-		for y in range(GRID_HEIGHT):
+		for y in range(GameConstants.GRID_HEIGHT):
 			positions.append(Vector2i(x, y))
 			if positions.size() >= unit_count:
 				return positions
@@ -229,8 +228,8 @@ func _build_player_spawn_positions(unit_count: int) -> Array[Vector2i]:
 
 func _build_npc_spawn_positions(unit_count: int) -> Array[Vector2i]:
 	var positions: Array[Vector2i] = []
-	for x in range(GRID_WIDTH - 1, GRID_WIDTH - NPC_START_COLUMNS - 1, -1):
-		for y in range(GRID_HEIGHT - 1, -1, -1):
+	for x in range(GameConstants.GRID_WIDTH - 1, GameConstants.GRID_WIDTH - NPC_START_COLUMNS - 1, -1):
+		for y in range(GameConstants.GRID_HEIGHT - 1, -1, -1):
 			positions.append(Vector2i(x, y))
 			if positions.size() >= unit_count:
 				return positions
@@ -414,10 +413,18 @@ func _get_unit_at(gp: Vector2i) -> Node:
 	return null
 
 func _screen_to_grid(local_pos: Vector2) -> Vector2i:
-	return Vector2i(int(floor(local_pos.x / TILE_SIZE)), int(floor(local_pos.y / TILE_SIZE)))
+	return Vector2i(
+		int(floor(local_pos.x / GameConstants.TILE_SIZE)),
+		int(floor(local_pos.y / GameConstants.TILE_SIZE))
+	)
 
 func _is_tile_in_bounds(pos: Vector2i) -> bool:
-	return pos.x >= 0 and pos.x < GRID_WIDTH and pos.y >= 0 and pos.y < GRID_HEIGHT
+	return (
+		pos.x >= 0
+		and pos.x < GameConstants.GRID_WIDTH
+		and pos.y >= 0
+		and pos.y < GameConstants.GRID_HEIGHT
+	)
 
 func _is_cell_occupied(pos: Vector2i) -> bool:
 	return _get_unit_at(pos) != null

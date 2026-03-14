@@ -1,6 +1,7 @@
 extends Node2D
 
-# Bridge drawer node that handles the actual drawing
+# Drawing helper used by `burning_bridge.gd` via `set_script()`.
+# This script is intentionally not attached directly in a scene file.
 var bridge_points: Array[Vector2] = []
 var time: float = 0.0
 

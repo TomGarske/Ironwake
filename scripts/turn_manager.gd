@@ -10,14 +10,17 @@ signal match_over(winner_id: int)
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
-var player_ids: Array = []
+var player_ids: Array[int] = []
 var current_turn_index: int = 0
 var current_player_id: int = 0
 
 # ---------------------------------------------------------------------------
 # Setup (called by host after spawning all units)
 # ---------------------------------------------------------------------------
-func setup(ids: Array) -> void:
+func setup(ids: Array[int]) -> void:
+	if ids.is_empty():
+		push_error("[TurnManager] setup() called with empty player list; aborting.")
+		return
 	player_ids = ids
 	current_turn_index = 0
 	current_player_id = player_ids[0]

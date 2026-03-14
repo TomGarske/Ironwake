@@ -15,6 +15,8 @@ signal handshake_status_updated(status_text: String)
 signal avatar_texture_updated(steam_id: int)
 signal lobby_list_updated(lobbies: Array)
 
+enum InviteState { INVITED, ACCEPTED, JOINING, JOINED, FAILED }
+
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
@@ -50,6 +52,7 @@ const _INVITE_TIMEOUT_SECONDS: int = 45
 const _INIT_RETRY_MS: int = 2500
 const _HOST_RETRY_MS: int = 3000
 const _MAX_HOST_RETRIES: int = 3
+const _MAX_DEBUG_HISTORY: int = 300
 const _STEAM_EXTENSION_CANDIDATES: Array[String] = [
 	"res://addons/godotsteam/godotsteam.gdextension",
 	"res://addons/GodotSteam/godotsteam.gdextension",
@@ -204,17 +207,17 @@ func get_online_friends() -> Array[Dictionary]:
 		# Update invite handshake state machine.
 		if invited_friend_ids.has(friend_steam_id):
 			var info: Dictionary = invited_friend_ids[friend_steam_id]
-			var state: String = str(info.get("state", "Invited"))
+			var state: InviteState = _invite_state_from_value(info.get("state", InviteState.INVITED))
 			var updated_at: int = int(info.get("updated_at", now))
 			var elapsed: int = now - updated_at
-			if member_ids.has(friend_steam_id) and state != "Joined":
-				_set_invite_state(friend_steam_id, "Joined")
-			elif state == "Invited" and game_app_id == get_current_app_id() and game_app_id != 0:
-				_set_invite_state(friend_steam_id, "Accepted")
-			elif state == "Accepted" and elapsed >= 2:
-				_set_invite_state(friend_steam_id, "Joining")
-			elif state != "Joined" and elapsed >= _INVITE_TIMEOUT_SECONDS:
-				_set_invite_state(friend_steam_id, "Failed")
+			if member_ids.has(friend_steam_id) and state != InviteState.JOINED:
+				_set_invite_state(friend_steam_id, InviteState.JOINED)
+			elif state == InviteState.INVITED and game_app_id == get_current_app_id() and game_app_id != 0:
+				_set_invite_state(friend_steam_id, InviteState.ACCEPTED)
+			elif state == InviteState.ACCEPTED and elapsed >= 2:
+				_set_invite_state(friend_steam_id, InviteState.JOINING)
+			elif state != InviteState.JOINED and elapsed >= _INVITE_TIMEOUT_SECONDS:
+				_set_invite_state(friend_steam_id, InviteState.FAILED)
 		friends.append({
 			"steam_id": friend_steam_id,
 			"name": str(_steam.call("getFriendPersonaName", friend_steam_id)),
@@ -232,7 +235,7 @@ func invite_friend_to_lobby(friend_steam_id: int) -> bool:
 		return false
 	var ok: bool = bool(_steam.call("inviteUserToLobby", lobby_id, friend_steam_id))
 	if ok:
-		_set_invite_state(friend_steam_id, "Invited")
+		_set_invite_state(friend_steam_id, InviteState.INVITED)
 		_emit_debug("[SteamManager] Invite sent to Steam ID %d." % friend_steam_id, false)
 	else:
 		_emit_debug("[SteamManager] Failed to invite Steam ID %d." % friend_steam_id, true)
@@ -243,8 +246,15 @@ func get_friend_status(friend_steam_id: int) -> String:
 	if member_ids.has(friend_steam_id):
 		return "In Lobby"
 	if invited_friend_ids.has(friend_steam_id):
-		return str(invited_friend_ids[friend_steam_id].get("state", "Invited"))
+		var state: InviteState = get_invite_state(friend_steam_id)
+		return _invite_state_label(state)
 	return "Online"
+
+func get_invite_state(friend_steam_id: int) -> InviteState:
+	if not invited_friend_ids.has(friend_steam_id):
+		return InviteState.INVITED
+	var info: Dictionary = invited_friend_ids[friend_steam_id]
+	return _invite_state_from_value(info.get("state", InviteState.INVITED))
 
 func set_local_ready_state(is_ready: bool) -> void:
 	local_ready = is_ready
@@ -340,7 +350,7 @@ func _on_steam_lobby_joined(joined_lobby_id: int, _permissions: int, _locked: bo
 
 func _on_lobby_chat_update(_updated_lobby: int, changed_id: int, _making_change_id: int, _chat_state: int) -> void:
 	if invited_friend_ids.has(changed_id) and get_lobby_member_ids().has(changed_id):
-		_set_invite_state(changed_id, "Joined")
+		_set_invite_state(changed_id, InviteState.JOINED)
 	_emit_debug("[SteamManager] Lobby member update for Steam ID: %d" % changed_id, false)
 	lobby_members_updated.emit()
 
@@ -372,18 +382,18 @@ func _on_lobby_match_list(lobbies: Variant) -> void:
 
 	var filtered: Array[Dictionary] = []
 	for entry in lobby_ids:
-		var lobby_id: int = int(entry)
-		if lobby_id == 0:
+		var entry_lobby_id: int = int(entry)
+		if entry_lobby_id == 0:
 			continue
-		var game_name: String = str(_steam.call("getLobbyData", lobby_id, "game"))
+		var game_name: String = str(_steam.call("getLobbyData", entry_lobby_id, "game"))
 		if game_name != "BurnBridgers":
 			continue
-		var lobby_name: String = str(_steam.call("getLobbyData", lobby_id, "name"))
+		var lobby_name: String = str(_steam.call("getLobbyData", entry_lobby_id, "name"))
 		if lobby_name.strip_edges().is_empty():
 			lobby_name = "BurnBridgers Lobby"
-		var member_count: int = int(_steam.call("getNumLobbyMembers", lobby_id))
+		var member_count: int = int(_steam.call("getNumLobbyMembers", entry_lobby_id))
 		filtered.append({
-			"lobby_id": lobby_id,
+			"lobby_id": entry_lobby_id,
 			"name": lobby_name,
 			"members": member_count
 		})
@@ -454,13 +464,15 @@ func _emit_debug(message: String, is_error: bool) -> void:
 		"message": message,
 		"is_error": is_error
 	})
+	if debug_history.size() > _MAX_DEBUG_HISTORY:
+		debug_history.pop_front()
 	if is_error:
 		push_error(message)
 	else:
 		print(message)
 	debug_message.emit(message, is_error)
 
-func _set_invite_state(friend_steam_id: int, state: String) -> void:
+func _set_invite_state(friend_steam_id: int, state: InviteState) -> void:
 	invited_friend_ids[friend_steam_id] = {
 		"state": state,
 		"updated_at": int(Time.get_unix_time_from_system())
@@ -468,8 +480,44 @@ func _set_invite_state(friend_steam_id: int, state: String) -> void:
 	var friend_name: String = "Steam ID %d" % friend_steam_id
 	if steam_ready and _steam != null:
 		friend_name = str(_steam.call("getFriendPersonaName", friend_steam_id))
-	_handshake_row_text = "Join test handshake: %s -> %s" % [friend_name, state]
+	_handshake_row_text = "Join test handshake: %s -> %s" % [friend_name, _invite_state_label(state)]
 	handshake_status_updated.emit(_handshake_row_text)
+
+func _invite_state_label(state: InviteState) -> String:
+	match state:
+		InviteState.INVITED:
+			return "Invited"
+		InviteState.ACCEPTED:
+			return "Accepted"
+		InviteState.JOINING:
+			return "Joining"
+		InviteState.JOINED:
+			return "In Lobby"
+		InviteState.FAILED:
+			return "Failed"
+		_:
+			return "Online"
+
+func _invite_state_from_value(value: Variant) -> InviteState:
+	if value is int:
+		var state_int: int = int(value)
+		if state_int >= InviteState.INVITED and state_int <= InviteState.FAILED:
+			return state_int
+		return InviteState.INVITED
+	var state_name: String = str(value)
+	match state_name:
+		"Invited":
+			return InviteState.INVITED
+		"Accepted":
+			return InviteState.ACCEPTED
+		"Joining":
+			return InviteState.JOINING
+		"Joined", "In Lobby":
+			return InviteState.JOINED
+		"Failed":
+			return InviteState.FAILED
+		_:
+			return InviteState.INVITED
 
 func _enqueue_invite_notification(friend_name: String, invited_lobby_id: int) -> void:
 	_pending_invite_notifications.append({

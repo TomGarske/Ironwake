@@ -3,7 +3,6 @@ extends Node2D
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-const TILE_SIZE: int = 64
 const UNIT_DRAW_SIZE: int = 52  # Slightly inset from tile edge
 const TEAM_COLORS: Array = [Color.CORNFLOWER_BLUE, Color.TOMATO]
 
@@ -14,6 +13,7 @@ const TEAM_COLORS: Array = [Color.CORNFLOWER_BLUE, Color.TOMATO]
 @export var move_range: int = 3
 ## Attack range in Manhattan distance tiles. 1 = melee (POC). Ranged support is a future extension.
 @export var attack_range: int = 1
+@export var attack_damage: int = 1
 
 # ---------------------------------------------------------------------------
 # Runtime state
@@ -91,7 +91,10 @@ func can_attack(target_pos: Vector2i) -> bool:
 # ---------------------------------------------------------------------------
 func _set_grid_pos(pos: Vector2i) -> void:
 	grid_pos = pos
-	position = Vector2(pos.x * TILE_SIZE + TILE_SIZE / 2.0, pos.y * TILE_SIZE + TILE_SIZE / 2.0)
+	position = Vector2(
+		pos.x * GameConstants.TILE_SIZE + GameConstants.TILE_SIZE / 2.0,
+		pos.y * GameConstants.TILE_SIZE + GameConstants.TILE_SIZE / 2.0
+	)
 
 func _update_health_label() -> void:
 	var label: Label = get_node_or_null("HealthLabel")
