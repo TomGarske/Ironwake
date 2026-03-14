@@ -292,9 +292,26 @@ func _on_lobby_invite(friend_id: int, invited_lobby_id: int, _game_id: int) -> v
 	lobby_invite_received.emit(friend_id, invited_lobby_id)
 	_enqueue_invite_notification(friend_name, invited_lobby_id)
 
-func _on_lobby_match_list(lobbies: Array) -> void:
+func _on_lobby_match_list(lobbies: Variant) -> void:
+	var lobby_ids: Array = []
+	if lobbies is Array:
+		lobby_ids = lobbies
+	elif lobbies is int:
+		var count: int = int(lobbies)
+		if _steam != null and _steam.has_method("getLobbyByIndex"):
+			for i in range(count):
+				lobby_ids.append(_steam.call("getLobbyByIndex", i))
+		else:
+			_emit_debug("[SteamManager] lobby_match_list returned count=%d but getLobbyByIndex is unavailable." % count, true)
+			lobby_list_updated.emit(_cached_public_lobbies.duplicate(true))
+			return
+	else:
+		_emit_debug("[SteamManager] Unexpected lobby_match_list payload type: %s" % [typeof(lobbies)], true)
+		lobby_list_updated.emit(_cached_public_lobbies.duplicate(true))
+		return
+
 	var filtered: Array[Dictionary] = []
-	for entry in lobbies:
+	for entry in lobby_ids:
 		var lobby_id: int = int(entry)
 		if lobby_id == 0:
 			continue
