@@ -6,13 +6,11 @@ extends Node2D
 const UNIT_SCENE: PackedScene = preload("res://scenes/game/unit.tscn")
 const TILE_SIZE: int = 64
 const GRID_WIDTH: int = 10
-const GRID_HEIGHT: int = 10
-
-## Starting grid positions per team index
-const TEAM_STARTS: Dictionary = {
-	0: [Vector2i(1, 1), Vector2i(2, 1)],
-	1: [Vector2i(7, 8), Vector2i(8, 8)]
-}
+const GRID_HEIGHT: int = 20
+const PLAYER_START_COLUMNS: int = 2
+const NPC_START_COLUMNS: int = 4
+const UNITS_PER_PLAYER: int = 2
+const NPC_TEAM: int = 999
 
 # ---------------------------------------------------------------------------
 # Node references
@@ -194,12 +192,47 @@ func apply_attack(attacker_id: int, target_id: int, damage: int) -> void:
 # Unit spawning (host only)
 # ---------------------------------------------------------------------------
 func _spawn_all_units() -> void:
-	for peer_id: int in GameManager.players:
+	var player_peer_ids: Array = GameManager.players.keys()
+	player_peer_ids.sort()
+	var player_unit_count: int = player_peer_ids.size() * UNITS_PER_PLAYER
+	var player_spawn_positions: Array[Vector2i] = _build_player_spawn_positions(player_unit_count)
+	var npc_spawn_positions: Array[Vector2i] = _build_npc_spawn_positions(player_unit_count)
+
+	var player_spawn_index: int = 0
+	for peer_id: int in player_peer_ids:
 		var team: int = GameManager.players[peer_id]["team"]
-		for start_pos: Vector2i in TEAM_STARTS[team]:
-			_host_spawn_unit(unit_counter, start_pos, team)
+		for _i in range(UNITS_PER_PLAYER):
+			if player_spawn_index >= player_spawn_positions.size():
+				push_error("[TacticalMap] Not enough player spawn positions for all units.")
+				break
+			_host_spawn_unit(unit_counter, player_spawn_positions[player_spawn_index], team)
 			unit_counter += 1
-	turn_manager.setup(GameManager.players.keys())
+			player_spawn_index += 1
+
+	for npc_pos: Vector2i in npc_spawn_positions:
+		_host_spawn_unit(unit_counter, npc_pos, NPC_TEAM)
+		unit_counter += 1
+
+	# Start turn manager with all registered peer IDs (NPCs are not in turn order yet)
+	turn_manager.setup(player_peer_ids)
+
+func _build_player_spawn_positions(unit_count: int) -> Array[Vector2i]:
+	var positions: Array[Vector2i] = []
+	for x in range(PLAYER_START_COLUMNS):
+		for y in range(GRID_HEIGHT):
+			positions.append(Vector2i(x, y))
+			if positions.size() >= unit_count:
+				return positions
+	return positions
+
+func _build_npc_spawn_positions(unit_count: int) -> Array[Vector2i]:
+	var positions: Array[Vector2i] = []
+	for x in range(GRID_WIDTH - 1, GRID_WIDTH - NPC_START_COLUMNS - 1, -1):
+		for y in range(GRID_HEIGHT - 1, -1, -1):
+			positions.append(Vector2i(x, y))
+			if positions.size() >= unit_count:
+				return positions
+	return positions
 
 func _host_spawn_unit(id: int, pos: Vector2i, team: int) -> void:
 	_spawn_unit_local(id, pos, team)
@@ -231,9 +264,16 @@ func _check_win_condition() -> void:
 	for unit: Node in units.values():
 		if not teams_alive.has(unit.team):
 			teams_alive.append(unit.team)
+	if teams_alive.size() == 0:
+		turn_manager.declare_match_over(-1)
+		return
 	if teams_alive.size() > 1:
 		return
 	var winner_team: int = teams_alive[0] if teams_alive.size() == 1 else -1
+	if winner_team == NPC_TEAM:
+		# 0 is a non-peer sentinel used to display defeat for all players.
+		turn_manager.declare_match_over(0)
+		return
 	for peer_id: int in GameManager.players:
 		if GameManager.players[peer_id]["team"] == winner_team:
 			turn_manager.declare_match_over(peer_id)

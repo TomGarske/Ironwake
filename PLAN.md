@@ -74,8 +74,10 @@ BurnBridgers/
 - On start: `GameManager.start_match()` → RPC loads `tactical_map.tscn` on all clients
 
 ### TacticalMap (`scenes/game/tactical_map.tscn`)
-- `TileMap` node, 10×10 grid, placeholder tileset
-- Host spawns 2 units per player at fixed positions, broadcasts spawn via RPC
+- `TileMap` node, 10×20 grid, placeholder tileset
+- Host spawns 2 units per player in the leftmost 2 columns
+- Host also spawns NPC units in the rightmost 4 columns
+- All spawns are broadcast via RPC
 - Holds `TurnManager` as child node
 
 ### Unit (`scenes/game/unit.tscn`)
