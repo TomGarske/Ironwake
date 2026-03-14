@@ -27,6 +27,7 @@ var _menu_up_prev: bool = false
 var _menu_down_prev: bool = false
 var _menu_accept_prev: bool = false
 var _menu_cancel_prev: bool = false
+var _controller_debug_label: Label = null
 
 const _MUSIC_SAMPLE_RATE: float = 44100.0
 const _MUSIC_STEP_SECONDS: float = 0.36
@@ -49,6 +50,7 @@ const _BASS_HYPE: Array[float] = [146.83, 164.81, 185.00, 164.81]
 func _ready() -> void:
 	_update_version_label()
 	_setup_menu_navigation()
+	_setup_controller_debug_line()
 	_setup_menu_music()
 	_sync_music_toggle()
 	_apply_music_enabled_state()
@@ -82,6 +84,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	_stream_menu_music()
 	_handle_simple_controller_menu_input()
+	_update_controller_debug_line()
 
 func _update_version_label() -> void:
 	if version_label == null:
@@ -138,8 +141,8 @@ func _handle_simple_controller_menu_input() -> void:
 		return
 
 	var stick_y: float = Input.get_joy_axis(pad_id, JOY_AXIS_LEFT_Y)
-	var down_now: bool = Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_DOWN) or stick_y > 0.60
-	var up_now: bool = Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_UP) or stick_y < -0.60
+	var down_now: bool = _is_pad_pressed_any(pad_id, [JOY_BUTTON_DPAD_DOWN]) or stick_y > 0.60
+	var up_now: bool = _is_pad_pressed_any(pad_id, [JOY_BUTTON_DPAD_UP]) or stick_y < -0.60
 	if down_now and not _menu_down_prev:
 		_cycle_menu_focus(1)
 	if up_now and not _menu_up_prev:
@@ -147,19 +150,25 @@ func _handle_simple_controller_menu_input() -> void:
 	_menu_down_prev = down_now
 	_menu_up_prev = up_now
 
-	var accept_down: bool = Input.is_joy_button_pressed(pad_id, JOY_BUTTON_A) \
-		or Input.is_joy_button_pressed(pad_id, JOY_BUTTON_X) \
-		or Input.is_joy_button_pressed(pad_id, JOY_BUTTON_START)
+	var accept_down: bool = _is_pad_pressed_any(pad_id, [
+		JOY_BUTTON_A, JOY_BUTTON_X, JOY_BUTTON_START
+	])
 	if accept_down and not _menu_accept_prev:
 		_activate_selected_menu_button()
 	_menu_accept_prev = accept_down
 
-	var cancel_down: bool = Input.is_joy_button_pressed(pad_id, JOY_BUTTON_B) \
-		or Input.is_joy_button_pressed(pad_id, JOY_BUTTON_Y) \
-		or Input.is_joy_button_pressed(pad_id, JOY_BUTTON_BACK)
+	var cancel_down: bool = _is_pad_pressed_any(pad_id, [
+		JOY_BUTTON_B, JOY_BUTTON_Y, JOY_BUTTON_BACK
+	])
 	if cancel_down and not _menu_cancel_prev:
 		_on_exit_button_pressed()
 	_menu_cancel_prev = cancel_down
+
+func _is_pad_pressed_any(pad_id: int, buttons: Array[int]) -> bool:
+	for button in buttons:
+		if Input.is_joy_button_pressed(pad_id, button):
+			return true
+	return false
 
 func _refresh_menu_selection() -> void:
 	var buttons: Array[Button] = _get_enabled_menu_buttons()
@@ -173,6 +182,58 @@ func _get_primary_pad_id() -> int:
 	if pads.is_empty():
 		return -1
 	return int(pads[0])
+
+func _setup_controller_debug_line() -> void:
+	_controller_debug_label = Label.new()
+	_controller_debug_label.name = "ControllerDebugLine"
+	_controller_debug_label.layout_mode = 1
+	_controller_debug_label.anchors_preset = 0
+	_controller_debug_label.offset_left = 12.0
+	_controller_debug_label.offset_top = 12.0
+	_controller_debug_label.offset_right = 900.0
+	_controller_debug_label.offset_bottom = 34.0
+	_controller_debug_label.add_theme_font_size_override("font_size", 12)
+	_controller_debug_label.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95, 0.95))
+	_controller_debug_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_controller_debug_label.text = "Controller debug initializing..."
+	add_child(_controller_debug_label)
+
+func _update_controller_debug_line() -> void:
+	if _controller_debug_label == null:
+		return
+	var pad_ids: PackedInt32Array = Input.get_connected_joypads()
+	var id_text: String = "none"
+	if not pad_ids.is_empty():
+		var parts: Array[String] = []
+		for id in pad_ids:
+			parts.append(str(id))
+		id_text = ",".join(parts)
+
+	var pad_id: int = _get_primary_pad_id()
+	if pad_id < 0:
+		_controller_debug_label.text = "Pads: [%s] | no active pad" % id_text
+		return
+
+	var a: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_A) else 0
+	var b: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_B) else 0
+	var x: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_X) else 0
+	var y: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_Y) else 0
+	var up: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_UP) else 0
+	var down: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_DOWN) else 0
+	var left: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_LEFT) else 0
+	var right: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_RIGHT) else 0
+	var start: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_START) else 0
+	var back: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_BACK) else 0
+	var lx: float = Input.get_joy_axis(pad_id, JOY_AXIS_LEFT_X)
+	var ly: float = Input.get_joy_axis(pad_id, JOY_AXIS_LEFT_Y)
+	var ui_up: int = 1 if Input.is_action_pressed("ui_up") else 0
+	var ui_down: int = 1 if Input.is_action_pressed("ui_down") else 0
+	var ui_accept: int = 1 if Input.is_action_pressed("ui_accept") else 0
+	var ui_cancel: int = 1 if Input.is_action_pressed("ui_cancel") else 0
+
+	_controller_debug_label.text = "Pads:[%s] Active:%d | A:%d B:%d X:%d Y:%d U:%d D:%d L:%d R:%d Start:%d Back:%d | LX:%.2f LY:%.2f | ui U:%d D:%d A:%d C:%d" % [
+		id_text, pad_id, a, b, x, y, up, down, left, right, start, back, lx, ly, ui_up, ui_down, ui_accept, ui_cancel
+	]
 
 func _setup_menu_music() -> void:
 	if menu_music_player == null:
