@@ -6,15 +6,13 @@ extends Node2D
 ##   Arrow keys: move · Space: attack · Escape: main menu
 
 # ── Isometric constants ────────────────────────────────────────────────────────
-const TILE_W  := 64.0   # diamond width in screen pixels
-const TILE_H  := 32.0   # diamond height in screen pixels
-const COLS    := 13
-const ROWS    := 13
+const TILE_W        := 64.0   # diamond width in screen pixels
+const TILE_H        := 32.0   # diamond height in screen pixels
+const CHUNK_SIZE    := 16     # tiles per chunk side
+const RENDER_MARGIN := 2      # extra tile buffer outside visible screen edge
 
 # ── Palette ───────────────────────────────────────────────────────────────────
-const _C_SKY       := Color(0.06, 0.07, 0.12)
-const _C_BORDER    := Color(0.34, 0.26, 0.14)
-const _C_BORDER_SH := Color(0.18, 0.13, 0.07)
+const _C_SKY := Color(0.06, 0.07, 0.12)
 
 # ── Terrain types ─────────────────────────────────────────────────────────────
 const T_DEEP   := 0   # deep ocean
@@ -63,106 +61,130 @@ var _players:   Array = []
 var _my_index:  int   = 0    # which player in _players this peer controls
 var _winner:    int   = -2   # -2 = playing, -1 = draw, 0+ = index of winner
 var _end_timer: float = 0.0
-var _origin:    Vector2      # screen anchor: world (0,0) maps here
-var _terrain:   Array = []   # _terrain[tx][ty] = terrain type int
+var _origin:    Vector2      # screen position of world (0, 0) — updated each draw
 
-# ── Spawn positions (world units, well inside the arena) ──────────────────────
+# ── World / chunk state ───────────────────────────────────────────────────────
+## Chunk map: Vector2i(cx, cy) → PackedByteArray of CHUNK_SIZE*CHUNK_SIZE terrain types.
+## All peers generate the same terrain from the shared seed via _init_world_seed RPC.
+var _chunks:     Dictionary    = {}
+var _elev_noise: FastNoiseLite = null
+var _warp_noise: FastNoiseLite = null
+var _moist_noise: FastNoiseLite = null
+
+# ── Spawn positions (world units) ─────────────────────────────────────────────
 const _SPAWNS: Array = [
-	Vector2(2.0,        2.0),
-	Vector2(COLS - 3.0, ROWS - 3.0),
-	Vector2(COLS - 3.0, 2.0),
-	Vector2(2.0,        ROWS - 3.0),
+	Vector2(2.0,  2.0),
+	Vector2(10.0, 10.0),
+	Vector2(10.0,  2.0),
+	Vector2(2.0,  10.0),
 ]
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	_register_inputs()
-	var vp := get_viewport_rect().size
-	_origin = Vector2(vp.x * 0.5, vp.y * 0.08)
-	_generate_map()
+	_origin = get_viewport_rect().size * 0.5
 	_spawn_players()
+	if multiplayer.has_multiplayer_peer():
+		# Host picks the seed and broadcasts it; clients wait for the RPC.
+		if multiplayer.is_server():
+			_init_world_seed.rpc(randi())
+	else:
+		_init_world_seed(randi())   # offline: generate immediately
 	queue_redraw()
 
-# ── Map generation ────────────────────────────────────────────────────────────
-## Pre-bakes a terrain type for every tile using:
-##   • Domain-warped FBM elevation noise
-##   • Independent moisture noise
-##   • Whittaker-inspired biome table (elevation × moisture)
-##   • Two-pass cellular automata smoothing
-func _generate_map() -> void:
-	var seed_val: int = randi()
+# ── World seed — RPC ensures every peer uses the same noise ───────────────────
+@rpc("authority", "call_local", "reliable")
+func _init_world_seed(seed_val: int) -> void:
+	_elev_noise = FastNoiseLite.new()
+	_elev_noise.seed               = seed_val
+	_elev_noise.noise_type         = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_elev_noise.frequency          = 0.06
+	_elev_noise.fractal_type       = FastNoiseLite.FRACTAL_FBM
+	_elev_noise.fractal_octaves    = 5
+	_elev_noise.fractal_lacunarity = 2.0
+	_elev_noise.fractal_gain       = 0.50
 
-	# --- Noise helpers ----------------------------------------------------------
-	var elev_noise := FastNoiseLite.new()
-	elev_noise.seed        = seed_val
-	elev_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	elev_noise.frequency   = 0.06
-	elev_noise.fractal_type        = FastNoiseLite.FRACTAL_FBM
-	elev_noise.fractal_octaves     = 5
-	elev_noise.fractal_lacunarity  = 2.0
-	elev_noise.fractal_gain        = 0.50
+	_warp_noise = FastNoiseLite.new()
+	_warp_noise.seed       = seed_val + 1
+	_warp_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_warp_noise.frequency  = 0.12
 
-	var warp_noise := FastNoiseLite.new()
-	warp_noise.seed       = seed_val + 1
-	warp_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	warp_noise.frequency  = 0.12
+	_moist_noise = FastNoiseLite.new()
+	_moist_noise.seed       = seed_val + 2
+	_moist_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_moist_noise.frequency  = 0.09
 
-	var moist_noise := FastNoiseLite.new()
-	moist_noise.seed       = seed_val + 2
-	moist_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	moist_noise.frequency  = 0.09
+	_chunks.clear()
+	queue_redraw()
 
-	# --- Sample raw elevation with domain warping --------------------------------
+# ── Chunk generation ──────────────────────────────────────────────────────────
+func _ensure_chunk(cx: int, cy: int) -> void:
+	var key := Vector2i(cx, cy)
+	if _chunks.has(key) or _elev_noise == null:
+		return
+
+	# Sample a 1-tile-padded region so CA smoothing has correct border values.
+	const PAD := 1
+	const SZ  := CHUNK_SIZE + 2 * PAD
 	var raw: Array = []
-	for tx in range(COLS):
+	for i in range(SZ):
 		raw.append([])
-		for ty in range(ROWS):
-			var wx: float = float(tx) + warp_noise.get_noise_2d(float(tx), float(ty)) * 4.0
-			var wy: float = float(ty) + warp_noise.get_noise_2d(float(tx) + 100.0, float(ty) + 100.0) * 4.0
-			raw[tx].append(elev_noise.get_noise_2d(wx, wy))
+		for j in range(SZ):
+			var wx: float = float(cx * CHUNK_SIZE + i - PAD)
+			var wy: float = float(cy * CHUNK_SIZE + j - PAD)
+			var dwx: float = wx + _warp_noise.get_noise_2d(wx, wy) * 4.0
+			var dwy: float = wy + _warp_noise.get_noise_2d(wx + 100.0, wy + 100.0) * 4.0
+			raw[i].append(_elev_noise.get_noise_2d(dwx, dwy))
 
-	# --- Two-pass cellular-automata elevation smoothing -------------------------
+	# Two-pass cellular automata smoothing
 	for _pass in range(2):
-		var smoothed: Array = []
-		for tx in range(COLS):
-			smoothed.append([])
-			for ty in range(ROWS):
+		var sm: Array = []
+		for i in range(SZ):
+			sm.append([])
+			for j in range(SZ):
 				var sum: float = 0.0
 				var cnt: int   = 0
-				for ox in range(-1, 2):
-					for oy in range(-1, 2):
-						var nx: int = tx + ox
-						var ny: int = ty + oy
-						if nx >= 0 and nx < COLS and ny >= 0 and ny < ROWS:
-							var w: float = 0.5 if (ox != 0 and oy != 0) else 1.0
-							sum += float(raw[nx][ny]) * w
-							cnt += 1 if ox == 0 or oy == 0 else 0
-				smoothed[tx].append(sum / float(maxi(cnt, 1)))
-		raw = smoothed
+				for oi in range(-1, 2):
+					for oj in range(-1, 2):
+						var ni: int = i + oi
+						var nj: int = j + oj
+						if ni >= 0 and ni < SZ and nj >= 0 and nj < SZ:
+							var w: float = 0.5 if (oi != 0 and oj != 0) else 1.0
+							sum += float(raw[ni][nj]) * w
+							cnt += 1 if oi == 0 or oj == 0 else 0
+				sm[i].append(sum / float(maxi(cnt, 1)))
+		raw = sm
 
-	# --- Classify tiles ---------------------------------------------------------
-	for tx in range(COLS):
-		_terrain.append([])
-		for ty in range(ROWS):
-			if tx == 0 or ty == 0 or tx == COLS - 1 or ty == ROWS - 1:
-				_terrain[tx].append(-1)   # -1 = border (drawn separately)
-				continue
-			var e: float = float(raw[tx][ty])
-			var m: float = moist_noise.get_noise_2d(float(tx), float(ty))
+	# Classify the inner CHUNK_SIZE × CHUNK_SIZE tiles and store as bytes
+	var data := PackedByteArray()
+	data.resize(CHUNK_SIZE * CHUNK_SIZE)
+	for i in range(CHUNK_SIZE):
+		for j in range(CHUNK_SIZE):
+			var e: float = float(raw[i + PAD][j + PAD])
+			var wx: float = float(cx * CHUNK_SIZE + i)
+			var wy: float = float(cy * CHUNK_SIZE + j)
+			var m: float = _moist_noise.get_noise_2d(wx, wy)
 			var t: int
-			if e < -0.30:
-				t = T_DEEP
-			elif e < -0.05:
-				t = T_WATER
-			elif e < 0.10:
-				t = T_SAND
-			elif e < 0.35:
-				t = T_FOREST if m > 0.10 else T_GRASS
-			elif e < 0.55:
-				t = T_MTN
-			else:
-				t = T_SNOW
-			_terrain[tx].append(t)
+			if   e < -0.30: t = T_DEEP
+			elif e < -0.05: t = T_WATER
+			elif e <  0.10: t = T_SAND
+			elif e <  0.35: t = T_FOREST if m > 0.10 else T_GRASS
+			elif e <  0.55: t = T_MTN
+			else:            t = T_SNOW
+			data[i * CHUNK_SIZE + j] = t
+	_chunks[key] = data
+
+func _get_tile(tx: int, ty: int) -> int:
+	var cx: int = floori(float(tx) / CHUNK_SIZE)
+	var cy: int = floori(float(ty) / CHUNK_SIZE)
+	_ensure_chunk(cx, cy)
+	var key := Vector2i(cx, cy)
+	if not _chunks.has(key):
+		return T_GRASS   # noise not ready yet (client waiting for seed RPC)
+	var lx: int = tx - cx * CHUNK_SIZE
+	var ly: int = ty - cy * CHUNK_SIZE
+	return _chunks[key][lx * CHUNK_SIZE + ly]
+
 # ── Coordinate helpers ────────────────────────────────────────────────────────
 func _w2s(wx: float, wy: float) -> Vector2:
 	return _origin + Vector2((wx - wy) * TILE_W * 0.5, (wx + wy) * TILE_H * 0.5)
@@ -210,7 +232,7 @@ func _spawn_players() -> void:
 	else:
 		# Offline: two placeholder slots; this peer controls index 0
 		peer_ids = [1, 2]
-		labels = ["P1", "P2"]
+		labels   = ["P1", "P2"]
 
 	var count: int = mini(peer_ids.size(), _PALETTES.size())
 	var my_peer_id: int = multiplayer.get_unique_id()
@@ -281,9 +303,6 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 		p.walk_time += delta
 	else:
 		p.moving = false
-
-	p.wx = clampf(p.wx, 0.6, COLS - 1.6)
-	p.wy = clampf(p.wy, 0.6, ROWS - 1.6)
 
 	if Input.is_action_just_pressed(_ACTIONS.atk) and p.atk_time <= 0.0:
 		p.atk_time   = ATK_DUR
@@ -389,8 +408,13 @@ func _check_win() -> void:
 # ── Draw ──────────────────────────────────────────────────────────────────────
 func _draw() -> void:
 	var vp := get_viewport_rect().size
+
+	# Camera: keep the local player centred on screen every frame
+	var me: Dictionary = _players[_my_index]
+	_origin = vp * 0.5 - Vector2((me.wx - me.wy) * TILE_W * 0.5, (me.wx + me.wy) * TILE_H * 0.5)
+
 	draw_rect(Rect2(Vector2.ZERO, vp), _C_SKY)
-	_draw_tiles()
+	_draw_tiles(vp)
 
 	# Y-sort: players with lower (wx+wy) are further from camera — draw first
 	var sorted := _players.duplicate()
@@ -404,42 +428,64 @@ func _draw() -> void:
 		_draw_win_screen(vp)
 
 # ── Tile drawing ──────────────────────────────────────────────────────────────
-## Diagonal draw order ensures correct painter's-algorithm depth.
-func _draw_tiles() -> void:
-	for diag in range(COLS + ROWS - 1):
-		for tx in range(COLS):
-			var ty: int = diag - tx
-			if ty < 0 or ty >= ROWS:
-				continue
-			var is_border := tx == 0 or ty == 0 or tx == COLS - 1 or ty == ROWS - 1
-			_draw_tile(tx, ty, is_border)
+func _draw_tiles(vp: Vector2) -> void:
+	# Inverse-project the four screen corners into tile space to find the exact
+	# range of tiles that can be visible.  Avoids drawing off-screen tiles.
+	# screen = _origin + Vector2((tx-ty)*hw, (tx+ty)*hh)
+	# → u = tx-ty = (screen.x - _origin.x) / hw
+	# → v = tx+ty = (screen.y - _origin.y) / hh
+	# → tx = (u+v)/2   ty = (v-u)/2
+	var hw := TILE_W * 0.5
+	var hh := TILE_H * 0.5
+	var tx_min := 999999
+	var tx_max := -999999
+	var ty_min := 999999
+	var ty_max := -999999
+	for corner in [Vector2.ZERO, Vector2(vp.x, 0.0), Vector2(0.0, vp.y), vp]:
+		var u: float = (corner.x - _origin.x) / hw
+		var v: float = (corner.y - _origin.y) / hh
+		tx_min = mini(tx_min, floori((u + v) * 0.5) - RENDER_MARGIN)
+		tx_max = maxi(tx_max, ceili((u + v) * 0.5) + RENDER_MARGIN)
+		ty_min = mini(ty_min, floori((v - u) * 0.5) - RENDER_MARGIN)
+		ty_max = maxi(ty_max, ceili((v - u) * 0.5) + RENDER_MARGIN)
 
-func _draw_tile(tx: int, ty: int, is_border: bool) -> void:
+	# Pre-generate all chunks that overlap the visible tile range
+	var cx_min: int = floori(float(tx_min) / CHUNK_SIZE)
+	var cx_max: int = ceili(float(tx_max)  / CHUNK_SIZE)
+	var cy_min: int = floori(float(ty_min) / CHUNK_SIZE)
+	var cy_max: int = ceili(float(ty_max)  / CHUNK_SIZE)
+	for cx in range(cx_min, cx_max + 1):
+		for cy in range(cy_min, cy_max + 1):
+			_ensure_chunk(cx, cy)
+
+	# Draw in diagonal order for correct painter's-algorithm depth
+	var d_min: int = tx_min + ty_min
+	var d_max: int = tx_max + ty_max
+	for diag in range(d_min, d_max + 1):
+		var tx_lo: int = maxi(tx_min, diag - ty_max)
+		var tx_hi: int = mini(tx_max, diag - ty_min)
+		for tx in range(tx_lo, tx_hi + 1):
+			_draw_tile(tx, diag - tx)
+
+func _draw_tile(tx: int, ty: int) -> void:
 	var top := _w2s(tx + 0.5, float(ty))
 	var rgt := _w2s(float(tx + 1), ty + 0.5)
 	var bot := _w2s(tx + 0.5, float(ty + 1))
 	var lft := _w2s(float(tx), ty + 0.5)
 
+	var tt: int   = _get_tile(tx, ty)
+	var tc: Array = _TC[tt]
 	var face: Color
-	var edge: Color
-	if is_border:
-		face = _C_BORDER
-		edge = _C_BORDER_SH
+	if tt == T_DEEP or tt == T_WATER:
+		face = tc[0].lightened(0.06) if (tx + ty) % 2 == 0 else tc[0]
+	elif tt == T_GRASS or tt == T_FOREST:
+		face = tc[0] if (tx + ty) % 2 == 0 else tc[0].lightened(0.04)
 	else:
-		var tt: int = _terrain[tx][ty]
-		var tc: Array = _TC[tt]
-		# Checkerboard shimmer on water tiles; all others use tc directly
-		if tt == T_DEEP or tt == T_WATER:
-			face = tc[0].lightened(0.06) if (tx + ty) % 2 == 0 else tc[0]
-		elif tt == T_GRASS or tt == T_FOREST:
-			face = tc[0] if (tx + ty) % 2 == 0 else tc[0].lightened(0.04)
-		else:
-			face = tc[0]
-		edge = tc[1]
+		face = tc[0]
 
 	draw_polygon(PackedVector2Array([top, rgt, bot, lft]), PackedColorArray([face]))
-	draw_line(lft, bot, edge, 1.2)
-	draw_line(rgt, bot, edge, 1.2)
+	draw_line(lft, bot, tc[1], 1.2)
+	draw_line(rgt, bot, tc[1], 1.2)
 
 # ── Character drawing ─────────────────────────────────────────────────────────
 func _draw_player(p: Dictionary) -> void:
@@ -475,7 +521,7 @@ func _draw_player(p: Dictionary) -> void:
 	# Head
 	draw_circle(sp + Vector2(0.0, -51.0), 10.0, pb)
 	draw_circle(sp + Vector2(0.0, -51.0), 10.0, Color(0.0, 0.0, 0.0, 0.18), false, 1.5)
-	# Face dot (shows depth/front of face subtly)
+	# Face dot (shows which direction player faces)
 	var fwd := _dir_screen(p.dir.x, p.dir.y) * 4.5
 	draw_circle(sp + Vector2(fwd.x, -51.0 + fwd.y * 0.5), 2.5, Color(0.0, 0.0, 0.0, 0.35))
 
