@@ -466,6 +466,7 @@ func _draw() -> void:
 	for p in sorted:
 		_draw_player(p)
 
+	_draw_offscreen_indicators(vp)
 	_draw_hud(vp)
 	if _winner != -2:
 		_draw_win_screen(vp)
@@ -533,10 +534,22 @@ func _draw_player(p: Dictionary) -> void:
 				  sp + Vector2(0.0, -38.0) + ds * 8.0 + Vector2(0.0, 4.0),
 				  dim, 5.0)
 
-	# Name tag above head
+	# Name tag — small, floats above head with a gentle independent bob per player
+	var float_y: float = sin(Time.get_ticks_msec() * 0.0018 + float(p.peer_id) * 0.9) * 3.5
 	var font := ThemeDB.fallback_font
-	draw_string(font, sp + Vector2(0.0, -66.0), p.label,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1.0, 1.0, 1.0, 0.88))
+	var label_pos := sp + Vector2(0.0, -82.0 + float_y)
+	var label_size: Vector2 = font.get_string_size(p.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9)
+	var tag_pad := 4.0
+	var tag_rect := Rect2(
+		label_pos.x - label_size.x * 0.5 - tag_pad,
+		label_pos.y - label_size.y - 1.0,
+		label_size.x + tag_pad * 2.0,
+		label_size.y + tag_pad
+	)
+	draw_rect(tag_rect, Color(0.0, 0.0, 0.0, 0.55))
+	draw_rect(tag_rect, pa, false, 1.0)
+	draw_string(font, label_pos, p.label,
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(1.0, 1.0, 1.0, 0.92))
 
 # ── HUD ───────────────────────────────────────────────────────────────────────
 func _draw_hud(vp: Vector2) -> void:
@@ -597,3 +610,62 @@ func _draw_win_screen(vp: Vector2) -> void:
 	draw_string(font, Vector2(cx, cy + 62.0),
 			"Returning to menu in %d..." % remaining,
 			HORIZONTAL_ALIGNMENT_CENTER, -1, 20, Color(0.8, 0.8, 0.8))
+
+# ── Off-screen player indicators ─────────────────────────────────────────────
+func _draw_offscreen_indicators(vp: Vector2) -> void:
+	const EDGE_PAD := 30.0
+	const ARROW_R  := 12.0
+
+	var font          := ThemeDB.fallback_font
+	var screen_center := vp * 0.5
+
+	for p in _players:
+		if not p.alive:
+			continue
+		var sp := _w2s(p.wx, p.wy)
+		# Already on screen — no indicator needed
+		if sp.x >= EDGE_PAD and sp.x <= vp.x - EDGE_PAD \
+				and sp.y >= EDGE_PAD and sp.y <= vp.y - EDGE_PAD:
+			continue
+
+		# Direction from screen centre toward the off-screen player
+		var dir: Vector2 = (sp - screen_center).normalized()
+
+		# Clamp to the padded screen boundary via parametric ray
+		var t_x: float = INF
+		var t_y: float = INF
+		if abs(dir.x) > 0.0001:
+			var tx0: float = (EDGE_PAD - screen_center.x) / dir.x
+			var tx1: float = (vp.x - EDGE_PAD - screen_center.x) / dir.x
+			t_x = max(tx0, tx1) if dir.x > 0.0 else max(tx0, tx1)
+			t_x = tx1 if dir.x > 0.0 else tx0
+		if abs(dir.y) > 0.0001:
+			var ty0: float = (EDGE_PAD - screen_center.y) / dir.y
+			var ty1: float = (vp.y - EDGE_PAD - screen_center.y) / dir.y
+			t_y = ty1 if dir.y > 0.0 else ty0
+		var t: float   = minf(t_x, t_y)
+		var ap: Vector2 = screen_center + dir * t
+
+		var pa: Color = p.palette[0]
+
+		# Arrow triangle pointing toward the player
+		var tip   := ap + dir * ARROW_R
+		var perp  := Vector2(-dir.y, dir.x) * ARROW_R * 0.6
+		var base1 := ap - dir * (ARROW_R * 0.4) + perp
+		var base2 := ap - dir * (ARROW_R * 0.4) - perp
+
+		# Dark shadow (slightly larger)
+		const S := 1.18
+		var stip   := ap + dir * ARROW_R * S
+		var sperp  := Vector2(-dir.y, dir.x) * ARROW_R * 0.6 * S
+		var sbase1 := ap - dir * (ARROW_R * 0.4 * S) + sperp
+		var sbase2 := ap - dir * (ARROW_R * 0.4 * S) - sperp
+		draw_colored_polygon([stip, sbase1, sbase2], Color(0.0, 0.0, 0.0, 0.55))
+
+		# Coloured arrow
+		draw_colored_polygon([tip, base1, base2], pa)
+
+		# Player label beside the arrow, pushed away from screen edge
+		var label_pos := ap - dir * (ARROW_R + 10.0)
+		draw_string(font, label_pos, p.label,
+				HORIZONTAL_ALIGNMENT_CENTER, -1, 8, Color(pa.r, pa.g, pa.b, 0.90))
