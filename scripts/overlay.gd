@@ -8,7 +8,7 @@ extends Node2D
 # ---------------------------------------------------------------------------
 const TILE_SIZE: int = 64
 const GRID_WIDTH: int = 10
-const GRID_HEIGHT: int = 10
+const GRID_HEIGHT: int = 20
 
 const TILE_COLOR_A := Color(0.15, 0.25, 0.15)
 const TILE_COLOR_B := Color(0.20, 0.32, 0.20)
