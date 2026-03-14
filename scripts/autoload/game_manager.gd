@@ -49,6 +49,9 @@ func start_match() -> void:
 	if players.size() < 1:
 		push_warning("[GameManager] Not enough players to start (%d registered)." % players.size())
 		return
+	if SteamManager.lobby_id != 0 and not SteamManager.are_all_lobby_members_ready():
+		push_warning("[GameManager] Cannot start: not all lobby players are ready.")
+		return
 
 	match_phase = MatchPhase.IN_MATCH
 	print("[GameManager] Starting match with %d players." % players.size())

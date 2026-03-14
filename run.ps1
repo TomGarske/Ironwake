@@ -17,7 +17,8 @@ param(
     [ValidateSet("editor", "offline", "debug")]
     [string]$Mode = "editor",
     [switch]$NoLogCapture,
-    [switch]$NoLogWindow
+    [switch]$NoLogWindow,
+    [int]$AppId = 0
 )
 
 $ProjectRoot = $PSScriptRoot
@@ -83,9 +84,29 @@ if ($Mode -eq "debug" -and -not (Test-Path $GodotConsole)) {
 # 2. Check required files
 # ---------------------------------------------------------------------------
 $appIdFile = Join-Path $ProjectRoot "steam_appid.txt"
-if (-not (Test-Path $appIdFile)) {
+
+if ($AppId -le 0) {
+    $envAppId = [int]($env:BURNBRIDGERS_STEAM_APPID)
+    if ($envAppId -gt 0) {
+        $AppId = $envAppId
+    }
+}
+
+if ($AppId -gt 0) {
+    Set-Content -Path $appIdFile -Value "$AppId" -NoNewline
+    Write-Host "[BurnBridgers] Using explicit Steam App ID: $AppId" -ForegroundColor Green
+} elseif (-not (Test-Path $appIdFile)) {
     Write-Host "[BurnBridgers] Creating steam_appid.txt (app ID 480 for dev)..." -ForegroundColor Yellow
     Set-Content -Path $appIdFile -Value "480" -NoNewline
+}
+
+if (Test-Path $appIdFile) {
+    $activeAppId = (Get-Content -Path $appIdFile -Raw).Trim()
+    if ($activeAppId -eq "480") {
+        Write-Warning "[BurnBridgers] Active Steam App ID is 480 (Spacewar). Invites will show Spacewar until you use your real BurnBridgers app ID."
+    } else {
+        Write-Host "[BurnBridgers] Active Steam App ID: $activeAppId" -ForegroundColor Green
+    }
 }
 
 $gdextension = Join-Path $ProjectRoot "addons\godotsteam\godotsteam.gdextension"

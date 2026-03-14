@@ -37,6 +37,14 @@ This runs Godot with verbose console output and writes logs to:
 
 Share the latest log file when host/join fails so issues can be diagnosed quickly.
 
+To run with a non-default Steam App ID:
+
+```powershell
+.\run.ps1 -Mode debug -AppId <your_real_app_id>
+```
+
+You can also set `BURNBRIDGERS_STEAM_APPID` in your environment.
+
 ---
 
 ## Tech Stack

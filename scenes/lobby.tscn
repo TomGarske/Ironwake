@@ -37,6 +37,10 @@ text = "Players:"
 [node name="PlayerList" type="VBoxContainer" parent="VBoxContainer"]
 theme_override_constants/separation = 4
 
+[node name="HandshakeStatusLabel" type="Label" parent="VBoxContainer"]
+text = "Join test handshake: Idle"
+autowrap_mode = 2
+
 [node name="FriendsTitle" type="Label" parent="VBoxContainer"]
 text = "Invite Online Friends:"
 
@@ -50,6 +54,9 @@ theme_override_constants/separation = 6
 [node name="InviteNoteLabel" type="Label" parent="VBoxContainer"]
 text = "Note: Invites appear as Spacewar while using Steam App ID 480."
 autowrap_mode = 2
+
+[node name="ReadyButton" type="Button" parent="VBoxContainer"]
+text = "Ready"
 
 [node name="StartButton" type="Button" parent="VBoxContainer"]
 text = "Start Match"

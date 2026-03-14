@@ -9,6 +9,9 @@ signal peer_connected(peer_id: int)
 signal peer_disconnected(peer_id: int)
 signal debug_message(message: String, is_error: bool)
 signal lobby_members_updated()
+signal invite_join_requested(lobby_id: int)
+signal handshake_status_updated(status_text: String)
+signal avatar_texture_updated(steam_id: int)
 
 # ---------------------------------------------------------------------------
 # State
@@ -21,12 +24,18 @@ var steam_ready: bool = false
 var _steam: Object = null
 var debug_history: Array[Dictionary] = []
 var invited_friend_ids: Dictionary = {}
+var local_ready: bool = false
+var _handshake_row_text: String = "Join test handshake: Idle"
+var _avatar_cache: Dictionary = {}
+var _avatar_requests_in_flight: Dictionary = {}
 
 const _RESULT_OK: int = 1
 const _LOBBY_TYPE_PUBLIC: int = 2
 const _CHAT_ROOM_ENTER_RESPONSE_SUCCESS: int = 1
 const _FRIEND_FLAG_IMMEDIATE: int = 4
 const _PERSONA_STATE_OFFLINE: int = 0
+const _AVATAR_MEDIUM: int = 2
+const _INVITE_TIMEOUT_SECONDS: int = 45
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -69,11 +78,19 @@ func _ready() -> void:
 	steam_username = str(_steam.call("getPersonaName"))
 	steam_ready = true
 	_emit_debug("[SteamManager] Initialized. User: %s (%d)" % [steam_username, steam_id], false)
+	_emit_debug("[SteamManager] Runtime platform: %s, App ID: %d" % [OS.get_name(), get_current_app_id()], false)
 
 	# Connect Steamworks signals
 	_steam.connect("lobby_created", Callable(self, "_on_steam_lobby_created"))
 	_steam.connect("lobby_joined", Callable(self, "_on_steam_lobby_joined"))
 	_steam.connect("lobby_chat_update", Callable(self, "_on_lobby_chat_update"))
+	if _steam.has_signal("game_lobby_join_requested"):
+		_steam.connect("game_lobby_join_requested", Callable(self, "_on_game_lobby_join_requested"))
+	if _steam.has_signal("avatar_loaded"):
+		_steam.connect("avatar_loaded", Callable(self, "_on_avatar_loaded"))
+	# Favor Steam relay when available for better cross-OS/NAT compatibility.
+	if _steam.has_method("allowP2PPacketRelay"):
+		_steam.call("allowP2PPacketRelay", true)
 
 func _process(_delta: float) -> void:
 	# Must be called every frame to dispatch Steam callbacks
@@ -134,6 +151,8 @@ func get_online_friends() -> Array[Dictionary]:
 	var friends: Array[Dictionary] = []
 	if not steam_ready or _steam == null:
 		return friends
+	var member_ids: Array[int] = get_lobby_member_ids()
+	var now: int = int(Time.get_unix_time_from_system())
 	var friend_count: int = int(_steam.call("getFriendCount", _FRIEND_FLAG_IMMEDIATE))
 	for i in range(friend_count):
 		var friend_steam_id: int = int(_steam.call("getFriendByIndex", i, _FRIEND_FLAG_IMMEDIATE))
@@ -142,10 +161,30 @@ func get_online_friends() -> Array[Dictionary]:
 		var persona_state: int = int(_steam.call("getFriendPersonaState", friend_steam_id))
 		if persona_state <= _PERSONA_STATE_OFFLINE:
 			continue
+		var game_app_id: int = 0
+		if _steam.has_method("getFriendGamePlayed"):
+			var game_played: Variant = _steam.call("getFriendGamePlayed", friend_steam_id)
+			if game_played is Dictionary:
+				game_app_id = int(game_played.get("id", 0))
+		# Update invite handshake state machine.
+		if invited_friend_ids.has(friend_steam_id):
+			var info: Dictionary = invited_friend_ids[friend_steam_id]
+			var state: String = str(info.get("state", "Invited"))
+			var updated_at: int = int(info.get("updated_at", now))
+			var elapsed: int = now - updated_at
+			if member_ids.has(friend_steam_id) and state != "Joined":
+				_set_invite_state(friend_steam_id, "Joined")
+			elif state == "Invited" and game_app_id == get_current_app_id() and game_app_id != 0:
+				_set_invite_state(friend_steam_id, "Accepted")
+			elif state == "Accepted" and elapsed >= 2:
+				_set_invite_state(friend_steam_id, "Joining")
+			elif state != "Joined" and elapsed >= _INVITE_TIMEOUT_SECONDS:
+				_set_invite_state(friend_steam_id, "Failed")
 		friends.append({
 			"steam_id": friend_steam_id,
 			"name": str(_steam.call("getFriendPersonaName", friend_steam_id)),
-			"state": persona_state
+			"state": persona_state,
+			"game_app_id": game_app_id
 		})
 	return friends
 
@@ -158,7 +197,7 @@ func invite_friend_to_lobby(friend_steam_id: int) -> bool:
 		return false
 	var ok: bool = bool(_steam.call("inviteUserToLobby", lobby_id, friend_steam_id))
 	if ok:
-		invited_friend_ids[friend_steam_id] = Time.get_unix_time_from_system()
+		_set_invite_state(friend_steam_id, "Invited")
 		_emit_debug("[SteamManager] Invite sent to Steam ID %d." % friend_steam_id, false)
 	else:
 		_emit_debug("[SteamManager] Failed to invite Steam ID %d." % friend_steam_id, true)
@@ -169,8 +208,52 @@ func get_friend_status(friend_steam_id: int) -> String:
 	if member_ids.has(friend_steam_id):
 		return "In Lobby"
 	if invited_friend_ids.has(friend_steam_id):
-		return "Invited"
+		return str(invited_friend_ids[friend_steam_id].get("state", "Invited"))
 	return "Online"
+
+func set_local_ready_state(is_ready: bool) -> void:
+	local_ready = is_ready
+	if not steam_ready or _steam == null or lobby_id == 0:
+		return
+	_steam.call("setLobbyMemberData", lobby_id, "ready", "1" if is_ready else "0")
+	lobby_members_updated.emit()
+	_emit_debug("[SteamManager] Local ready set to %s." % str(is_ready), false)
+
+func is_member_ready(member_steam_id: int) -> bool:
+	if not steam_ready or _steam == null or lobby_id == 0:
+		return false
+	var value: String = str(_steam.call("getLobbyMemberData", lobby_id, member_steam_id, "ready"))
+	return value == "1" or value.to_lower() == "true" or value.to_lower() == "yes"
+
+func get_ready_counts() -> Dictionary:
+	var member_ids: Array[int] = get_lobby_member_ids()
+	var ready_count: int = 0
+	for member_id in member_ids:
+		if is_member_ready(member_id):
+			ready_count += 1
+	return {"ready": ready_count, "total": member_ids.size()}
+
+func are_all_lobby_members_ready() -> bool:
+	var counts: Dictionary = get_ready_counts()
+	return int(counts.get("total", 0)) > 0 and int(counts.get("ready", 0)) == int(counts.get("total", 0))
+
+func get_current_app_id() -> int:
+	if steam_ready and _steam != null:
+		return int(_steam.call("getAppID"))
+	return 0
+
+func get_handshake_status_row() -> String:
+	return _handshake_row_text
+
+func get_player_avatar_texture(target_steam_id: int) -> Texture2D:
+	if _avatar_cache.has(target_steam_id):
+		return _avatar_cache[target_steam_id]
+	if not steam_ready or _steam == null:
+		return null
+	if not _avatar_requests_in_flight.has(target_steam_id):
+		_avatar_requests_in_flight[target_steam_id] = true
+		_steam.call("getPlayerAvatar", _AVATAR_MEDIUM, target_steam_id)
+	return null
 
 # ---------------------------------------------------------------------------
 # Steam callbacks
@@ -180,7 +263,11 @@ func _on_steam_lobby_created(result: int, new_lobby_id: int) -> void:
 		lobby_id = new_lobby_id
 		_steam.call("setLobbyData", lobby_id, "name", steam_username + "'s Lobby")
 		_steam.call("setLobbyData", lobby_id, "game", "BurnBridgers")
+		_steam.call("setLobbyData", lobby_id, "platform", OS.get_name())
+		if _steam.has_method("setLobbyJoinable"):
+			_steam.call("setLobbyJoinable", lobby_id, true)
 		_setup_multiplayer_peer()
+		set_local_ready_state(false)
 		lobby_created.emit(lobby_id)
 		_emit_debug("[SteamManager] Lobby created: %d" % lobby_id, false)
 	else:
@@ -195,14 +282,38 @@ func _on_steam_lobby_joined(joined_lobby_id: int, _permissions: int, _locked: bo
 			return
 		lobby_id = joined_lobby_id
 		_setup_multiplayer_peer()
+		set_local_ready_state(false)
 		lobby_joined.emit(lobby_id)
 		_emit_debug("[SteamManager] Joined lobby: %d" % lobby_id, false)
 	else:
 		_emit_debug("[SteamManager] Failed to join lobby. Response: " + str(response), true)
 
 func _on_lobby_chat_update(_updated_lobby: int, changed_id: int, _making_change_id: int, _chat_state: int) -> void:
+	if invited_friend_ids.has(changed_id) and get_lobby_member_ids().has(changed_id):
+		_set_invite_state(changed_id, "Joined")
 	_emit_debug("[SteamManager] Lobby member update for Steam ID: %d" % changed_id, false)
 	lobby_members_updated.emit()
+
+func _on_game_lobby_join_requested(requested_lobby_id: int, friend_id: int) -> void:
+	_emit_debug("[SteamManager] Invite accepted from Steam friend %d. Joining lobby %d..." % [friend_id, requested_lobby_id], false)
+	invite_join_requested.emit(requested_lobby_id)
+	# Reset current session state if needed before joining invite target.
+	if lobby_id != 0 and lobby_id != requested_lobby_id:
+		_steam.call("leaveLobby", lobby_id)
+		lobby_id = 0
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()
+		multiplayer.multiplayer_peer = null
+	join_lobby(requested_lobby_id)
+
+func _on_avatar_loaded(user_id: int, avatar_size: int, avatar_buffer: PackedByteArray) -> void:
+	_avatar_requests_in_flight.erase(user_id)
+	if avatar_size <= 0 or avatar_buffer.is_empty():
+		return
+	var image: Image = Image.create_from_data(avatar_size, avatar_size, false, Image.FORMAT_RGBA8, avatar_buffer)
+	var texture: ImageTexture = ImageTexture.create_from_image(image)
+	_avatar_cache[user_id] = texture
+	avatar_texture_updated.emit(user_id)
 
 # ---------------------------------------------------------------------------
 # Multiplayer peer setup
@@ -259,3 +370,14 @@ func _emit_debug(message: String, is_error: bool) -> void:
 	else:
 		print(message)
 	debug_message.emit(message, is_error)
+
+func _set_invite_state(friend_steam_id: int, state: String) -> void:
+	invited_friend_ids[friend_steam_id] = {
+		"state": state,
+		"updated_at": int(Time.get_unix_time_from_system())
+	}
+	var friend_name: String = "Steam ID %d" % friend_steam_id
+	if steam_ready and _steam != null:
+		friend_name = str(_steam.call("getFriendPersonaName", friend_steam_id))
+	_handshake_row_text = "Join test handshake: %s -> %s" % [friend_name, state]
+	handshake_status_updated.emit(_handshake_row_text)

@@ -1,9 +1,0 @@
-# Default owner
-* @TomGarske
-
-# Architecture-sensitive paths
-scripts/autoload/ @TomGarske
-scripts/*.gd @TomGarske
-scenes/ @TomGarske
-addons/ @TomGarske
-docs/adr/ @TomGarske
