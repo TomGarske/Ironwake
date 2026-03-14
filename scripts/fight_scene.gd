@@ -97,11 +97,37 @@ func _register_inputs() -> void:
 	for action: String in map:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action)
-		else:
-			InputMap.action_erase_events(action)
-		var ev := InputEventKey.new()
-		ev.keycode = map[action]
-		InputMap.action_add_event(action, ev)
+		_ensure_key_for_action(action, map[action])
+	_ensure_joy_motion_for_action("fp1_l", JOY_AXIS_LEFT_X, -1.0)
+	_ensure_joy_motion_for_action("fp1_r", JOY_AXIS_LEFT_X, 1.0)
+	_ensure_joy_button_for_action("fp1_j", JOY_BUTTON_X)
+	_ensure_joy_button_for_action("fp1_a", JOY_BUTTON_A)
+	_ensure_joy_button_for_action("fp1_b", JOY_BUTTON_B)
+
+func _ensure_key_for_action(action: String, keycode: Key) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventKey and event.keycode == keycode:
+			return
+	var key_event := InputEventKey.new()
+	key_event.keycode = keycode
+	InputMap.action_add_event(action, key_event)
+
+func _ensure_joy_button_for_action(action: String, button_index: int) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadButton and event.button_index == button_index:
+			return
+	var button_event := InputEventJoypadButton.new()
+	button_event.button_index = button_index
+	InputMap.action_add_event(action, button_event)
+
+func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value):
+			return
+	var motion_event := InputEventJoypadMotion.new()
+	motion_event.axis = axis
+	motion_event.axis_value = axis_value
+	InputMap.action_add_event(action, motion_event)
 
 func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("ui_cancel"):

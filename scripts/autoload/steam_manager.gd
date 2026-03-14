@@ -435,12 +435,8 @@ func _setup_multiplayer_peer() -> void:
 		if host_result != OK:
 			_emit_debug("[SteamManager] Failed to create host peer. Error: %d" % host_result, true)
 			return
-		# Register host immediately — peer_id 1 is always the server
-		GameManager.players[1] = {
-			"steam_id": steam_id,
-			"username": steam_username,
-			"team": 0
-		}
+		# Register host through the same flow used by client registrations.
+		GameManager.register_local_player(1, steam_id, steam_username)
 	else:
 		var host_steam_id: int = int(_steam.call("getLobbyOwner", lobby_id))
 		var client_result: int = int(peer.call("create_client", host_steam_id, 0))

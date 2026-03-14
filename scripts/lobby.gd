@@ -16,6 +16,9 @@ extends Control
 @onready var refresh_timer: Timer = $RefreshTimer
 
 var _lobby_members_updated_handler: Callable
+var _friends_refresh_elapsed: float = 0.0
+
+const _FRIENDS_REFRESH_INTERVAL: float = 6.0
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -106,7 +109,6 @@ func _refresh_player_list(_peer_id: int) -> void:
 
 	# Host can only start when all currently joined lobby members are ready.
 	start_button.disabled = not SteamManager.are_all_lobby_members_ready()
-	_refresh_online_friends()
 
 func _refresh_online_friends() -> void:
 	for child in friends_list.get_children():
@@ -195,6 +197,10 @@ func _on_ready_button_pressed() -> void:
 
 func _on_refresh_timer_timeout() -> void:
 	_refresh_player_list(0)
+	_friends_refresh_elapsed += refresh_timer.wait_time
+	if _friends_refresh_elapsed >= _FRIENDS_REFRESH_INTERVAL:
+		_friends_refresh_elapsed = 0.0
+		_refresh_online_friends()
 
 func _on_handshake_status_updated(status_text: String) -> void:
 	handshake_status_label.text = status_text

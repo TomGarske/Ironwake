@@ -24,3 +24,7 @@ title = "Leave Match?"
 ok_button_text = "Yes, bail out"
 dialog_text = "You are giving up already?\nThe bridge is still burning.\n\nQuit the match anyway?"
 initial_position = 1
+
+[node name="GameMusicPlayer" type="AudioStreamPlayer" parent="UILayer"]
+autoplay = false
+bus = &"Master"

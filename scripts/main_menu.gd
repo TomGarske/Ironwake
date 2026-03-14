@@ -6,6 +6,9 @@ extends Control
 @onready var join_input: LineEdit = $RightLobbyPanel/VBoxContainer/JoinLobbyIdInput
 @onready var confirm_join_button: Button = $RightLobbyPanel/VBoxContainer/ConfirmJoinButton
 @onready var host_button: Button = $LeftMenuPanel/VBoxContainer/HostButton
+@onready var test_button: Button = $LeftMenuPanel/VBoxContainer/TestButton
+@onready var settings_button: Button = $LeftMenuPanel/VBoxContainer/SettingsButton
+@onready var exit_button: Button = $LeftMenuPanel/VBoxContainer/ExitButton
 @onready var lobby_list_title: Label = $RightLobbyPanel/VBoxContainer/PublicLobbiesTitle
 @onready var refresh_lobbies_button: Button = $RightLobbyPanel/VBoxContainer/RefreshLobbiesButton
 @onready var lobby_list_status: Label = $RightLobbyPanel/VBoxContainer/LobbyListStatus
@@ -13,6 +16,8 @@ extends Control
 @onready var version_label: Label = $VersionLabel
 @onready var quit_confirm_dialog: ConfirmationDialog = $QuitConfirmDialog
 @onready var menu_music_player: AudioStreamPlayer = $MenuMusicPlayer
+@onready var settings_popup: PopupPanel = $SettingsPopup
+@onready var music_toggle: CheckButton = $SettingsPopup/SettingsMargin/VBoxContainer/MusicToggle
 
 var _music_playback: AudioStreamGeneratorPlayback = null
 var _music_phase: float = 0.0
@@ -29,6 +34,8 @@ func _ready() -> void:
 	_update_version_label()
 	_configure_navigation()
 	_setup_menu_music()
+	_sync_music_toggle()
+	_apply_music_enabled_state()
 
 	if SteamManager == null:
 		push_error("[MainMenu] SteamManager autoload missing.")
@@ -48,6 +55,8 @@ func _ready() -> void:
 	refresh_lobbies_button.pressed.connect(_on_refresh_lobbies_pressed)
 	if not quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
 		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
+	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
+		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
 
 	DebugOverlay.log_message("[MainMenu] Ready.")
 	if SteamManager != null:
@@ -63,11 +72,13 @@ func _update_version_label() -> void:
 	version_label.text = version
 
 func _configure_navigation() -> void:
-	host_button.focus_neighbor_bottom = host_button.get_path_to($LeftMenuPanel/VBoxContainer/TestButton)
-	$LeftMenuPanel/VBoxContainer/TestButton.focus_neighbor_top = $LeftMenuPanel/VBoxContainer/TestButton.get_path_to(host_button)
-	$LeftMenuPanel/VBoxContainer/TestButton.focus_neighbor_bottom = $LeftMenuPanel/VBoxContainer/TestButton.get_path_to($LeftMenuPanel/VBoxContainer/ExitButton)
-	$LeftMenuPanel/VBoxContainer/ExitButton.focus_neighbor_top = $LeftMenuPanel/VBoxContainer/ExitButton.get_path_to($LeftMenuPanel/VBoxContainer/TestButton)
-	$LeftMenuPanel/VBoxContainer/ExitButton.focus_neighbor_bottom = $LeftMenuPanel/VBoxContainer/ExitButton.get_path_to(host_button)
+	host_button.focus_neighbor_bottom = host_button.get_path_to(test_button)
+	test_button.focus_neighbor_top = test_button.get_path_to(host_button)
+	test_button.focus_neighbor_bottom = test_button.get_path_to(settings_button)
+	settings_button.focus_neighbor_top = settings_button.get_path_to(test_button)
+	settings_button.focus_neighbor_bottom = settings_button.get_path_to(exit_button)
+	exit_button.focus_neighbor_top = exit_button.get_path_to(settings_button)
+	exit_button.focus_neighbor_bottom = exit_button.get_path_to(host_button)
 	host_button.grab_focus()
 
 func _setup_menu_music() -> void:
@@ -78,11 +89,12 @@ func _setup_menu_music() -> void:
 	stream.buffer_length = 0.25
 	menu_music_player.stream = stream
 	menu_music_player.volume_db = -16.0
-	menu_music_player.play()
+	if GameManager != null and GameManager.music_enabled:
+		menu_music_player.play()
 	_music_playback = menu_music_player.get_stream_playback() as AudioStreamGeneratorPlayback
 
 func _stream_menu_music() -> void:
-	if _music_playback == null:
+	if _music_playback == null or GameManager == null or not GameManager.music_enabled:
 		return
 	var frames_available: int = _music_playback.get_frames_available()
 	for _i in range(frames_available):
@@ -95,16 +107,17 @@ func _stream_menu_music() -> void:
 		_music_time += 1.0 / _MUSIC_SAMPLE_RATE
 
 func _exit_tree() -> void:
-	if SteamManager == null:
-		return
-	if SteamManager.lobby_created.is_connected(_on_lobby_ready):
-		SteamManager.lobby_created.disconnect(_on_lobby_ready)
-	if SteamManager.lobby_joined.is_connected(_on_lobby_ready):
-		SteamManager.lobby_joined.disconnect(_on_lobby_ready)
-	if SteamManager.invite_join_requested.is_connected(_on_invite_join_requested):
-		SteamManager.invite_join_requested.disconnect(_on_invite_join_requested)
-	if SteamManager.lobby_list_updated.is_connected(_on_lobby_list_updated):
-		SteamManager.lobby_list_updated.disconnect(_on_lobby_list_updated)
+	if SteamManager != null:
+		if SteamManager.lobby_created.is_connected(_on_lobby_ready):
+			SteamManager.lobby_created.disconnect(_on_lobby_ready)
+		if SteamManager.lobby_joined.is_connected(_on_lobby_ready):
+			SteamManager.lobby_joined.disconnect(_on_lobby_ready)
+		if SteamManager.invite_join_requested.is_connected(_on_invite_join_requested):
+			SteamManager.invite_join_requested.disconnect(_on_invite_join_requested)
+		if SteamManager.lobby_list_updated.is_connected(_on_lobby_list_updated):
+			SteamManager.lobby_list_updated.disconnect(_on_lobby_list_updated)
+	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
+		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
 
 # ---------------------------------------------------------------------------
 # Button handlers
@@ -137,6 +150,34 @@ func _on_exit_button_pressed() -> void:
 	quit_confirm_dialog.ok_button_text = "Quit"
 	quit_confirm_dialog.dialog_text = "Close BurnBridgers and return to desktop?"
 	quit_confirm_dialog.popup_centered()
+
+func _on_settings_button_pressed() -> void:
+	_sync_music_toggle()
+	settings_popup.popup_centered()
+
+func _on_music_toggle_toggled(enabled: bool) -> void:
+	if GameManager != null:
+		GameManager.set_music_enabled(enabled)
+
+func _on_music_enabled_changed(_enabled: bool) -> void:
+	_sync_music_toggle()
+	_apply_music_enabled_state()
+
+func _sync_music_toggle() -> void:
+	if music_toggle == null or GameManager == null:
+		return
+	music_toggle.set_pressed_no_signal(GameManager.music_enabled)
+
+func _apply_music_enabled_state() -> void:
+	if menu_music_player == null or GameManager == null:
+		return
+	if GameManager.music_enabled:
+		if not menu_music_player.playing:
+			menu_music_player.play()
+		if _music_playback == null:
+			_music_playback = menu_music_player.get_stream_playback() as AudioStreamGeneratorPlayback
+	else:
+		menu_music_player.stop()
 
 func _on_quit_confirmed() -> void:
 	get_tree().quit()

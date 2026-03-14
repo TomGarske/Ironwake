@@ -1,44 +1,23 @@
 extends Node2D
 
-# Drawing helper used by `burning_bridge.gd` via `set_script()`.
-# This script is intentionally not attached directly in a scene file.
-var bridge_points: Array[Vector2] = []
+const TILE_W: float = 64.0
+const TILE_H: float = 32.0
+const TERRAIN_RENDERER_SCRIPT := preload("res://scripts/shared/iso_terrain_renderer.gd")
+
 var time: float = 0.0
+var map_offset: Vector2 = Vector2.ZERO
+var viewport_size: Vector2 = Vector2.ZERO
+var _renderer = TERRAIN_RENDERER_SCRIPT.new()
+
+func _ready() -> void:
+	_renderer.chunk_size = 16
+	_renderer.configure_seed(0xBB_11_22)
 
 func _draw() -> void:
-	if bridge_points.size() < 2:
+	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		return
-	
-	# Draw bridge structure
-	var bridge_color = Color(0.3, 0.25, 0.2)  # Dark brown/stone
-	var highlight_color = Color(0.5, 0.4, 0.3)
-	
-	# Draw main bridge deck
-	var deck_thickness = 12.0
-	draw_line(bridge_points[0], bridge_points[1], bridge_color, deck_thickness)
-	draw_line(bridge_points[0], bridge_points[1], highlight_color, 2.0)
-	
-	# Draw supports
-	for i in range(2, bridge_points.size() - 1, 2):
-		if i + 1 < bridge_points.size():
-			var support_start = bridge_points[0] + Vector2((i - 2) * (bridge_points[1].x - bridge_points[0].x) / 4.0, 0)
-			var support_end = bridge_points[i]
-			draw_line(support_start, support_end, bridge_color, 8.0)
-			draw_line(support_start, support_end, highlight_color, 1.0)
-	
-	# Draw burning/charred effect on bridge
-	var burn_intensity = sin(time * 3.0) * 0.3 + 0.7
-	var burn_color = Color(0.2, 0.1, 0.05, burn_intensity * 0.5)
-	for i in range(0, bridge_points.size() - 1):
-		var p1 = bridge_points[i]
-		var p2 = bridge_points[i + 1] if i + 1 < bridge_points.size() else bridge_points[0]
-		draw_line(p1, p2, burn_color, 6.0)
-	
-	# Add some glowing embers
-	for i in range(8):
-		var t = fmod(time * 0.5 + i * 0.3, 1.0)
-		var x = lerp(bridge_points[0].x, bridge_points[1].x, t)
-		var y = bridge_points[0].y + sin(time * 2.0 + i) * 5.0
-		var ember_size = 2.0 + sin(time * 4.0 + i) * 1.0
-		var ember_color = Color(1.0, 0.4, 0.0, 0.6)
-		draw_circle(Vector2(x, y), ember_size, ember_color)
+	var origin: Vector2 = Vector2(
+		viewport_size.x * 0.5 - map_offset.x,
+		viewport_size.y * 0.58 - map_offset.y
+	)
+	_renderer.draw_tiles(self, origin, viewport_size, TILE_W, TILE_H, 3)

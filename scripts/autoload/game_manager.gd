@@ -9,6 +9,10 @@ enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
 const MATCH_SCENE_PATH: String = "res://scenes/game/iso_arena.tscn"
 const MAIN_MENU_SCENE_PATH: String = "res://scenes/main_menu.tscn"
 const LOBBY_SCENE_PATH: String = "res://scenes/lobby.tscn"
+const _UI_DPAD_LEFT: int = JOY_BUTTON_DPAD_LEFT
+const _UI_DPAD_RIGHT: int = JOY_BUTTON_DPAD_RIGHT
+const _UI_DPAD_UP: int = JOY_BUTTON_DPAD_UP
+const _UI_DPAD_DOWN: int = JOY_BUTTON_DPAD_DOWN
 
 # ---------------------------------------------------------------------------
 # State
@@ -16,13 +20,56 @@ const LOBBY_SCENE_PATH: String = "res://scenes/lobby.tscn"
 ## Registry: peer_id (int) -> { steam_id: int, username: String, team: int }
 var players: Dictionary = {}
 var match_phase: MatchPhase = MatchPhase.LOBBY
-var _next_team_id: int = 1
+var _next_team_id: int = 0
+var music_enabled: bool = true
+
+signal music_enabled_changed(enabled: bool)
 
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
 func _ready() -> void:
+	_ensure_controller_ui_actions()
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+
+func set_music_enabled(enabled: bool) -> void:
+	if music_enabled == enabled:
+		return
+	music_enabled = enabled
+	music_enabled_changed.emit(music_enabled)
+
+func _ensure_controller_ui_actions() -> void:
+	_ensure_joy_button_for_action("ui_up", _UI_DPAD_UP)
+	_ensure_joy_button_for_action("ui_down", _UI_DPAD_DOWN)
+	_ensure_joy_button_for_action("ui_left", _UI_DPAD_LEFT)
+	_ensure_joy_button_for_action("ui_right", _UI_DPAD_RIGHT)
+	_ensure_joy_button_for_action("ui_accept", JOY_BUTTON_A)
+	_ensure_joy_button_for_action("ui_cancel", JOY_BUTTON_B)
+	_ensure_joy_motion_for_action("ui_left", JOY_AXIS_LEFT_X, -1.0)
+	_ensure_joy_motion_for_action("ui_right", JOY_AXIS_LEFT_X, 1.0)
+	_ensure_joy_motion_for_action("ui_up", JOY_AXIS_LEFT_Y, -1.0)
+	_ensure_joy_motion_for_action("ui_down", JOY_AXIS_LEFT_Y, 1.0)
+
+func _ensure_joy_button_for_action(action: String, button_index: int) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadButton and event.button_index == button_index:
+			return
+	var button_event := InputEventJoypadButton.new()
+	button_event.button_index = button_index
+	InputMap.action_add_event(action, button_event)
+
+func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value):
+			return
+	var motion_event := InputEventJoypadMotion.new()
+	motion_event.axis = axis
+	motion_event.axis_value = axis_value
+	InputMap.action_add_event(action, motion_event)
 
 # ---------------------------------------------------------------------------
 # Player registration (called via RPC from clients)
@@ -34,16 +81,24 @@ func register_player_rpc(steam_id: int, username: String) -> void:
 		return
 
 	var sender_id: int = multiplayer.get_remote_sender_id()
-	if players.has(sender_id):
+	_register_player(sender_id, steam_id, username)
+
+func register_local_player(peer_id: int, steam_id: int, username: String) -> void:
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		return
+	_register_player(peer_id, steam_id, username)
+
+func _register_player(peer_id: int, steam_id: int, username: String) -> void:
+	if players.has(peer_id):
 		return
 	var team: int = _next_team_id
 	_next_team_id += 1
-	players[sender_id] = {
+	players[peer_id] = {
 		"steam_id": steam_id,
 		"username": username,
 		"team": team
 	}
-	print("[GameManager] Registered player '%s' as team %d (peer %d)" % [username, team, sender_id])
+	print("[GameManager] Registered player '%s' as team %d (peer %d)" % [username, team, peer_id])
 
 # ---------------------------------------------------------------------------
 # Match flow
@@ -78,7 +133,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 func reset() -> void:
 	players.clear()
 	match_phase = MatchPhase.LOBBY
-	_next_team_id = 1
+	_next_team_id = 0
 
 ## Populates two local test players for offline development — no Steam required.
 func setup_offline_test() -> void:

@@ -14,26 +14,6 @@ const RENDER_MARGIN := 2      # extra tile buffer outside visible screen edge
 # ── Palette ───────────────────────────────────────────────────────────────────
 const _C_SKY := Color(0.06, 0.07, 0.12)
 
-# ── Terrain types ─────────────────────────────────────────────────────────────
-const T_DEEP   := 0   # deep ocean
-const T_WATER  := 1   # shallow water
-const T_SAND   := 2   # beach / desert
-const T_GRASS  := 3   # grassland
-const T_FOREST := 4   # forest
-const T_MTN    := 5   # mountain
-const T_SNOW   := 6   # snow peak
-
-# [face color, south-edge shadow] per terrain type
-const _TC: Array = [
-	[Color(0.05, 0.12, 0.44), Color(0.02, 0.06, 0.26)],  # deep water
-	[Color(0.12, 0.28, 0.68), Color(0.07, 0.16, 0.42)],  # shallow water
-	[Color(0.74, 0.68, 0.46), Color(0.46, 0.40, 0.24)],  # sand
-	[Color(0.22, 0.50, 0.16), Color(0.10, 0.26, 0.07)],  # grass
-	[Color(0.10, 0.30, 0.10), Color(0.05, 0.16, 0.05)],  # forest
-	[Color(0.48, 0.46, 0.42), Color(0.26, 0.24, 0.20)],  # mountain
-	[Color(0.82, 0.84, 0.88), Color(0.58, 0.60, 0.64)],  # snow
-]
-
 # Player palettes — [primary, highlight]
 const _PALETTES: Array = [
 	[Color(0.22, 0.46, 1.00), Color(0.65, 0.82, 1.00)],  # blue
@@ -55,10 +35,12 @@ const END_DELAY  := 3.0
 # ── Input (single shared set — each peer only controls their own character) ────
 const _KEYS    := {l = KEY_LEFT, r = KEY_RIGHT, u = KEY_UP, d = KEY_DOWN, a = KEY_SPACE}
 const _ACTIONS := {left = "ia_l", right = "ia_r", up = "ia_u", down = "ia_d", atk = "ia_a"}
+const TERRAIN_RENDERER_SCRIPT := preload("res://scripts/shared/iso_terrain_renderer.gd")
 
 # ── State ─────────────────────────────────────────────────────────────────────
 @onready var quit_game_button: Button = $UILayer/QuitGameButton
 @onready var quit_confirm_dialog: ConfirmationDialog = $UILayer/QuitConfirmDialog
+@onready var game_music_player: AudioStreamPlayer = $UILayer/GameMusicPlayer
 
 var _players:   Array = []
 var _my_index:  int   = 0    # which player in _players this peer controls
@@ -66,14 +48,10 @@ var _winner:    int   = -2   # -2 = playing, -1 = draw, 0+ = index of winner
 var _end_timer: float = 0.0
 var _origin:    Vector2      # screen position of world (0, 0) — updated each draw
 var _status_messages: Array[Dictionary] = []
-
-# ── World / chunk state ───────────────────────────────────────────────────────
-## Chunk map: Vector2i(cx, cy) → PackedByteArray of CHUNK_SIZE*CHUNK_SIZE terrain types.
-## All peers generate the same terrain from the shared seed via _init_world_seed RPC.
-var _chunks:     Dictionary    = {}
-var _elev_noise: FastNoiseLite = null
-var _warp_noise: FastNoiseLite = null
-var _moist_noise: FastNoiseLite = null
+var _music_playback: AudioStreamGeneratorPlayback = null
+var _music_phase: float = 0.0
+var _music_time: float = 0.0
+var _terrain_renderer = TERRAIN_RENDERER_SCRIPT.new()
 
 # ── Spawn positions (world units) ─────────────────────────────────────────────
 const _SPAWNS: Array = [
@@ -83,15 +61,22 @@ const _SPAWNS: Array = [
 	Vector2(2.0,  10.0),
 ]
 
+const _MUSIC_SAMPLE_RATE: float = 44100.0
+const _MUSIC_STEP_SECONDS: float = 0.24
+const _MUSIC_MELODY: Array[float] = [261.63, 329.63, 392.0, 523.25, 392.0, 440.0, 493.88, 587.33]
+
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	_register_inputs()
 	_origin = get_viewport_rect().size * 0.5
 	_spawn_players()
+	_setup_game_music()
 	if quit_game_button != null and not quit_game_button.pressed.is_connected(_on_quit_game_button_pressed):
 		quit_game_button.pressed.connect(_on_quit_game_button_pressed)
 	if quit_confirm_dialog != null and not quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
 		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
+	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
+		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
 	if multiplayer.has_multiplayer_peer():
 		if not multiplayer.peer_connected.is_connected(_on_peer_connected):
 			multiplayer.peer_connected.connect(_on_peer_connected)
@@ -104,98 +89,18 @@ func _ready() -> void:
 		_init_world_seed(randi())   # offline: generate immediately
 	queue_redraw()
 
+func _exit_tree() -> void:
+	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
+		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
+	if game_music_player != null:
+		game_music_player.stop()
+
 # ── World seed — RPC ensures every peer uses the same noise ───────────────────
 @rpc("authority", "call_local", "reliable")
 func _init_world_seed(seed_val: int) -> void:
-	_elev_noise = FastNoiseLite.new()
-	_elev_noise.seed               = seed_val
-	_elev_noise.noise_type         = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_elev_noise.frequency          = 0.06
-	_elev_noise.fractal_type       = FastNoiseLite.FRACTAL_FBM
-	_elev_noise.fractal_octaves    = 5
-	_elev_noise.fractal_lacunarity = 2.0
-	_elev_noise.fractal_gain       = 0.50
-
-	_warp_noise = FastNoiseLite.new()
-	_warp_noise.seed       = seed_val + 1
-	_warp_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_warp_noise.frequency  = 0.12
-
-	_moist_noise = FastNoiseLite.new()
-	_moist_noise.seed       = seed_val + 2
-	_moist_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_moist_noise.frequency  = 0.09
-
-	_chunks.clear()
+	_terrain_renderer.chunk_size = CHUNK_SIZE
+	_terrain_renderer.configure_seed(seed_val)
 	queue_redraw()
-
-# ── Chunk generation ──────────────────────────────────────────────────────────
-func _ensure_chunk(cx: int, cy: int) -> void:
-	var key := Vector2i(cx, cy)
-	if _chunks.has(key) or _elev_noise == null:
-		return
-
-	# Sample a 1-tile-padded region so CA smoothing has correct border values.
-	const PAD := 1
-	const SZ  := CHUNK_SIZE + 2 * PAD
-	var raw: Array = []
-	for i in range(SZ):
-		raw.append([])
-		for j in range(SZ):
-			var wx: float = float(cx * CHUNK_SIZE + i - PAD)
-			var wy: float = float(cy * CHUNK_SIZE + j - PAD)
-			var dwx: float = wx + _warp_noise.get_noise_2d(wx, wy) * 4.0
-			var dwy: float = wy + _warp_noise.get_noise_2d(wx + 100.0, wy + 100.0) * 4.0
-			raw[i].append(_elev_noise.get_noise_2d(dwx, dwy))
-
-	# Two-pass cellular automata smoothing
-	for _pass in range(2):
-		var sm: Array = []
-		for i in range(SZ):
-			sm.append([])
-			for j in range(SZ):
-				var sum: float = 0.0
-				var cnt: int   = 0
-				for oi in range(-1, 2):
-					for oj in range(-1, 2):
-						var ni: int = i + oi
-						var nj: int = j + oj
-						if ni >= 0 and ni < SZ and nj >= 0 and nj < SZ:
-							var w: float = 0.5 if (oi != 0 and oj != 0) else 1.0
-							sum += float(raw[ni][nj]) * w
-							cnt += 1 if oi == 0 or oj == 0 else 0
-				sm[i].append(sum / float(maxi(cnt, 1)))
-		raw = sm
-
-	# Classify the inner CHUNK_SIZE × CHUNK_SIZE tiles and store as bytes
-	var data := PackedByteArray()
-	data.resize(CHUNK_SIZE * CHUNK_SIZE)
-	for i in range(CHUNK_SIZE):
-		for j in range(CHUNK_SIZE):
-			var e: float = float(raw[i + PAD][j + PAD])
-			var wx: float = float(cx * CHUNK_SIZE + i)
-			var wy: float = float(cy * CHUNK_SIZE + j)
-			var m: float = _moist_noise.get_noise_2d(wx, wy)
-			var t: int
-			if   e < -0.30: t = T_DEEP
-			elif e < -0.05: t = T_WATER
-			elif e <  0.10: t = T_SAND
-			elif e <  0.35: t = T_FOREST if m > 0.10 else T_GRASS
-			elif e <  0.55: t = T_MTN
-			else:            t = T_SNOW
-			data[i * CHUNK_SIZE + j] = t
-	_chunks[key] = data
-
-func _get_tile(tx: int, ty: int) -> int:
-	var cx: int = floori(float(tx) / CHUNK_SIZE)
-	var cy: int = floori(float(ty) / CHUNK_SIZE)
-	_ensure_chunk(cx, cy)
-	var key := Vector2i(cx, cy)
-	if not _chunks.has(key):
-		return T_GRASS   # noise not ready yet (client waiting for seed RPC)
-	var lx: int = tx - cx * CHUNK_SIZE
-	var ly: int = ty - cy * CHUNK_SIZE
-	return _chunks[key][lx * CHUNK_SIZE + ly]
 
 # ── Coordinate helpers ────────────────────────────────────────────────────────
 func _w2s(wx: float, wy: float) -> Vector2:
@@ -218,11 +123,76 @@ func _register_inputs() -> void:
 	for action: String in pairs:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action)
-		else:
-			InputMap.action_erase_events(action)
-		var ev := InputEventKey.new()
-		ev.keycode = pairs[action]
-		InputMap.action_add_event(action, ev)
+		_ensure_key_for_action(action, pairs[action])
+	_ensure_joy_motion_for_action(_ACTIONS.left, JOY_AXIS_LEFT_X, -1.0)
+	_ensure_joy_motion_for_action(_ACTIONS.right, JOY_AXIS_LEFT_X, 1.0)
+	_ensure_joy_motion_for_action(_ACTIONS.up, JOY_AXIS_LEFT_Y, -1.0)
+	_ensure_joy_motion_for_action(_ACTIONS.down, JOY_AXIS_LEFT_Y, 1.0)
+	_ensure_joy_button_for_action(_ACTIONS.atk, JOY_BUTTON_A)
+
+func _ensure_key_for_action(action: String, keycode: Key) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventKey and event.keycode == keycode:
+			return
+	var key_event := InputEventKey.new()
+	key_event.keycode = keycode
+	InputMap.action_add_event(action, key_event)
+
+func _ensure_joy_button_for_action(action: String, button_index: int) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadButton and event.button_index == button_index:
+			return
+	var button_event := InputEventJoypadButton.new()
+	button_event.button_index = button_index
+	InputMap.action_add_event(action, button_event)
+
+func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value):
+			return
+	var motion_event := InputEventJoypadMotion.new()
+	motion_event.axis = axis
+	motion_event.axis_value = axis_value
+	InputMap.action_add_event(action, motion_event)
+
+func _setup_game_music() -> void:
+	if game_music_player == null:
+		return
+	var stream := AudioStreamGenerator.new()
+	stream.mix_rate = int(_MUSIC_SAMPLE_RATE)
+	stream.buffer_length = 0.25
+	game_music_player.stream = stream
+	game_music_player.volume_db = -17.0
+	if GameManager != null and GameManager.music_enabled:
+		game_music_player.play()
+	_music_playback = game_music_player.get_stream_playback() as AudioStreamGeneratorPlayback
+
+func _on_music_enabled_changed(enabled: bool) -> void:
+	if game_music_player == null:
+		return
+	if enabled:
+		if not game_music_player.playing:
+			game_music_player.play()
+		if _music_playback == null:
+			_music_playback = game_music_player.get_stream_playback() as AudioStreamGeneratorPlayback
+	else:
+		game_music_player.stop()
+
+func _stream_game_music() -> void:
+	if _music_playback == null or GameManager == null or not GameManager.music_enabled:
+		return
+	var frames_available: int = _music_playback.get_frames_available()
+	for _i in range(frames_available):
+		var note_index: int = int(floor(_music_time / _MUSIC_STEP_SECONDS)) % _MUSIC_MELODY.size()
+		var freq: float = _MUSIC_MELODY[note_index]
+		_music_phase += TAU * freq / _MUSIC_SAMPLE_RATE
+		var lead: float = sin(_music_phase)
+		var upper: float = sin(_music_phase * 1.5) * 0.24
+		var low: float = sin(_music_phase * 0.5) * 0.18
+		var pulse: float = 0.88 + 0.12 * sin(_music_time * 5.2)
+		var sample: float = (lead + upper + low) * 0.07 * pulse
+		_music_playback.push_frame(Vector2(sample, sample))
+		_music_time += 1.0 / _MUSIC_SAMPLE_RATE
 
 # ── Player spawning ───────────────────────────────────────────────────────────
 func _spawn_players() -> void:
@@ -313,6 +283,7 @@ func _tick_status_messages(delta: float) -> void:
 
 # ── Game loop ─────────────────────────────────────────────────────────────────
 func _process(delta: float) -> void:
+	_stream_game_music()
 	if Input.is_action_just_pressed("ui_cancel"):
 		_request_quit_to_menu()
 		return
@@ -328,11 +299,13 @@ func _process(delta: float) -> void:
 	_tick_player(_players[_my_index], delta)
 	_broadcast_my_state()
 	_resolve_collisions()
-	for i in range(_players.size()):
-		for j in range(_players.size()):
-			if i != j:
-				_check_hit(_players[i], _players[j])
-	_check_win()
+	var run_authoritative_logic: bool = not multiplayer.has_multiplayer_peer() or multiplayer.is_server()
+	if run_authoritative_logic:
+		for i in range(_players.size()):
+			for j in range(_players.size()):
+				if i != j:
+					_check_hit(_players[i], _players[j])
+		_check_win()
 	_tick_status_messages(delta)
 	queue_redraw()
 
@@ -371,8 +344,7 @@ func _broadcast_my_state() -> void:
 		int(p.peer_id),
 		float(p.wx), float(p.wy),
 		float(p.dir.x), float(p.dir.y),
-		float(p.atk_time), float(p.health),
-		bool(p.alive), bool(p.moving), float(p.walk_time)
+		float(p.atk_time), bool(p.moving), float(p.walk_time)
 	)
 
 @rpc("any_peer", "unreliable")
@@ -380,8 +352,7 @@ func _receive_player_state(
 		peer_id: int,
 		wx: float, wy: float,
 		dir_x: float, dir_y: float,
-		atk_time: float, health: float,
-		alive: bool, moving: bool, walk_time: float) -> void:
+		atk_time: float, moving: bool, walk_time: float) -> void:
 	if peer_id == multiplayer.get_unique_id():
 		return
 	var idx: int = _find_player_index_by_peer_id(peer_id)
@@ -392,8 +363,6 @@ func _receive_player_state(
 	p.wy        = wy
 	p.dir       = Vector2(dir_x, dir_y)
 	p.atk_time  = atk_time
-	p.health    = health
-	p.alive     = alive
 	p.moving    = moving
 	p.walk_time = walk_time
 
@@ -439,9 +408,19 @@ func _check_hit(attacker: Dictionary, defender: Dictionary) -> void:
 	if attacker.dir.dot(Vector2(dx, dy).normalized()) < 0.25:
 		return
 	attacker.hit_landed = true
-	defender.health = maxf(defender.health - DMG, 0.0)
-	if defender.health <= 0.0:
-		defender.alive = false
+	var new_health: float = maxf(defender.health - DMG, 0.0)
+	var defender_alive: bool = new_health > 0.0
+	_apply_hit.rpc(int(attacker.peer_id), int(defender.peer_id), new_health, defender_alive)
+
+@rpc("authority", "call_local", "reliable")
+func _apply_hit(attacker_peer_id: int, defender_peer_id: int, new_health: float, defender_alive: bool) -> void:
+	var attacker_idx: int = _find_player_index_by_peer_id(attacker_peer_id)
+	if attacker_idx >= 0:
+		_players[attacker_idx].hit_landed = true
+	var defender_idx: int = _find_player_index_by_peer_id(defender_peer_id)
+	if defender_idx >= 0:
+		_players[defender_idx].health = new_health
+		_players[defender_idx].alive = defender_alive
 
 # ── Win condition ─────────────────────────────────────────────────────────────
 func _check_win() -> void:
@@ -458,9 +437,16 @@ func _check_win() -> void:
 			alive_count += 1
 			last_alive   = i
 	if alive_count == 0:
-		_winner = -1
+		_set_winner.rpc(-1)
 	elif alive_count == 1:
-		_winner = last_alive
+		_set_winner.rpc(last_alive)
+
+@rpc("authority", "call_local", "reliable")
+func _set_winner(next_winner: int) -> void:
+	if _winner != -2:
+		return
+	_winner = next_winner
+	_end_timer = 0.0
 
 # ── Draw ──────────────────────────────────────────────────────────────────────
 func _draw() -> void:
@@ -486,63 +472,7 @@ func _draw() -> void:
 
 # ── Tile drawing ──────────────────────────────────────────────────────────────
 func _draw_tiles(vp: Vector2) -> void:
-	# Inverse-project the four screen corners into tile space to find the exact
-	# range of tiles that can be visible.  Avoids drawing off-screen tiles.
-	# screen = _origin + Vector2((tx-ty)*hw, (tx+ty)*hh)
-	# → u = tx-ty = (screen.x - _origin.x) / hw
-	# → v = tx+ty = (screen.y - _origin.y) / hh
-	# → tx = (u+v)/2   ty = (v-u)/2
-	var hw := TILE_W * 0.5
-	var hh := TILE_H * 0.5
-	var tx_min := 999999
-	var tx_max := -999999
-	var ty_min := 999999
-	var ty_max := -999999
-	for corner in [Vector2.ZERO, Vector2(vp.x, 0.0), Vector2(0.0, vp.y), vp]:
-		var u: float = (corner.x - _origin.x) / hw
-		var v: float = (corner.y - _origin.y) / hh
-		tx_min = mini(tx_min, floori((u + v) * 0.5) - RENDER_MARGIN)
-		tx_max = maxi(tx_max, ceili((u + v) * 0.5) + RENDER_MARGIN)
-		ty_min = mini(ty_min, floori((v - u) * 0.5) - RENDER_MARGIN)
-		ty_max = maxi(ty_max, ceili((v - u) * 0.5) + RENDER_MARGIN)
-
-	# Pre-generate all chunks that overlap the visible tile range
-	var cx_min: int = floori(float(tx_min) / CHUNK_SIZE)
-	var cx_max: int = ceili(float(tx_max)  / CHUNK_SIZE)
-	var cy_min: int = floori(float(ty_min) / CHUNK_SIZE)
-	var cy_max: int = ceili(float(ty_max)  / CHUNK_SIZE)
-	for cx in range(cx_min, cx_max + 1):
-		for cy in range(cy_min, cy_max + 1):
-			_ensure_chunk(cx, cy)
-
-	# Draw in diagonal order for correct painter's-algorithm depth
-	var d_min: int = tx_min + ty_min
-	var d_max: int = tx_max + ty_max
-	for diag in range(d_min, d_max + 1):
-		var tx_lo: int = maxi(tx_min, diag - ty_max)
-		var tx_hi: int = mini(tx_max, diag - ty_min)
-		for tx in range(tx_lo, tx_hi + 1):
-			_draw_tile(tx, diag - tx)
-
-func _draw_tile(tx: int, ty: int) -> void:
-	var top := _w2s(tx + 0.5, float(ty))
-	var rgt := _w2s(float(tx + 1), ty + 0.5)
-	var bot := _w2s(tx + 0.5, float(ty + 1))
-	var lft := _w2s(float(tx), ty + 0.5)
-
-	var tt: int   = _get_tile(tx, ty)
-	var tc: Array = _TC[tt]
-	var face: Color
-	if tt == T_DEEP or tt == T_WATER:
-		face = tc[0].lightened(0.06) if (tx + ty) % 2 == 0 else tc[0]
-	elif tt == T_GRASS or tt == T_FOREST:
-		face = tc[0] if (tx + ty) % 2 == 0 else tc[0].lightened(0.04)
-	else:
-		face = tc[0]
-
-	draw_polygon(PackedVector2Array([top, rgt, bot, lft]), PackedColorArray([face]))
-	draw_line(lft, bot, tc[1], 1.2)
-	draw_line(rgt, bot, tc[1], 1.2)
+	_terrain_renderer.draw_tiles(self, _origin, vp, TILE_W, TILE_H, RENDER_MARGIN)
 
 # ── Character drawing ─────────────────────────────────────────────────────────
 func _draw_player(p: Dictionary) -> void:
