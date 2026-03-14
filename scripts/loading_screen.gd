@@ -36,11 +36,11 @@ func _update_spinner() -> void:
 	var frame_idx: int = int(floor(_elapsed * 8.0)) % _SPINNER_FRAMES.size()
 	spinner.text = _SPINNER_FRAMES[frame_idx]
 	var pulse: float = 0.75 + 0.25 * sin(_elapsed * 5.0)
-	spinner.modulate = Color(0.50, 0.80, 1.00, pulse)
+	spinner.modulate = Color(0.90, 0.68, 0.34, pulse)
 
 func _update_glow() -> void:
 	var glow_pulse: float = 0.16 + 0.08 * sin(_elapsed * 1.8)
-	glow_top.color = Color(0.18, 0.40, 0.74, glow_pulse)
+	glow_top.color = Color(0.52, 0.36, 0.18, glow_pulse)
 
 func _go_to_main_menu() -> void:
 	set_process(false)

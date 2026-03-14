@@ -1,9 +1,10 @@
 extends Node2D
+const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 
 ## Isometric arena — placeholder art, up to 8 players.
 ##
 ## Controls (every player, on their own machine):
-##   Arrow keys: move · Space: attack · Escape: main menu
+##   Arrow keys: move · Space: attack · Escape: pause menu
 
 # ── Isometric constants ────────────────────────────────────────────────────────
 const TILE_W        := 64.0   # diamond width in screen pixels
@@ -43,6 +44,11 @@ const TERRAIN_RENDERER_SCRIPT := preload("res://scripts/shared/iso_terrain_rende
 
 # ── State ─────────────────────────────────────────────────────────────────────
 @onready var quit_game_button: Button = $UILayer/QuitGameButton
+@onready var pause_backdrop: ColorRect = $UILayer/PauseBackdrop
+@onready var pause_menu_panel: PanelContainer = $UILayer/PauseMenuPanel
+@onready var pause_resume_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseResumeButton
+@onready var pause_music_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseMusicButton
+@onready var pause_quit_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseQuitButton
 @onready var quit_confirm_dialog: ConfirmationDialog = $UILayer/QuitConfirmDialog
 @onready var game_music_player: AudioStreamPlayer = $UILayer/GameMusicPlayer
 
@@ -54,6 +60,7 @@ var _origin:    Vector2      # screen position of world (0, 0) — updated each 
 var _status_messages: Array[Dictionary] = []
 var _music_playback: AudioStreamGeneratorPlayback = null
 var _music_phase: float = 0.0
+var _music_bass_phase: float = 0.0
 var _music_time: float = 0.0
 var _terrain_renderer = TERRAIN_RENDERER_SCRIPT.new()
 
@@ -70,16 +77,25 @@ const _SPAWNS: Array = [
 ]
 
 const _MUSIC_SAMPLE_RATE: float = 44100.0
-const _MUSIC_STEP_SECONDS: float = 0.22
-const _MUSIC_STEPS_PER_BAR: int = 8
-const _MUSIC_SECTION_BARS: int = 24
-const _MUSIC_VERSE: Array[float] = [164.81, 196.00, 246.94, 220.00, 196.00, 220.00, 246.94, 220.00]
-const _MUSIC_CHORUS: Array[float] = [246.94, 293.66, 329.63, 293.66, 261.63, 293.66, 329.63, 293.66]
-const _MUSIC_HYPE_A: Array[float] = [329.63, 392.00, 440.00, 392.00, 369.99, 440.00, 493.88, 440.00]
-const _MUSIC_HYPE_B: Array[float] = [293.66, 369.99, 440.00, 493.88, 440.00, 392.00, 440.00, 523.25]
-const _BASS_VERSE: Array[float] = [82.41, 98.00, 110.00, 98.00]
-const _BASS_CHORUS: Array[float] = [123.47, 146.83, 164.81, 146.83]
-const _BASS_HYPE: Array[float] = [146.83, 164.81, 185.00, 196.00]
+const _MUSIC_STEP_SECONDS: float = 0.26
+const _MUSIC_STEPS_PER_CHORD: int = 8
+const _MUSIC_PROGRESS_ROOTS: Array[float] = [82.41, 69.30, 51.91, 55.00] # E, C#, G#, A
+const _MUSIC_MELODY_BY_CHORD: Array[Array] = [
+	[329.63, 369.99, 415.30, 493.88, 415.30, 369.99, 329.63, 369.99], # E
+	[277.18, 329.63, 369.99, 415.30, 369.99, 329.63, 277.18, 329.63], # C#m
+	[415.30, 369.99, 329.63, 369.99, 415.30, 493.88, 415.30, 369.99], # G#m
+	[440.00, 415.30, 369.99, 329.63, 369.99, 415.30, 440.00, 369.99], # A
+]
+const _MUSIC_CHORD_TONES: Array[Array] = [
+	[329.63, 415.30, 493.88], # E
+	[277.18, 329.63, 415.30], # C#m
+	[415.30, 493.88, 622.25], # G#m
+	[440.00, 554.37, 659.25], # A
+]
+const _HUD_BG: Color = Color(0.10, 0.08, 0.07, 0.88)
+const _HUD_BORDER: Color = Color(0.48, 0.35, 0.22, 0.90)
+const _HUD_TEXT: Color = Color(0.95, 0.90, 0.83, 1.0)
+const _HUD_TEXT_MUTED: Color = Color(0.79, 0.70, 0.60, 1.0)
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
@@ -87,10 +103,37 @@ func _ready() -> void:
 	_origin = get_viewport_rect().size * 0.5
 	_spawn_players()
 	_setup_game_music()
+	if quit_game_button != null:
+		quit_game_button.visible = false
+	if pause_menu_panel != null:
+		pause_menu_panel.visible = false
+	if pause_backdrop != null:
+		pause_backdrop.visible = false
+	UiStyleScript.style_panel(pause_menu_panel)
+	UiStyleScript.style_button(pause_resume_button)
+	UiStyleScript.style_button(pause_music_button)
+	UiStyleScript.style_button(pause_quit_button)
+	if pause_resume_button != null and pause_music_button != null and pause_quit_button != null:
+		pause_resume_button.focus_neighbor_bottom = pause_resume_button.get_path_to(pause_music_button)
+		pause_music_button.focus_neighbor_top = pause_music_button.get_path_to(pause_resume_button)
+		pause_music_button.focus_neighbor_bottom = pause_music_button.get_path_to(pause_quit_button)
+		pause_quit_button.focus_neighbor_top = pause_quit_button.get_path_to(pause_music_button)
+		pause_quit_button.focus_neighbor_bottom = pause_quit_button.get_path_to(pause_resume_button)
+	if pause_resume_button != null and not pause_resume_button.pressed.is_connected(_on_pause_resume_pressed):
+		pause_resume_button.pressed.connect(_on_pause_resume_pressed)
+	if pause_music_button != null and not pause_music_button.pressed.is_connected(_on_pause_music_pressed):
+		pause_music_button.pressed.connect(_on_pause_music_pressed)
+	if pause_quit_button != null and not pause_quit_button.pressed.is_connected(_on_pause_quit_pressed):
+		pause_quit_button.pressed.connect(_on_pause_quit_pressed)
+	_update_pause_music_button_label()
 	if quit_game_button != null and not quit_game_button.pressed.is_connected(_on_quit_game_button_pressed):
 		quit_game_button.pressed.connect(_on_quit_game_button_pressed)
 	if quit_confirm_dialog != null and not quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
 		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
+	if quit_confirm_dialog != null:
+		quit_confirm_dialog.title = "Leave Match"
+		quit_confirm_dialog.ok_button_text = "Quit Match"
+		_apply_quit_dialog_theme()
 	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
 	if multiplayer.has_multiplayer_peer():
@@ -159,21 +202,23 @@ func _ensure_key_for_action(action: String, keycode: Key) -> void:
 	key_event.keycode = keycode
 	InputMap.action_add_event(action, key_event)
 
-func _ensure_joy_button_for_action(action: String, button_index: int) -> void:
+func _ensure_joy_button_for_action(action: String, button_index: int, device: int = -1) -> void:
 	for event in InputMap.action_get_events(action):
-		if event is InputEventJoypadButton and event.button_index == button_index:
+		if event is InputEventJoypadButton and event.button_index == button_index and event.device == device:
 			return
 	var button_event := InputEventJoypadButton.new()
 	button_event.button_index = button_index
+	button_event.device = device
 	InputMap.action_add_event(action, button_event)
 
-func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float) -> void:
+func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float, device: int = -1) -> void:
 	for event in InputMap.action_get_events(action):
-		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value):
+		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value) and event.device == device:
 			return
 	var motion_event := InputEventJoypadMotion.new()
 	motion_event.axis = axis
 	motion_event.axis_value = axis_value
+	motion_event.device = device
 	InputMap.action_add_event(action, motion_event)
 
 func _setup_game_music() -> void:
@@ -198,6 +243,12 @@ func _on_music_enabled_changed(enabled: bool) -> void:
 			_music_playback = game_music_player.get_stream_playback() as AudioStreamGeneratorPlayback
 	else:
 		game_music_player.stop()
+	_update_pause_music_button_label()
+
+func _update_pause_music_button_label() -> void:
+	if pause_music_button == null or GameManager == null:
+		return
+	pause_music_button.text = "Music: %s" % ("On" if GameManager.music_enabled else "Off")
 
 func _stream_game_music() -> void:
 	if _music_playback == null or GameManager == null or not GameManager.music_enabled:
@@ -205,67 +256,29 @@ func _stream_game_music() -> void:
 	var frames_available: int = _music_playback.get_frames_available()
 	for _i in range(frames_available):
 		var step_idx: int = int(floor(_music_time / _MUSIC_STEP_SECONDS))
-		var bar_idx: int = int(floor(float(step_idx) / _MUSIC_STEPS_PER_BAR)) % _MUSIC_SECTION_BARS
-		var step_in_bar: int = step_idx % _MUSIC_STEPS_PER_BAR
-		var bass_step: int = int(floor(_music_time / (_MUSIC_STEP_SECONDS * 2.0))) % 4
-		var section: int = _game_section_for_bar(bar_idx)
-		var freq: float = _game_lead_for_step(section, step_in_bar, bar_idx)
-		var bass_freq: float = _game_bass_for_step(section, bass_step)
-		var energy: float = _game_section_energy(section)
-		_music_phase += TAU * freq / _MUSIC_SAMPLE_RATE
-		var bass_phase: float = _music_time * TAU * bass_freq
+		var chord_idx: int = int(floor(float(step_idx) / _MUSIC_STEPS_PER_CHORD)) % _MUSIC_PROGRESS_ROOTS.size()
+		var step_in_chord: int = step_idx % _MUSIC_STEPS_PER_CHORD
+		var lead_freq: float = _music_lead_for_step(chord_idx, step_in_chord)
+		var root_freq: float = _MUSIC_PROGRESS_ROOTS[chord_idx]
+		var chord_tones: Array = _MUSIC_CHORD_TONES[chord_idx]
+		_music_phase += TAU * lead_freq / _MUSIC_SAMPLE_RATE
+		_music_bass_phase += TAU * root_freq / _MUSIC_SAMPLE_RATE
 		var lead_square: float = 1.0 if sin(_music_phase) >= 0.0 else -1.0
-		var lead_octave: float = 1.0 if sin(_music_phase * 2.0) >= 0.0 else -1.0
-		var accent: float = sin(_music_phase * 3.0) * (0.10 + 0.15 * energy)
-		var bass_square: float = 1.0 if sin(bass_phase) >= 0.0 else -1.0
-		var pulse: float = 0.82 + 0.18 * sin(_music_time * (5.4 + energy * 2.2))
-		var gate_phase: float = fmod(_music_time, _MUSIC_STEP_SECONDS) / _MUSIC_STEP_SECONDS
-		var gate: float = 0.94 - gate_phase * (0.18 - energy * 0.04)
-		var sample: float = (lead_square * (0.040 + energy * 0.020) + lead_octave * (0.022 + energy * 0.012) + accent * 0.024 + bass_square * (0.020 + energy * 0.012)) * pulse * gate
+		var lead_upper: float = sin(_music_phase * 2.0) * 0.26
+		var bass_square: float = 1.0 if sin(_music_bass_phase) >= 0.0 else -1.0
+		var pad: float = (
+			sin(_music_time * TAU * float(chord_tones[0])) +
+			sin(_music_time * TAU * float(chord_tones[1])) +
+			sin(_music_time * TAU * float(chord_tones[2]))
+		) / 3.0
+		var step_phase: float = fmod(_music_time, _MUSIC_STEP_SECONDS) / _MUSIC_STEP_SECONDS
+		var gate: float = 0.92 - step_phase * 0.12
+		var sample: float = (lead_square * 0.042 + lead_upper * 0.028 + bass_square * 0.022 + pad * 0.030) * gate
 		_music_playback.push_frame(Vector2(sample, sample))
 		_music_time += 1.0 / _MUSIC_SAMPLE_RATE
 
-func _game_section_for_bar(bar_idx: int) -> int:
-	if bar_idx < 4:
-		return 0 # verse
-	if bar_idx < 8:
-		return 1 # chorus
-	if bar_idx < 16:
-		return 2 # hype
-	if bar_idx < 20:
-		return 1 # chorus return
-	return 3 # final hype
-
-func _game_section_energy(section: int) -> float:
-	match section:
-		0:
-			return 0.72
-		1:
-			return 0.88
-		2:
-			return 1.0
-		_:
-			return 1.08
-
-func _game_lead_for_step(section: int, step_in_bar: int, bar_idx: int) -> float:
-	match section:
-		0:
-			return _MUSIC_VERSE[step_in_bar]
-		1:
-			return _MUSIC_CHORUS[step_in_bar]
-		2:
-			return _MUSIC_HYPE_A[step_in_bar] if bar_idx % 2 == 0 else _MUSIC_HYPE_B[step_in_bar]
-		_:
-			return _MUSIC_HYPE_B[step_in_bar]
-
-func _game_bass_for_step(section: int, bass_step: int) -> float:
-	match section:
-		0:
-			return _BASS_VERSE[bass_step]
-		1:
-			return _BASS_CHORUS[bass_step]
-		_:
-			return _BASS_HYPE[bass_step]
+func _music_lead_for_step(chord_idx: int, step_in_chord: int) -> float:
+	return float(_MUSIC_MELODY_BY_CHORD[chord_idx][step_in_chord])
 
 # ── Player spawning ───────────────────────────────────────────────────────────
 func _spawn_players() -> void:
@@ -316,14 +329,62 @@ func _spawn_players() -> void:
 		})
 
 func _on_quit_game_button_pressed() -> void:
+	_toggle_pause_menu()
+
+func _on_pause_resume_pressed() -> void:
+	_close_pause_menu()
+
+func _on_pause_music_pressed() -> void:
+	if GameManager == null:
+		return
+	GameManager.set_music_enabled(not GameManager.music_enabled)
+	_update_pause_music_button_label()
+
+func _on_pause_quit_pressed() -> void:
 	_request_quit_to_menu()
 
+func _toggle_pause_menu() -> void:
+	if pause_menu_panel == null:
+		return
+	if pause_menu_panel.visible:
+		_close_pause_menu()
+	else:
+		_open_pause_menu()
+
+func _open_pause_menu() -> void:
+	if pause_menu_panel == null:
+		return
+	pause_menu_panel.visible = true
+	if pause_backdrop != null:
+		pause_backdrop.visible = true
+	_update_pause_music_button_label()
+	if pause_resume_button != null:
+		pause_resume_button.grab_focus()
+
+func _close_pause_menu() -> void:
+	if pause_menu_panel == null:
+		return
+	pause_menu_panel.visible = false
+	if pause_backdrop != null:
+		pause_backdrop.visible = false
+
 func _request_quit_to_menu() -> void:
+	_close_pause_menu()
 	if quit_confirm_dialog == null:
 		get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
 		return
-	quit_confirm_dialog.dialog_text = "You are giving up already?\nThe bridge is still burning.\n\nQuit the match anyway?"
+	_apply_quit_dialog_theme()
+	quit_confirm_dialog.dialog_text = "Are you sure you want to leave this match and return to the main menu?"
 	quit_confirm_dialog.popup_centered()
+
+func _apply_quit_dialog_theme() -> void:
+	if quit_confirm_dialog == null:
+		return
+	quit_confirm_dialog.add_theme_stylebox_override("panel", UiStyleScript.make_panel_style())
+	quit_confirm_dialog.add_theme_color_override("title_color", UiStyleScript.TEXT_PRIMARY)
+	quit_confirm_dialog.add_theme_color_override("font_color", UiStyleScript.TEXT_SECONDARY)
+	UiStyleScript.style_button(quit_confirm_dialog.get_ok_button())
+	UiStyleScript.style_button(quit_confirm_dialog.get_cancel_button())
 
 func _on_quit_confirmed() -> void:
 	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
@@ -358,7 +419,7 @@ func _tick_status_messages(delta: float) -> void:
 func _process(delta: float) -> void:
 	_stream_game_music()
 	if Input.is_action_just_pressed("ui_cancel"):
-		_request_quit_to_menu()
+		_toggle_pause_menu()
 		return
 
 	if _winner != -2:
@@ -384,6 +445,8 @@ func _process(delta: float) -> void:
 
 # ── Per-player update (local peer only) ───────────────────────────────────────
 func _tick_player(p: Dictionary, delta: float) -> void:
+	if pause_menu_panel != null and pause_menu_panel.visible:
+		return
 	if not p.alive:
 		return
 
@@ -547,6 +610,7 @@ func _draw() -> void:
 	for p in sorted:
 		_draw_player(p)
 
+	_draw_offscreen_indicators(vp)
 	_draw_hud(vp)
 	if _winner != -2:
 		_draw_win_screen(vp)
@@ -614,10 +678,23 @@ func _draw_player(p: Dictionary) -> void:
 				  sp + Vector2(0.0, -38.0) + ds * 8.0 + Vector2(0.0, 4.0),
 				  dim, 5.0)
 
-	# Name tag above head
+	# Name tag — small, floats above head with a gentle independent bob per player
+	var float_y: float = sin(Time.get_ticks_msec() * 0.0018 + float(p.peer_id) * 0.9) * 3.5
 	var font := ThemeDB.fallback_font
-	draw_string(font, sp + Vector2(0.0, -66.0), p.label,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1.0, 1.0, 1.0, 0.88))
+	var label_pos := sp + Vector2(0.0, -82.0 + float_y)
+	var label_size: Vector2 = font.get_string_size(p.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9)
+	var tag_pad := 4.0
+	var tag_rect := Rect2(
+		label_pos.x - label_size.x * 0.5 - tag_pad,
+		label_pos.y - label_size.y - 1.0,
+		label_size.x + tag_pad * 2.0,
+		label_size.y + tag_pad
+	)
+	draw_rect(tag_rect, Color(0.0, 0.0, 0.0, 0.55))
+	draw_rect(tag_rect, pa, false, 1.0)
+	var text_pos := Vector2(label_pos.x - label_size.x * 0.5, label_pos.y)
+	draw_string(font, text_pos, p.label,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(1.0, 1.0, 1.0, 0.92))
 
 # ── HUD ───────────────────────────────────────────────────────────────────────
 func _draw_hud(vp: Vector2) -> void:
@@ -639,7 +716,7 @@ func _draw_hud(vp: Vector2) -> void:
 			HORIZONTAL_ALIGNMENT_LEFT,
 			-1,
 			14,
-			Color(1.0, 1.0, 1.0, 1.0)
+			_HUD_TEXT
 		)
 
 	for i in range(_players.size()):
@@ -652,16 +729,16 @@ func _draw_hud(vp: Vector2) -> void:
 		var col: Color = p.palette[0]
 
 		# Background
-		draw_rect(Rect2(bx, by, bar_w, bar_h), Color(0.08, 0.08, 0.08, 0.85))
+		draw_rect(Rect2(bx, by, bar_w, bar_h), _HUD_BG)
 		# Fill
 		if p.alive and fill > 0.0:
 			draw_rect(Rect2(bx, by, fill, bar_h), col)
 		# Border
-		draw_rect(Rect2(bx, by, bar_w, bar_h), Color(1.0, 1.0, 1.0, 0.55), false, 1.5)
+		draw_rect(Rect2(bx, by, bar_w, bar_h), _HUD_BORDER, false, 1.5)
 		# Label
 		draw_string(font, Vector2(bx + 5.0, by + bar_h - 5.0),
 				"%s  %d" % [p.label, int(maxf(p.health, 0.0))],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, _HUD_TEXT)
 
 func _draw_win_screen(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0, 0.0, 0.0, 0.58))
@@ -676,12 +753,71 @@ func _draw_win_screen(vp: Vector2) -> void:
 		msg = "%s WINS!" % _players[_winner].label
 
 	draw_string(font, Vector2(cx, cy), msg,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, 52, Color(1.0, 0.88, 0.12))
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 52, Color(0.95, 0.75, 0.35, 1.0))
 
 	var remaining := ceili(END_DELAY - _end_timer)
 	draw_string(font, Vector2(cx, cy + 62.0),
 			"Returning to menu in %d..." % remaining,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, 20, Color(0.8, 0.8, 0.8))
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 20, _HUD_TEXT_MUTED)
+
+# ── Off-screen player indicators ─────────────────────────────────────────────
+func _draw_offscreen_indicators(vp: Vector2) -> void:
+	const EDGE_PAD := 30.0
+	const ARROW_R  := 12.0
+
+	var font          := ThemeDB.fallback_font
+	var screen_center := vp * 0.5
+
+	for p in _players:
+		if not p.alive:
+			continue
+		var sp := _w2s(p.wx, p.wy)
+		# Already on screen — no indicator needed
+		if sp.x >= EDGE_PAD and sp.x <= vp.x - EDGE_PAD \
+				and sp.y >= EDGE_PAD and sp.y <= vp.y - EDGE_PAD:
+			continue
+
+		# Direction from screen centre toward the off-screen player
+		var dir: Vector2 = (sp - screen_center).normalized()
+
+		# Clamp to the padded screen boundary via parametric ray
+		var t_x: float = INF
+		var t_y: float = INF
+		if abs(dir.x) > 0.0001:
+			var tx0: float = (EDGE_PAD - screen_center.x) / dir.x
+			var tx1: float = (vp.x - EDGE_PAD - screen_center.x) / dir.x
+			t_x = max(tx0, tx1) if dir.x > 0.0 else max(tx0, tx1)
+			t_x = tx1 if dir.x > 0.0 else tx0
+		if abs(dir.y) > 0.0001:
+			var ty0: float = (EDGE_PAD - screen_center.y) / dir.y
+			var ty1: float = (vp.y - EDGE_PAD - screen_center.y) / dir.y
+			t_y = ty1 if dir.y > 0.0 else ty0
+		var t: float   = minf(t_x, t_y)
+		var ap: Vector2 = screen_center + dir * t
+
+		var pa: Color = p.palette[0]
+
+		# Arrow triangle pointing toward the player
+		var tip   := ap + dir * ARROW_R
+		var perp  := Vector2(-dir.y, dir.x) * ARROW_R * 0.6
+		var base1 := ap - dir * (ARROW_R * 0.4) + perp
+		var base2 := ap - dir * (ARROW_R * 0.4) - perp
+
+		# Dark shadow (slightly larger)
+		const S := 1.18
+		var stip   := ap + dir * ARROW_R * S
+		var sperp  := Vector2(-dir.y, dir.x) * ARROW_R * 0.6 * S
+		var sbase1 := ap - dir * (ARROW_R * 0.4 * S) + sperp
+		var sbase2 := ap - dir * (ARROW_R * 0.4 * S) - sperp
+		draw_colored_polygon([stip, sbase1, sbase2], Color(0.0, 0.0, 0.0, 0.55))
+
+		# Coloured arrow
+		draw_colored_polygon([tip, base1, base2], pa)
+
+		# Player label beside the arrow, pushed away from screen edge
+		var label_pos := ap - dir * (ARROW_R + 10.0)
+		draw_string(font, label_pos, p.label,
+				HORIZONTAL_ALIGNMENT_CENTER, -1, 8, Color(pa.r, pa.g, pa.b, 0.90))
 
 func _get_primary_pad_id() -> int:
 	var pads: PackedInt32Array = Input.get_connected_joypads()

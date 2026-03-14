@@ -44,31 +44,35 @@ func _ensure_controller_ui_actions() -> void:
 	_ensure_joy_button_for_action("ui_left", _UI_DPAD_LEFT)
 	_ensure_joy_button_for_action("ui_right", _UI_DPAD_RIGHT)
 	_ensure_joy_button_for_action("ui_accept", JOY_BUTTON_A)
+	_ensure_joy_button_for_action("ui_accept", JOY_BUTTON_X)
 	_ensure_joy_button_for_action("ui_cancel", JOY_BUTTON_B)
+	_ensure_joy_button_for_action("ui_cancel", JOY_BUTTON_Y)
 	_ensure_joy_motion_for_action("ui_left", JOY_AXIS_LEFT_X, -1.0)
 	_ensure_joy_motion_for_action("ui_right", JOY_AXIS_LEFT_X, 1.0)
 	_ensure_joy_motion_for_action("ui_up", JOY_AXIS_LEFT_Y, -1.0)
 	_ensure_joy_motion_for_action("ui_down", JOY_AXIS_LEFT_Y, 1.0)
 
-func _ensure_joy_button_for_action(action: String, button_index: int) -> void:
+func _ensure_joy_button_for_action(action: String, button_index: int, device: int = -1) -> void:
 	if not InputMap.has_action(action):
 		InputMap.add_action(action)
 	for event in InputMap.action_get_events(action):
-		if event is InputEventJoypadButton and event.button_index == button_index:
+		if event is InputEventJoypadButton and event.button_index == button_index and event.device == device:
 			return
 	var button_event := InputEventJoypadButton.new()
 	button_event.button_index = button_index
+	button_event.device = device
 	InputMap.action_add_event(action, button_event)
 
-func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float) -> void:
+func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float, device: int = -1) -> void:
 	if not InputMap.has_action(action):
 		InputMap.add_action(action)
 	for event in InputMap.action_get_events(action):
-		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value):
+		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value) and event.device == device:
 			return
 	var motion_event := InputEventJoypadMotion.new()
 	motion_event.axis = axis
 	motion_event.axis_value = axis_value
+	motion_event.device = device
 	InputMap.action_add_event(action, motion_event)
 
 # ---------------------------------------------------------------------------

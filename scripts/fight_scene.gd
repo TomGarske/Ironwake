@@ -98,11 +98,22 @@ func _register_inputs() -> void:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action)
 		_ensure_key_for_action(action, map[action])
-	_ensure_joy_motion_for_action("fp1_l", JOY_AXIS_LEFT_X, -1.0)
-	_ensure_joy_motion_for_action("fp1_r", JOY_AXIS_LEFT_X, 1.0)
-	_ensure_joy_button_for_action("fp1_j", JOY_BUTTON_X)
-	_ensure_joy_button_for_action("fp1_a", JOY_BUTTON_A)
-	_ensure_joy_button_for_action("fp1_b", JOY_BUTTON_B)
+	# P1 — first connected controller (device 0)
+	_ensure_joy_motion_for_action("fp1_l", JOY_AXIS_LEFT_X, -1.0, 0)
+	_ensure_joy_motion_for_action("fp1_r", JOY_AXIS_LEFT_X,  1.0, 0)
+	_ensure_joy_button_for_action("fp1_l", JOY_BUTTON_DPAD_LEFT,  0)
+	_ensure_joy_button_for_action("fp1_r", JOY_BUTTON_DPAD_RIGHT, 0)
+	_ensure_joy_button_for_action("fp1_j", JOY_BUTTON_X, 0)
+	_ensure_joy_button_for_action("fp1_a", JOY_BUTTON_A, 0)
+	_ensure_joy_button_for_action("fp1_b", JOY_BUTTON_B, 0)
+	# P2 — second connected controller (device 1)
+	_ensure_joy_motion_for_action("fp2_l", JOY_AXIS_LEFT_X, -1.0, 1)
+	_ensure_joy_motion_for_action("fp2_r", JOY_AXIS_LEFT_X,  1.0, 1)
+	_ensure_joy_button_for_action("fp2_l", JOY_BUTTON_DPAD_LEFT,  1)
+	_ensure_joy_button_for_action("fp2_r", JOY_BUTTON_DPAD_RIGHT, 1)
+	_ensure_joy_button_for_action("fp2_j", JOY_BUTTON_X, 1)
+	_ensure_joy_button_for_action("fp2_a", JOY_BUTTON_A, 1)
+	_ensure_joy_button_for_action("fp2_b", JOY_BUTTON_B, 1)
 
 func _ensure_key_for_action(action: String, keycode: Key) -> void:
 	for event in InputMap.action_get_events(action):
@@ -112,21 +123,23 @@ func _ensure_key_for_action(action: String, keycode: Key) -> void:
 	key_event.keycode = keycode
 	InputMap.action_add_event(action, key_event)
 
-func _ensure_joy_button_for_action(action: String, button_index: int) -> void:
+func _ensure_joy_button_for_action(action: String, button_index: int, device: int = -1) -> void:
 	for event in InputMap.action_get_events(action):
-		if event is InputEventJoypadButton and event.button_index == button_index:
+		if event is InputEventJoypadButton and event.button_index == button_index and event.device == device:
 			return
 	var button_event := InputEventJoypadButton.new()
 	button_event.button_index = button_index
+	button_event.device = device
 	InputMap.action_add_event(action, button_event)
 
-func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float) -> void:
+func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float, device: int = -1) -> void:
 	for event in InputMap.action_get_events(action):
-		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value):
+		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value) and event.device == device:
 			return
 	var motion_event := InputEventJoypadMotion.new()
 	motion_event.axis = axis
 	motion_event.axis_value = axis_value
+	motion_event.device = device
 	InputMap.action_add_event(action, motion_event)
 
 func _process(delta: float) -> void:
@@ -505,3 +518,4 @@ func _draw_ground(vp: Vector2) -> void:
 	draw_rect(Rect2(0.0, h * 0.653, w, 2.0), Color(0.14, 0.40, 0.12))
 	draw_rect(Rect2(w * 0.25, h * 0.650, w * 0.50, h * 0.05), _C_DIRT)
 	draw_rect(Rect2(w * 0.25, h * 0.650, w * 0.50, 2.0), Color(0.30, 0.22, 0.12))
+
