@@ -36,10 +36,10 @@ func log_message(message: String, is_error: bool = false) -> void:
 		return
 	var prefix: String = "[ERR] " if is_error else "[LOG] "
 	_log.append_text(prefix + message + "\n")
-	var lines: int = _log.get_line_count()
+	var all_text: String = _log.text
+	var split_lines: PackedStringArray = all_text.split("\n", false)
+	var lines: int = split_lines.size()
 	if lines > MAX_LINES:
-		var all_text: String = _log.text
-		var split_lines: PackedStringArray = all_text.split("\n")
 		var keep_from: int = maxi(0, split_lines.size() - MAX_LINES)
 		_log.text = "\n".join(split_lines.slice(keep_from))
 	_log.scroll_to_line(_log.get_line_count())
@@ -55,6 +55,8 @@ func _build_ui() -> void:
 	_panel.offset_top = -_EXPANDED_HEIGHT - 12
 	_panel.offset_right = -12
 	_panel.offset_bottom = -12
+	# Hidden by default; toggle with F3 when you want diagnostics.
+	_panel.visible = false
 	_canvas.add_child(_panel)
 
 	var root := VBoxContainer.new()

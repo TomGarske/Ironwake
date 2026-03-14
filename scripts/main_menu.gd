@@ -133,7 +133,9 @@ func _on_test_button_pressed() -> void:
 	get_tree().change_scene_to_file(GameManager.MATCH_SCENE_PATH)
 
 func _on_exit_button_pressed() -> void:
-	quit_confirm_dialog.dialog_text = "You are giving up already? BurnBridgers believes in comebacks.\n\nQuit anyway?"
+	quit_confirm_dialog.title = "Quit Game"
+	quit_confirm_dialog.ok_button_text = "Quit"
+	quit_confirm_dialog.dialog_text = "Close BurnBridgers and return to desktop?"
 	quit_confirm_dialog.popup_centered()
 
 func _on_quit_confirmed() -> void:
@@ -146,7 +148,7 @@ func _on_lobby_ready(_lobby_id: int) -> void:
 	call_deferred("_do_scene_change_lobby")
 
 func _do_scene_change_lobby() -> void:
-	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+	get_tree().change_scene_to_file(GameManager.LOBBY_SCENE_PATH)
 
 func _on_invite_join_requested(target_lobby_id: int) -> void:
 	DebugOverlay.log_message("[MainMenu] Processing invite join request for lobby %d." % target_lobby_id)
@@ -200,7 +202,7 @@ func _rebuild_lobby_list(lobbies: Array) -> void:
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var lobby_name: String = str(item.get("name", "BurnBridgers Lobby"))
 		var members: int = int(item.get("members", 0))
-		name_label.text = "%s (%d/4)  #%d" % [lobby_name, members, lobby_id]
+		name_label.text = "%s (%d/4)" % [lobby_name, members]
 		row.add_child(name_label)
 
 		var join_button := Button.new()

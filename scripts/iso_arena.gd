@@ -57,11 +57,15 @@ const _KEYS    := {l = KEY_LEFT, r = KEY_RIGHT, u = KEY_UP, d = KEY_DOWN, a = KE
 const _ACTIONS := {left = "ia_l", right = "ia_r", up = "ia_u", down = "ia_d", atk = "ia_a"}
 
 # ── State ─────────────────────────────────────────────────────────────────────
+@onready var quit_game_button: Button = $UILayer/QuitGameButton
+@onready var quit_confirm_dialog: ConfirmationDialog = $UILayer/QuitConfirmDialog
+
 var _players:   Array = []
 var _my_index:  int   = 0    # which player in _players this peer controls
 var _winner:    int   = -2   # -2 = playing, -1 = draw, 0+ = index of winner
 var _end_timer: float = 0.0
 var _origin:    Vector2      # screen position of world (0, 0) — updated each draw
+var _status_messages: Array[Dictionary] = []
 
 # ── World / chunk state ───────────────────────────────────────────────────────
 ## Chunk map: Vector2i(cx, cy) → PackedByteArray of CHUNK_SIZE*CHUNK_SIZE terrain types.
@@ -84,7 +88,15 @@ func _ready() -> void:
 	_register_inputs()
 	_origin = get_viewport_rect().size * 0.5
 	_spawn_players()
+	if quit_game_button != null and not quit_game_button.pressed.is_connected(_on_quit_game_button_pressed):
+		quit_game_button.pressed.connect(_on_quit_game_button_pressed)
+	if quit_confirm_dialog != null and not quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
+		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
 	if multiplayer.has_multiplayer_peer():
+		if not multiplayer.peer_connected.is_connected(_on_peer_connected):
+			multiplayer.peer_connected.connect(_on_peer_connected)
+		if not multiplayer.peer_disconnected.is_connected(_on_peer_disconnected):
+			multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 		# Host picks the seed and broadcasts it; clients wait for the RPC.
 		if multiplayer.is_server():
 			_init_world_seed.rpc(randi())
@@ -223,8 +235,9 @@ func _spawn_players() -> void:
 		peer_ids.append(multiplayer.get_unique_id())
 		peer_ids.append_array(multiplayer.get_peers())
 		peer_ids.sort()
-		for pid in peer_ids:
-			var fallback_name: String = "Player %d" % pid
+		for i in range(peer_ids.size()):
+			var pid: int = peer_ids[i]
+			var fallback_name: String = "Player %d" % (i + 1)
 			if GameManager.players.has(pid):
 				labels.append(str(GameManager.players[pid].get("username", fallback_name)))
 			else:
@@ -259,16 +272,55 @@ func _spawn_players() -> void:
 			moving     = false,
 		})
 
+func _on_quit_game_button_pressed() -> void:
+	_request_quit_to_menu()
+
+func _request_quit_to_menu() -> void:
+	if quit_confirm_dialog == null:
+		get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
+		return
+	quit_confirm_dialog.dialog_text = "You are giving up already?\nThe bridge is still burning.\n\nQuit the match anyway?"
+	quit_confirm_dialog.popup_centered()
+
+func _on_quit_confirmed() -> void:
+	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
+
+func _on_peer_connected(peer_id: int) -> void:
+	if multiplayer.is_server():
+		_announce_status.rpc(_get_peer_display_name(peer_id) + " joined the match.")
+
+func _on_peer_disconnected(peer_id: int) -> void:
+	if multiplayer.is_server():
+		_announce_status.rpc(_get_peer_display_name(peer_id) + " left the match.")
+
+func _get_peer_display_name(peer_id: int) -> String:
+	if GameManager != null and GameManager.players.has(peer_id):
+		return str(GameManager.players[peer_id].get("username", "Player"))
+	return "Player %d" % peer_id
+
+@rpc("authority", "call_local", "reliable")
+func _announce_status(message: String) -> void:
+	_status_messages.append({
+		"text": message,
+		"time_left": 4.0
+	})
+
+func _tick_status_messages(delta: float) -> void:
+	for i in range(_status_messages.size() - 1, -1, -1):
+		_status_messages[i]["time_left"] = float(_status_messages[i]["time_left"]) - delta
+		if float(_status_messages[i]["time_left"]) <= 0.0:
+			_status_messages.remove_at(i)
+
 # ── Game loop ─────────────────────────────────────────────────────────────────
 func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("ui_cancel"):
-		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+		_request_quit_to_menu()
 		return
 
 	if _winner != -2:
 		_end_timer += delta
 		if _end_timer >= END_DELAY:
-			get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+			get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
 		queue_redraw()
 		return
 
@@ -281,6 +333,7 @@ func _process(delta: float) -> void:
 			if i != j:
 				_check_hit(_players[i], _players[j])
 	_check_win()
+	_tick_status_messages(delta)
 	queue_redraw()
 
 # ── Per-player update (local peer only) ───────────────────────────────────────
@@ -393,6 +446,10 @@ func _check_hit(attacker: Dictionary, defender: Dictionary) -> void:
 # ── Win condition ─────────────────────────────────────────────────────────────
 func _check_win() -> void:
 	if _winner != -2:
+		return
+	# Solo-host sessions should not immediately auto-win just because only one
+	# player exists in the match.
+	if _players.size() <= 1:
 		return
 	var alive_count := 0
 	var last_alive  := -1
@@ -558,6 +615,19 @@ func _draw_hud(vp: Vector2) -> void:
 	var bar_w   := minf(vp.x * 0.20, 200.0)
 	var pad     := 14.0
 	var spacing := bar_w + pad
+	var status_y: float = pad + bar_h + 18.0
+
+	for i in range(_status_messages.size()):
+		var entry: Dictionary = _status_messages[i]
+		draw_string(
+			font,
+			Vector2(pad, status_y + i * 18.0),
+			str(entry.get("text", "")),
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			14,
+			Color(1.0, 1.0, 1.0, 1.0)
+		)
 
 	for i in range(_players.size()):
 		var p: Dictionary = _players[i]

@@ -29,8 +29,8 @@ var unit_counter: int = 0
 enum InputState { IDLE, UNIT_SELECTED }
 var input_state: InputState = InputState.IDLE
 var selected_unit: Node = null
-var valid_move_tiles: Array = []       # Array[Vector2i]
-var valid_attack_positions: Array = [] # Array[Vector2i]
+var valid_move_tiles: Array[Vector2i] = []
+var valid_attack_positions: Array[Vector2i] = []
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -261,7 +261,7 @@ func _on_unit_died(unit_id: int) -> void:
 		_check_win_condition()
 
 func _check_win_condition() -> void:
-	var teams_alive: Array = []
+	var teams_alive: Array[int] = []
 	for unit: Node in units.values():
 		if not teams_alive.has(unit.team):
 			teams_alive.append(unit.team)
@@ -270,7 +270,7 @@ func _check_win_condition() -> void:
 		return
 	if teams_alive.size() > 1:
 		return
-	var winner_team: int = teams_alive[0] if teams_alive.size() == 1 else -1
+	var winner_team: int = teams_alive[0]
 	if winner_team == NPC_TEAM:
 		# 0 is a non-peer sentinel used to display defeat for all players.
 		turn_manager.declare_match_over(0)
@@ -383,7 +383,7 @@ func _return_to_main_menu() -> void:
 	GameManager.reset()
 	
 	# Return to main menu
-	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
 
 # ---------------------------------------------------------------------------
 # Helpers
