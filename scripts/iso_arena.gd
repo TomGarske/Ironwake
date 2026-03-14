@@ -1,4 +1,5 @@
 extends Node2D
+const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 
 ## Isometric arena — placeholder art, up to 4 players.
 ##
@@ -39,6 +40,7 @@ const TERRAIN_RENDERER_SCRIPT := preload("res://scripts/shared/iso_terrain_rende
 
 # ── State ─────────────────────────────────────────────────────────────────────
 @onready var quit_game_button: Button = $UILayer/QuitGameButton
+@onready var pause_backdrop: ColorRect = $UILayer/PauseBackdrop
 @onready var pause_menu_panel: PanelContainer = $UILayer/PauseMenuPanel
 @onready var pause_resume_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseResumeButton
 @onready var pause_music_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseMusicButton
@@ -54,6 +56,7 @@ var _origin:    Vector2      # screen position of world (0, 0) — updated each 
 var _status_messages: Array[Dictionary] = []
 var _music_playback: AudioStreamGeneratorPlayback = null
 var _music_phase: float = 0.0
+var _music_bass_phase: float = 0.0
 var _music_time: float = 0.0
 var _terrain_renderer = TERRAIN_RENDERER_SCRIPT.new()
 
@@ -66,8 +69,25 @@ const _SPAWNS: Array = [
 ]
 
 const _MUSIC_SAMPLE_RATE: float = 44100.0
-const _MUSIC_STEP_SECONDS: float = 0.24
-const _MUSIC_MELODY: Array[float] = [261.63, 329.63, 392.0, 523.25, 392.0, 440.0, 493.88, 587.33]
+const _MUSIC_STEP_SECONDS: float = 0.26
+const _MUSIC_STEPS_PER_CHORD: int = 8
+const _MUSIC_PROGRESS_ROOTS: Array[float] = [82.41, 69.30, 51.91, 55.00] # E, C#, G#, A
+const _MUSIC_MELODY_BY_CHORD: Array[Array] = [
+	[329.63, 369.99, 415.30, 493.88, 415.30, 369.99, 329.63, 369.99], # E
+	[277.18, 329.63, 369.99, 415.30, 369.99, 329.63, 277.18, 329.63], # C#m
+	[415.30, 369.99, 329.63, 369.99, 415.30, 493.88, 415.30, 369.99], # G#m
+	[440.00, 415.30, 369.99, 329.63, 369.99, 415.30, 440.00, 369.99], # A
+]
+const _MUSIC_CHORD_TONES: Array[Array] = [
+	[329.63, 415.30, 493.88], # E
+	[277.18, 329.63, 415.30], # C#m
+	[415.30, 493.88, 622.25], # G#m
+	[440.00, 554.37, 659.25], # A
+]
+const _HUD_BG: Color = Color(0.10, 0.08, 0.07, 0.88)
+const _HUD_BORDER: Color = Color(0.48, 0.35, 0.22, 0.90)
+const _HUD_TEXT: Color = Color(0.95, 0.90, 0.83, 1.0)
+const _HUD_TEXT_MUTED: Color = Color(0.79, 0.70, 0.60, 1.0)
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
@@ -79,6 +99,18 @@ func _ready() -> void:
 		quit_game_button.visible = false
 	if pause_menu_panel != null:
 		pause_menu_panel.visible = false
+	if pause_backdrop != null:
+		pause_backdrop.visible = false
+	UiStyleScript.style_panel(pause_menu_panel)
+	UiStyleScript.style_button(pause_resume_button)
+	UiStyleScript.style_button(pause_music_button)
+	UiStyleScript.style_button(pause_quit_button)
+	if pause_resume_button != null and pause_music_button != null and pause_quit_button != null:
+		pause_resume_button.focus_neighbor_bottom = pause_resume_button.get_path_to(pause_music_button)
+		pause_music_button.focus_neighbor_top = pause_music_button.get_path_to(pause_resume_button)
+		pause_music_button.focus_neighbor_bottom = pause_music_button.get_path_to(pause_quit_button)
+		pause_quit_button.focus_neighbor_top = pause_quit_button.get_path_to(pause_music_button)
+		pause_quit_button.focus_neighbor_bottom = pause_quit_button.get_path_to(pause_resume_button)
 	if pause_resume_button != null and not pause_resume_button.pressed.is_connected(_on_pause_resume_pressed):
 		pause_resume_button.pressed.connect(_on_pause_resume_pressed)
 	if pause_music_button != null and not pause_music_button.pressed.is_connected(_on_pause_music_pressed):
@@ -90,6 +122,10 @@ func _ready() -> void:
 		quit_game_button.pressed.connect(_on_quit_game_button_pressed)
 	if quit_confirm_dialog != null and not quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
 		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
+	if quit_confirm_dialog != null:
+		quit_confirm_dialog.title = "Leave Match"
+		quit_confirm_dialog.ok_button_text = "Quit Match"
+		_apply_quit_dialog_theme()
 	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
 	if multiplayer.has_multiplayer_peer():
@@ -206,16 +242,30 @@ func _stream_game_music() -> void:
 		return
 	var frames_available: int = _music_playback.get_frames_available()
 	for _i in range(frames_available):
-		var note_index: int = int(floor(_music_time / _MUSIC_STEP_SECONDS)) % _MUSIC_MELODY.size()
-		var freq: float = _MUSIC_MELODY[note_index]
-		_music_phase += TAU * freq / _MUSIC_SAMPLE_RATE
-		var lead: float = sin(_music_phase)
-		var upper: float = sin(_music_phase * 1.5) * 0.24
-		var low: float = sin(_music_phase * 0.5) * 0.18
-		var pulse: float = 0.88 + 0.12 * sin(_music_time * 5.2)
-		var sample: float = (lead + upper + low) * 0.07 * pulse
+		var step_idx: int = int(floor(_music_time / _MUSIC_STEP_SECONDS))
+		var chord_idx: int = int(floor(float(step_idx) / _MUSIC_STEPS_PER_CHORD)) % _MUSIC_PROGRESS_ROOTS.size()
+		var step_in_chord: int = step_idx % _MUSIC_STEPS_PER_CHORD
+		var lead_freq: float = _music_lead_for_step(chord_idx, step_in_chord)
+		var root_freq: float = _MUSIC_PROGRESS_ROOTS[chord_idx]
+		var chord_tones: Array = _MUSIC_CHORD_TONES[chord_idx]
+		_music_phase += TAU * lead_freq / _MUSIC_SAMPLE_RATE
+		_music_bass_phase += TAU * root_freq / _MUSIC_SAMPLE_RATE
+		var lead_square: float = 1.0 if sin(_music_phase) >= 0.0 else -1.0
+		var lead_upper: float = sin(_music_phase * 2.0) * 0.26
+		var bass_square: float = 1.0 if sin(_music_bass_phase) >= 0.0 else -1.0
+		var pad: float = (
+			sin(_music_time * TAU * float(chord_tones[0])) +
+			sin(_music_time * TAU * float(chord_tones[1])) +
+			sin(_music_time * TAU * float(chord_tones[2]))
+		) / 3.0
+		var step_phase: float = fmod(_music_time, _MUSIC_STEP_SECONDS) / _MUSIC_STEP_SECONDS
+		var gate: float = 0.92 - step_phase * 0.12
+		var sample: float = (lead_square * 0.042 + lead_upper * 0.028 + bass_square * 0.022 + pad * 0.030) * gate
 		_music_playback.push_frame(Vector2(sample, sample))
 		_music_time += 1.0 / _MUSIC_SAMPLE_RATE
+
+func _music_lead_for_step(chord_idx: int, step_in_chord: int) -> float:
+	return float(_MUSIC_MELODY_BY_CHORD[chord_idx][step_in_chord])
 
 # ── Player spawning ───────────────────────────────────────────────────────────
 func _spawn_players() -> void:
@@ -292,6 +342,8 @@ func _open_pause_menu() -> void:
 	if pause_menu_panel == null:
 		return
 	pause_menu_panel.visible = true
+	if pause_backdrop != null:
+		pause_backdrop.visible = true
 	_update_pause_music_button_label()
 	if pause_resume_button != null:
 		pause_resume_button.grab_focus()
@@ -300,14 +352,26 @@ func _close_pause_menu() -> void:
 	if pause_menu_panel == null:
 		return
 	pause_menu_panel.visible = false
+	if pause_backdrop != null:
+		pause_backdrop.visible = false
 
 func _request_quit_to_menu() -> void:
 	_close_pause_menu()
 	if quit_confirm_dialog == null:
 		get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
 		return
-	quit_confirm_dialog.dialog_text = "You are giving up already?\nThe bridge is still burning.\n\nQuit the match anyway?"
+	_apply_quit_dialog_theme()
+	quit_confirm_dialog.dialog_text = "Are you sure you want to leave this match and return to the main menu?"
 	quit_confirm_dialog.popup_centered()
+
+func _apply_quit_dialog_theme() -> void:
+	if quit_confirm_dialog == null:
+		return
+	quit_confirm_dialog.add_theme_stylebox_override("panel", UiStyleScript.make_panel_style())
+	quit_confirm_dialog.add_theme_color_override("title_color", UiStyleScript.TEXT_PRIMARY)
+	quit_confirm_dialog.add_theme_color_override("font_color", UiStyleScript.TEXT_SECONDARY)
+	UiStyleScript.style_button(quit_confirm_dialog.get_ok_button())
+	UiStyleScript.style_button(quit_confirm_dialog.get_cancel_button())
 
 func _on_quit_confirmed() -> void:
 	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
@@ -607,8 +671,9 @@ func _draw_player(p: Dictionary) -> void:
 	)
 	draw_rect(tag_rect, Color(0.0, 0.0, 0.0, 0.55))
 	draw_rect(tag_rect, pa, false, 1.0)
-	draw_string(font, label_pos, p.label,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(1.0, 1.0, 1.0, 0.92))
+	var text_pos := Vector2(label_pos.x - label_size.x * 0.5, label_pos.y)
+	draw_string(font, text_pos, p.label,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(1.0, 1.0, 1.0, 0.92))
 
 # ── HUD ───────────────────────────────────────────────────────────────────────
 func _draw_hud(vp: Vector2) -> void:
@@ -628,7 +693,7 @@ func _draw_hud(vp: Vector2) -> void:
 			HORIZONTAL_ALIGNMENT_LEFT,
 			-1,
 			14,
-			Color(1.0, 1.0, 1.0, 1.0)
+			_HUD_TEXT
 		)
 
 	for i in range(_players.size()):
@@ -639,16 +704,16 @@ func _draw_hud(vp: Vector2) -> void:
 		var col: Color = p.palette[0]
 
 		# Background
-		draw_rect(Rect2(bx, by, bar_w, bar_h), Color(0.08, 0.08, 0.08, 0.85))
+		draw_rect(Rect2(bx, by, bar_w, bar_h), _HUD_BG)
 		# Fill
 		if p.alive and fill > 0.0:
 			draw_rect(Rect2(bx, by, fill, bar_h), col)
 		# Border
-		draw_rect(Rect2(bx, by, bar_w, bar_h), Color(1.0, 1.0, 1.0, 0.55), false, 1.5)
+		draw_rect(Rect2(bx, by, bar_w, bar_h), _HUD_BORDER, false, 1.5)
 		# Label
 		draw_string(font, Vector2(bx + 5.0, by + bar_h - 5.0),
 				"%s  %d" % [p.label, int(maxf(p.health, 0.0))],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, _HUD_TEXT)
 
 func _draw_win_screen(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0, 0.0, 0.0, 0.58))
@@ -663,12 +728,12 @@ func _draw_win_screen(vp: Vector2) -> void:
 		msg = "%s WINS!" % _players[_winner].label
 
 	draw_string(font, Vector2(cx, cy), msg,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, 52, Color(1.0, 0.88, 0.12))
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 52, Color(0.95, 0.75, 0.35, 1.0))
 
 	var remaining := ceili(END_DELAY - _end_timer)
 	draw_string(font, Vector2(cx, cy + 62.0),
 			"Returning to menu in %d..." % remaining,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, 20, Color(0.8, 0.8, 0.8))
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 20, _HUD_TEXT_MUTED)
 
 # ── Off-screen player indicators ─────────────────────────────────────────────
 func _draw_offscreen_indicators(vp: Vector2) -> void:

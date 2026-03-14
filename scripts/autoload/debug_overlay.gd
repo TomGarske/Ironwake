@@ -1,4 +1,5 @@
 extends Node
+const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 
 const MAX_LINES: int = 300
 const _EXPANDED_HEIGHT: float = 208.0
@@ -14,25 +15,23 @@ var _connected_to_steam: bool = false
 var _collapsed: bool = true
 
 func _ready() -> void:
-	if not OS.is_debug_build():
-		return
 	_build_ui()
 	call_deferred("_try_connect_steam")
 
 func _process(_delta: float) -> void:
-	if not OS.is_debug_build():
-		return
 	if not _connected_to_steam:
 		_try_connect_steam()
+	_sync_version_label_visibility()
 
 func _input(event: InputEvent) -> void:
-	if not OS.is_debug_build():
+	if _panel == null:
 		return
-	if event is InputEventKey and event.pressed and event.keycode == KEY_F3:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F3:
 		_panel.visible = not _panel.visible
+		_sync_version_label_visibility()
 
 func log_message(message: String, is_error: bool = false) -> void:
-	if not OS.is_debug_build():
+	if _log == null:
 		return
 	var prefix: String = "[ERR] " if is_error else "[LOG] "
 	_log.append_text(prefix + message + "\n")
@@ -57,6 +56,7 @@ func _build_ui() -> void:
 	_panel.offset_bottom = -12
 	# Hidden by default; toggle with F3 when you want diagnostics.
 	_panel.visible = false
+	_panel.add_theme_stylebox_override("panel", UiStyleScript.make_panel_style())
 	_canvas.add_child(_panel)
 
 	var root := VBoxContainer.new()
@@ -69,11 +69,13 @@ func _build_ui() -> void:
 	var title := Label.new()
 	title.text = "Debug Console (F3 to show/hide)"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
 	header.add_child(title)
 
 	_collapse_button = Button.new()
 	_collapse_button.text = "-"
 	_collapse_button.custom_minimum_size = Vector2(28, 24)
+	UiStyleScript.style_button(_collapse_button)
 	_collapse_button.pressed.connect(_on_toggle_collapsed)
 	header.add_child(_collapse_button)
 
@@ -90,12 +92,14 @@ func _build_ui() -> void:
 	_log.bbcode_enabled = false
 	_log.fit_content = false
 	_log.scroll_active = true
+	_log.add_theme_color_override("default_color", UiStyleScript.TEXT_SECONDARY)
 	margin.add_child(_log)
 
 	log_message("[DebugOverlay] Enabled (toggle with F3).")
 	
 	# Apply collapsed state by default
 	_apply_collapsed_state()
+	_sync_version_label_visibility()
 
 func _try_connect_steam() -> void:
 	if not has_node("/root/SteamManager"):
@@ -126,3 +130,13 @@ func _apply_collapsed_state() -> void:
 	var target_height: float = _COLLAPSED_HEIGHT if _collapsed else _EXPANDED_HEIGHT
 	_panel.offset_top = -(target_height + 12.0)
 	_root.queue_sort()
+
+func _sync_version_label_visibility() -> void:
+	if _panel == null:
+		return
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		return
+	var version_node: Node = scene_root.get_node_or_null("VersionLabel")
+	if version_node is CanvasItem:
+		(version_node as CanvasItem).visible = _panel.visible

@@ -1,18 +1,19 @@
 extends Control
+const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 
 # ---------------------------------------------------------------------------
 # Node references
 # ---------------------------------------------------------------------------
-@onready var lobby_id_label: Label = $VBoxContainer/LobbyIdLabel
-@onready var lobby_status_label: Label = $VBoxContainer/LobbyStatusLabel
-@onready var player_list: VBoxContainer = $VBoxContainer/PlayerList
-@onready var handshake_status_label: Label = $VBoxContainer/HandshakeStatusLabel
-@onready var friends_title: Label = $VBoxContainer/FriendsTitle
-@onready var friends_list: VBoxContainer = $VBoxContainer/FriendsScroll/FriendsList
-@onready var invite_note_label: Label = $VBoxContainer/InviteNoteLabel
-@onready var ready_button: Button = $VBoxContainer/ReadyButton
-@onready var start_button: Button = $VBoxContainer/StartButton
-@onready var back_button: Button = $VBoxContainer/BackButton
+@onready var lobby_id_label: Label = $LobbyCard/VBoxContainer/LobbyIdLabel
+@onready var lobby_status_label: Label = $LobbyCard/VBoxContainer/LobbyStatusLabel
+@onready var player_list: VBoxContainer = $LobbyCard/VBoxContainer/PlayerList
+@onready var handshake_status_label: Label = $LobbyCard/VBoxContainer/HandshakeStatusLabel
+@onready var friends_title: Label = $LobbyCard/VBoxContainer/FriendsTitle
+@onready var friends_list: VBoxContainer = $LobbyCard/VBoxContainer/FriendsScroll/FriendsList
+@onready var invite_note_label: Label = $LobbyCard/VBoxContainer/InviteNoteLabel
+@onready var ready_button: Button = $LobbyCard/VBoxContainer/ReadyButton
+@onready var start_button: Button = $LobbyCard/VBoxContainer/StartButton
+@onready var back_button: Button = $LobbyCard/VBoxContainer/BackButton
 @onready var refresh_timer: Timer = $RefreshTimer
 
 var _lobby_members_updated_handler: Callable
@@ -25,6 +26,7 @@ const _FRIENDS_REFRESH_INTERVAL: float = 6.0
 # ---------------------------------------------------------------------------
 func _ready() -> void:
 	lobby_id_label.text = "Lobby ID: %d" % SteamManager.lobby_id
+	_apply_warm_tactical_theme()
 	_configure_navigation()
 
 	# Only the host sees the Start button
@@ -54,11 +56,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _configure_navigation() -> void:
+	ready_button.focus_mode = Control.FOCUS_ALL
+	start_button.focus_mode = Control.FOCUS_ALL
+	back_button.focus_mode = Control.FOCUS_ALL
 	ready_button.focus_neighbor_bottom = ready_button.get_path_to(start_button if start_button.visible else back_button)
 	start_button.focus_neighbor_top = start_button.get_path_to(ready_button)
 	start_button.focus_neighbor_bottom = start_button.get_path_to(back_button)
 	back_button.focus_neighbor_top = back_button.get_path_to(start_button if start_button.visible else ready_button)
 	(ready_button if ready_button.visible else back_button).grab_focus()
+
+func _apply_warm_tactical_theme() -> void:
+	UiStyleScript.style_title(lobby_id_label, 20)
+	UiStyleScript.style_body(lobby_status_label)
+	UiStyleScript.style_body(handshake_status_label, true)
+	UiStyleScript.style_body(invite_note_label, true)
+	UiStyleScript.style_title(friends_title, 16)
+	UiStyleScript.style_button(ready_button)
+	UiStyleScript.style_button(start_button)
+	UiStyleScript.style_button(back_button)
 
 func _exit_tree() -> void:
 	if SteamManager == null:
@@ -91,9 +106,16 @@ func _refresh_player_list(_peer_id: int) -> void:
 	for i in range(member_count):
 		var member_name: String = members[i]
 		var member_id: int = member_ids[i] if i < member_ids.size() else 0
+		var row_panel := PanelContainer.new()
+		row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UiStyleScript.style_panel(row_panel)
+		player_list.add_child(row_panel)
+
 		var row := HBoxContainer.new()
+		row_panel.add_child(row)
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.alignment = BoxContainer.ALIGNMENT_BEGIN
+		row.add_theme_constant_override("separation", 8)
 
 		row.add_child(_create_avatar_rect(member_id, 24))
 
@@ -101,8 +123,9 @@ func _refresh_player_list(_peer_id: int) -> void:
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var ready_text: String = "Ready" if SteamManager.is_member_ready(member_id) else "Not Ready"
 		label.text = member_name + " (" + ready_text + ")"
+		UiStyleScript.style_body(label)
 		row.add_child(label)
-		player_list.add_child(row)
+
 	var ready_counts: Dictionary = SteamManager.get_ready_counts()
 	lobby_status_label.text = "Lobby Members: %d/4 | Ready: %d/%d" % [member_count, int(ready_counts.get("ready", 0)), int(ready_counts.get("total", 0))]
 	ready_button.text = "Unready" if SteamManager.local_ready else "Ready"
@@ -137,12 +160,20 @@ func _refresh_online_friends() -> void:
 	if in_game_friends.is_empty():
 		var empty_label := Label.new()
 		empty_label.text = "No friends currently in BurnBridgers."
+		UiStyleScript.style_body(empty_label, true)
 		friends_list.add_child(empty_label)
 		return
 
 	for friend in in_game_friends:
+		var row_panel := PanelContainer.new()
+		row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UiStyleScript.style_panel(row_panel)
+		friends_list.add_child(row_panel)
+
 		var row := HBoxContainer.new()
+		row_panel.add_child(row)
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_theme_constant_override("separation", 8)
 
 		var friend_id: int = int(friend.get("steam_id", 0))
 		row.add_child(_create_avatar_rect(friend_id, 20))
@@ -150,6 +181,7 @@ func _refresh_online_friends() -> void:
 		var name_label := Label.new()
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_label.text = str(friend.get("name", "Unknown"))
+		UiStyleScript.style_body(name_label)
 		row.add_child(name_label)
 
 		var status_label := Label.new()
@@ -160,10 +192,14 @@ func _refresh_online_friends() -> void:
 			invite_state = SteamManager.get_invite_state(friend_id)
 		status_label.text = friend_status
 		status_label.custom_minimum_size = Vector2(120, 0)
+		UiStyleScript.style_body(status_label, true)
+		if friend_status == "In Lobby":
+			status_label.add_theme_color_override("font_color", UiStyleScript.ACCENT_SOFT)
 		row.add_child(status_label)
 
 		var invite_button := Button.new()
 		invite_button.text = "Invite"
+		UiStyleScript.style_button(invite_button)
 		invite_button.disabled = friend_status == "In Lobby"
 		if has_invite_state and invite_state == SteamManager.InviteState.INVITED:
 			invite_button.text = "Reinvite"
@@ -178,7 +214,6 @@ func _refresh_online_friends() -> void:
 		invite_button.pressed.connect(_on_invite_friend_pressed.bind(friend_id))
 		row.add_child(invite_button)
 
-		friends_list.add_child(row)
 
 # ---------------------------------------------------------------------------
 # Button handlers

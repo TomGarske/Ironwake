@@ -1,4 +1,5 @@
 extends Control
+const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 
 # ---------------------------------------------------------------------------
 # Node references
@@ -21,21 +22,37 @@ extends Control
 
 var _music_playback: AudioStreamGeneratorPlayback = null
 var _music_phase: float = 0.0
+var _music_bass_phase: float = 0.0
 var _music_time: float = 0.0
 
 const _MUSIC_SAMPLE_RATE: float = 44100.0
-const _MUSIC_STEP_SECONDS: float = 0.40
-const _MUSIC_MELODY: Array[float] = [261.63, 329.63, 392.00, 329.63, 293.66, 392.00, 523.25, 392.00]
+const _MUSIC_STEP_SECONDS: float = 0.34
+const _MUSIC_STEPS_PER_CHORD: int = 8
+const _MUSIC_PROGRESS_ROOTS: Array[float] = [82.41, 69.30, 51.91, 55.00] # E, C#, G#, A
+const _MUSIC_MELODY_BY_CHORD: Array[Array] = [
+	[329.63, 369.99, 415.30, 493.88, 415.30, 369.99, 329.63, 369.99], # E
+	[277.18, 329.63, 369.99, 415.30, 369.99, 329.63, 277.18, 329.63], # C#m
+	[415.30, 369.99, 329.63, 369.99, 415.30, 493.88, 415.30, 369.99], # G#m
+	[440.00, 415.30, 369.99, 329.63, 369.99, 415.30, 440.00, 369.99], # A
+]
+const _MUSIC_CHORD_TONES: Array[Array] = [
+	[329.63, 415.30, 493.88], # E
+	[277.18, 329.63, 415.30], # C#m
+	[415.30, 493.88, 622.25], # G#m
+	[440.00, 554.37, 659.25], # A
+]
 
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
 func _ready() -> void:
 	_update_version_label()
+	_apply_warm_tactical_theme()
 	_configure_navigation()
 	_setup_menu_music()
 	_sync_music_toggle()
 	_apply_music_enabled_state()
+	_apply_dialog_theme()
 
 	if SteamManager == null:
 		push_error("[MainMenu] SteamManager autoload missing.")
@@ -65,6 +82,28 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	_stream_menu_music()
 
+func _apply_warm_tactical_theme() -> void:
+	UiStyleScript.style_button(host_button)
+	UiStyleScript.style_button(test_button)
+	UiStyleScript.style_button(settings_button)
+	UiStyleScript.style_button(exit_button)
+	UiStyleScript.style_button(confirm_join_button)
+	UiStyleScript.style_button(refresh_lobbies_button)
+	UiStyleScript.style_line_edit(join_input)
+	if music_toggle != null:
+		music_toggle.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
+		music_toggle.add_theme_color_override("font_pressed_color", UiStyleScript.TEXT_PRIMARY)
+		music_toggle.add_theme_color_override("font_hover_color", UiStyleScript.TEXT_PRIMARY)
+
+func _apply_dialog_theme() -> void:
+	if quit_confirm_dialog == null:
+		return
+	quit_confirm_dialog.add_theme_stylebox_override("panel", UiStyleScript.make_panel_style())
+	quit_confirm_dialog.add_theme_color_override("title_color", UiStyleScript.TEXT_PRIMARY)
+	quit_confirm_dialog.add_theme_color_override("font_color", UiStyleScript.TEXT_SECONDARY)
+	UiStyleScript.style_button(quit_confirm_dialog.get_ok_button())
+	UiStyleScript.style_button(quit_confirm_dialog.get_cancel_button())
+
 func _update_version_label() -> void:
 	if version_label == null:
 		return
@@ -72,6 +111,14 @@ func _update_version_label() -> void:
 	version_label.text = version
 
 func _configure_navigation() -> void:
+	host_button.focus_mode = Control.FOCUS_ALL
+	test_button.focus_mode = Control.FOCUS_ALL
+	settings_button.focus_mode = Control.FOCUS_ALL
+	exit_button.focus_mode = Control.FOCUS_ALL
+	confirm_join_button.focus_mode = Control.FOCUS_ALL
+	refresh_lobbies_button.focus_mode = Control.FOCUS_ALL
+	join_input.focus_mode = Control.FOCUS_ALL
+	music_toggle.focus_mode = Control.FOCUS_ALL
 	host_button.focus_neighbor_bottom = host_button.get_path_to(test_button)
 	test_button.focus_neighbor_top = test_button.get_path_to(host_button)
 	test_button.focus_neighbor_bottom = test_button.get_path_to(settings_button)
@@ -98,13 +145,30 @@ func _stream_menu_music() -> void:
 		return
 	var frames_available: int = _music_playback.get_frames_available()
 	for _i in range(frames_available):
-		var note_index: int = int(floor(_music_time / _MUSIC_STEP_SECONDS)) % _MUSIC_MELODY.size()
-		var freq: float = _MUSIC_MELODY[note_index]
-		_music_phase += TAU * freq / _MUSIC_SAMPLE_RATE
-		var harmonic: float = sin(_music_phase * 2.0) * 0.35
-		var sample: float = (sin(_music_phase) + harmonic) * 0.08
+		var step_idx: int = int(floor(_music_time / _MUSIC_STEP_SECONDS))
+		var chord_idx: int = int(floor(float(step_idx) / _MUSIC_STEPS_PER_CHORD)) % _MUSIC_PROGRESS_ROOTS.size()
+		var step_in_chord: int = step_idx % _MUSIC_STEPS_PER_CHORD
+		var lead_freq: float = _music_lead_for_step(chord_idx, step_in_chord)
+		var root_freq: float = _MUSIC_PROGRESS_ROOTS[chord_idx]
+		var chord_tones: Array = _MUSIC_CHORD_TONES[chord_idx]
+		_music_phase += TAU * lead_freq / _MUSIC_SAMPLE_RATE
+		_music_bass_phase += TAU * root_freq / _MUSIC_SAMPLE_RATE
+		var lead_square: float = 1.0 if sin(_music_phase) >= 0.0 else -1.0
+		var lead_sine: float = sin(_music_phase * 0.5)
+		var bass_square: float = 1.0 if sin(_music_bass_phase) >= 0.0 else -1.0
+		var pad: float = (
+			sin(_music_time * TAU * float(chord_tones[0])) +
+			sin(_music_time * TAU * float(chord_tones[1])) +
+			sin(_music_time * TAU * float(chord_tones[2]))
+		) / 3.0
+		var step_phase: float = fmod(_music_time, _MUSIC_STEP_SECONDS) / _MUSIC_STEP_SECONDS
+		var gate: float = 0.94 - step_phase * 0.10
+		var sample: float = (lead_square * 0.040 + lead_sine * 0.026 + bass_square * 0.018 + pad * 0.026) * gate
 		_music_playback.push_frame(Vector2(sample, sample))
 		_music_time += 1.0 / _MUSIC_SAMPLE_RATE
+
+func _music_lead_for_step(chord_idx: int, step_in_chord: int) -> float:
+	return float(_MUSIC_MELODY_BY_CHORD[chord_idx][step_in_chord])
 
 func _exit_tree() -> void:
 	if SteamManager != null:
@@ -146,9 +210,9 @@ func _on_test_button_pressed() -> void:
 	get_tree().change_scene_to_file(GameManager.MATCH_SCENE_PATH)
 
 func _on_exit_button_pressed() -> void:
-	quit_confirm_dialog.title = "Quit Game"
-	quit_confirm_dialog.ok_button_text = "Quit"
-	quit_confirm_dialog.dialog_text = "Close BurnBridgers and return to desktop?"
+	quit_confirm_dialog.title = "Exit BurnBridgers"
+	quit_confirm_dialog.ok_button_text = "Exit Game"
+	quit_confirm_dialog.dialog_text = "Are you sure you want to close BurnBridgers and return to desktop?"
 	quit_confirm_dialog.popup_centered()
 
 func _on_settings_button_pressed() -> void:
@@ -230,6 +294,7 @@ func _rebuild_lobby_list(lobbies: Array) -> void:
 	if lobbies.is_empty():
 		var empty_label := Label.new()
 		empty_label.text = "No lobbies yet. Host a game to create one."
+		UiStyleScript.style_body(empty_label, true)
 		lobby_list.add_child(empty_label)
 		return
 	for item in lobbies:
@@ -244,10 +309,12 @@ func _rebuild_lobby_list(lobbies: Array) -> void:
 		var lobby_name: String = str(item.get("name", "BurnBridgers Lobby"))
 		var members: int = int(item.get("members", 0))
 		name_label.text = "%s (%d/4)" % [lobby_name, members]
+		UiStyleScript.style_body(name_label)
 		row.add_child(name_label)
 
 		var join_button := Button.new()
 		join_button.text = "Join"
+		UiStyleScript.style_button(join_button)
 		join_button.pressed.connect(_on_join_lobby_from_list.bind(lobby_id))
 		row.add_child(join_button)
 
