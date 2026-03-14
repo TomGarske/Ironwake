@@ -1,0 +1,23 @@
+---
+description: Enforce basic gitflow branch and PR workflow
+alwaysApply: true
+---
+
+# Basic Gitflow Workflow
+
+Follow this workflow for all implementation tasks:
+
+1. Keep `main` protected and release-ready.
+2. Do not commit to `main`.
+3. Do not push to `main`.
+4. Start work by creating a short-lived branch from `main`.
+5. Preferred naming:
+   - `feature/<slug>` for new work
+   - `fix/<slug>` for bug fixes
+   - `hotfix/<slug>` for urgent fixes
+6. Make commits on the short-lived branch.
+7. Push the branch to `origin`.
+8. Create a pull request from that branch to `main`.
+9. Provide the real PR URL after creation.
+
+If you are currently on `main`, branch first before making edits.

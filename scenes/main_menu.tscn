@@ -15,6 +15,20 @@ script = ExtResource("1_main_menu")
 [node name="BurningBridge" type="CanvasLayer" parent="." unique_id=1677095546]
 script = ExtResource("2_burning_bridge")
 
+[node name="VersionLabel" type="Label" parent="." unique_id=169532133]
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -140.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = 36.0
+theme_override_font_sizes/font_size = 14
+text = "vdev"
+horizontal_alignment = 2
+vertical_alignment = 1
+
 [node name="LeftMenuPanel" type="PanelContainer" parent="." unique_id=7481326]
 layout_mode = 1
 anchors_preset = 4

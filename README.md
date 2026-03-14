@@ -54,7 +54,7 @@ You can also set `BURNBRIDGERS_STEAM_APPID` in your environment.
 | Engine | Godot 4.x (GDScript) |
 | Multiplayer transport | GodotSteam GDExtension — Steam P2P via `SteamMultiplayerPeer` |
 | Authority model | Host-authoritative — host validates all actions, broadcasts results via RPC |
-| Grid | Discrete tile grid, 10×10, Manhattan-distance movement and attack |
+| Grid | Discrete tile grid, 10×20, Manhattan-distance movement and attack |
 
 ---
 
@@ -62,31 +62,24 @@ You can also set `BURNBRIDGERS_STEAM_APPID` in your environment.
 
 ```
 scripts/
-  autoload/         # SteamManager, GameManager (global singletons)
-  tactical_map.gd   # Core game loop: input, unit selection, RPC dispatch
-  turn_manager.gd   # Turn sequencing and win condition
-  unit.gd           # Unit data, movement/attack validation, drawing
-  overlay.gd        # Grid highlights (selection, move range, attack range)
-  lobby.gd          # Lobby screen (player list, start button)
-  main_menu.gd      # Main menu (host/join/test buttons)
-scenes/             # Godot scene files corresponding to each script
-docs/
-  design/           # Game philosophy and player experience principles
-  systems/          # Detailed specs: combat, RNG, turns, squads, networking
-  adr/              # Architecture Decision Records
+  autoload/           # GameConstants, DebugOverlay, SteamManager, GameManager
+  tactical_map.gd     # Core game loop: input, unit selection, RPC dispatch
+  turn_manager.gd     # Turn sequencing and win condition
+  unit.gd             # Unit data, movement/attack validation, drawing
+  overlay.gd          # Grid highlights (selection, move range, attack range)
+  burning_bridge.gd   # Main menu background animation (CanvasLayer)
+  bridge_drawer.gd    # Bridge drawing helper (Node2D child of BurningBridge)
+  lobby.gd            # Lobby screen (player list, ready/start buttons)
+  main_menu.gd        # Main menu (host/join/test buttons, version label)
+scenes/               # Godot scene files corresponding to each script
 ```
-
-See [docs/design/game_philosophy.md](docs/design/game_philosophy.md) for the core design principles, and [docs/systems/](docs/systems/) for detailed system specifications.
 
 ---
 
 ## Contributing
 
-This repository uses [gitflow](https://nvie.com/posts/a-successful-git-branching-model/):
-- `main` — stable releases only
-- `develop` — integration branch; all feature PRs merge here
-- `feature/*`, `fix/*`, `adr/*` — short-lived branches off `develop`
+This repository uses feature-branch workflow:
+- `main` — stable; all PRs target here
+- `feature/*`, `fix/*` — short-lived branches off `main`
 
-Architecture decisions are documented as ADRs in `docs/adr/`. Read [AGENTS.md](AGENTS.md) for the ADR governance policy (applies to human contributors too, not just AI agents).
-
-PRs to `develop` or `main` must fill in the [PR template](.github/PULL_REQUEST_TEMPLATE.md) — the CI gate will fail otherwise.
+Fill in the [PR template](.github/PULL_REQUEST_TEMPLATE.md) when submitting a PR.

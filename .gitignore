@@ -22,6 +22,8 @@ Thumbs.db
 desktop.ini
 
 # Editor / IDE
-.cursor/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/*.mdc
 .vscode/
 *.swp

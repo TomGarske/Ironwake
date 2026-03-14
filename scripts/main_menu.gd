@@ -10,11 +10,13 @@ extends Control
 @onready var refresh_lobbies_button: Button = $RightLobbyPanel/VBoxContainer/RefreshLobbiesButton
 @onready var lobby_list_status: Label = $RightLobbyPanel/VBoxContainer/LobbyListStatus
 @onready var lobby_list: VBoxContainer = $RightLobbyPanel/VBoxContainer/LobbyListScroll/LobbyList
+@onready var version_label: Label = $VersionLabel
 
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
 func _ready() -> void:
+	_update_version_label()
 	if SteamManager == null:
 		push_error("[MainMenu] SteamManager autoload missing.")
 	else:
@@ -35,6 +37,12 @@ func _ready() -> void:
 	DebugOverlay.log_message("[MainMenu] Ready.")
 	if SteamManager != null:
 		_refresh_lobby_browser()
+
+func _update_version_label() -> void:
+	if version_label == null:
+		return
+	var version: String = str(ProjectSettings.get_setting("application/config/version", "dev"))
+	version_label.text = version
 
 func _exit_tree() -> void:
 	if SteamManager == null:

@@ -163,7 +163,6 @@ func _generate_map() -> void:
 			else:
 				t = T_SNOW
 			_terrain[tx].append(t)
-
 # ── Coordinate helpers ────────────────────────────────────────────────────────
 func _w2s(wx: float, wy: float) -> Vector2:
 	return _origin + Vector2((wx - wy) * TILE_W * 0.5, (wx + wy) * TILE_H * 0.5)
@@ -194,18 +193,24 @@ func _register_inputs() -> void:
 # ── Player spawning ───────────────────────────────────────────────────────────
 func _spawn_players() -> void:
 	var peer_ids: Array[int] = []
-	var labels:   Array      = []
+	var labels: Array[String] = []
 
-	if SteamManager.lobby_id != 0 and GameManager.players.size() > 0:
-		for pid: int in GameManager.players:
-			peer_ids.append(pid)
+	# Build roster from active multiplayer peer IDs so every client resolves
+	# ownership the same way, even if GameManager player metadata lags behind.
+	if multiplayer.has_multiplayer_peer():
+		peer_ids.append(multiplayer.get_unique_id())
+		peer_ids.append_array(multiplayer.get_peers())
 		peer_ids.sort()
-		for pid: int in peer_ids:
-			labels.append(GameManager.players[pid].get("username", "Player"))
+		for pid in peer_ids:
+			var fallback_name: String = "Player %d" % pid
+			if GameManager.players.has(pid):
+				labels.append(str(GameManager.players[pid].get("username", fallback_name)))
+			else:
+				labels.append(fallback_name)
 	else:
 		# Offline: two placeholder slots; this peer controls index 0
 		peer_ids = [1, 2]
-		labels   = ["P1", "P2"]
+		labels = ["P1", "P2"]
 
 	var count: int = mini(peer_ids.size(), _PALETTES.size())
 	var my_peer_id: int = multiplayer.get_unique_id()
@@ -218,6 +223,7 @@ func _spawn_players() -> void:
 	for i in range(count):
 		var start: Vector2 = _SPAWNS[i]
 		_players.append({
+			peer_id    = peer_ids[i],
 			wx         = start.x,
 			wy         = start.y,
 			dir        = Vector2(1.0, 0.0) if i == 0 else Vector2(-1.0, 0.0),
@@ -290,7 +296,7 @@ func _broadcast_my_state() -> void:
 		return
 	var p: Dictionary = _players[_my_index]
 	_receive_player_state.rpc(
-		_my_index,
+		int(p.peer_id),
 		float(p.wx), float(p.wy),
 		float(p.dir.x), float(p.dir.y),
 		float(p.atk_time), float(p.health),
@@ -299,13 +305,15 @@ func _broadcast_my_state() -> void:
 
 @rpc("any_peer", "unreliable")
 func _receive_player_state(
-		idx: int,
+		peer_id: int,
 		wx: float, wy: float,
 		dir_x: float, dir_y: float,
 		atk_time: float, health: float,
 		alive: bool, moving: bool, walk_time: float) -> void:
-	# Ignore updates for our own character; ignore out-of-range indices
-	if idx == _my_index or idx < 0 or idx >= _players.size():
+	if peer_id == multiplayer.get_unique_id():
+		return
+	var idx: int = _find_player_index_by_peer_id(peer_id)
+	if idx < 0:
 		return
 	var p: Dictionary = _players[idx]
 	p.wx        = wx
@@ -316,6 +324,12 @@ func _receive_player_state(
 	p.alive     = alive
 	p.moving    = moving
 	p.walk_time = walk_time
+
+func _find_player_index_by_peer_id(peer_id: int) -> int:
+	for i in range(_players.size()):
+		if int(_players[i].get("peer_id", -1)) == peer_id:
+			return i
+	return -1
 
 # ── Collision — keep players apart ────────────────────────────────────────────
 func _resolve_collisions() -> void:
