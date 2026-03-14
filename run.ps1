@@ -142,6 +142,7 @@ if ($Mode -eq "debug") {
 
     if ($NoLogCapture) {
         & $GodotConsole @args
+        $exitCode = $LASTEXITCODE
     } else {
         if (-not $NoLogWindow) {
             $tailCommand = "Get-Content -Path '$logFile' -Wait"
@@ -151,8 +152,81 @@ if ($Mode -eq "debug") {
         # Tee both stdout/stderr so errors can be shared for debugging.
         # Convert to plain text to avoid PowerShell NativeCommandError wrappers.
         & $GodotConsole @args 2>&1 | ForEach-Object { $_.ToString() } | Tee-Object -FilePath $logFile
+        $exitCode = $LASTEXITCODE
     }
-    exit $LASTEXITCODE
+
+    # Check for crash trace files after process exits
+    # Check even on normal exit (0) in case crash happened but exit code was misleading
+    $checkForCrashes = $true
+    if ($checkForCrashes) {
+        $crashWindowMinutes = 10  # Look for crash files created in the last 10 minutes
+        $startTime = (Get-Date).AddMinutes(-$crashWindowMinutes)
+        
+        Write-Host "[BurnBridgers] Checking for crash traces (files modified in last $crashWindowMinutes minutes)..." -ForegroundColor Yellow
+        
+        # Common locations for Godot crash dumps and trace files
+        $crashPatterns = @(
+            @{ Path = $ProjectRoot; Patterns = @("crash_*.dmp", "godot_*.dmp", "*.dmp", "crash_*.txt", "error_*.log") },
+            @{ Path = Join-Path $env:LOCALAPPDATA "Godot"; Patterns = @("crash_*.dmp", "godot_*.dmp", "*.dmp") },
+            @{ Path = Join-Path $env:APPDATA "Godot"; Patterns = @("crash_*.dmp", "godot_*.dmp", "*.dmp") }
+        )
+        
+        $foundTraces = @()
+        foreach ($location in $crashPatterns) {
+            $basePath = $location.Path
+            if (-not (Test-Path $basePath)) {
+                continue
+            }
+            foreach ($pattern in $location.Patterns) {
+                $fullPattern = Join-Path $basePath $pattern
+                try {
+                    $traces = Get-ChildItem -Path $fullPattern -ErrorAction SilentlyContinue | 
+                        Where-Object { $_.LastWriteTime -gt $startTime }
+                    if ($traces) {
+                        $foundTraces += $traces
+                    }
+                } catch {
+                    # Pattern might not match any files, continue
+                }
+            }
+        }
+        
+        # Remove duplicates (same file found via multiple patterns)
+        $foundTraces = $foundTraces | Sort-Object FullName -Unique
+        
+        if ($foundTraces.Count -gt 0) {
+            Write-Host "[BurnBridgers] Found $($foundTraces.Count) crash trace file(s). Copying to logs directory..." -ForegroundColor Red
+            
+            $traceInfo = @()
+            foreach ($trace in $foundTraces) {
+                $traceDest = Join-Path $logsDir "crash-$timestamp-$($trace.Name)"
+                try {
+                    Copy-Item -Path $trace.FullName -Destination $traceDest -Force
+                    $traceInfo += "Crash trace: $traceDest (source: $($trace.FullName))"
+                    Write-Host "[BurnBridgers] Copied crash trace: $traceDest" -ForegroundColor Red
+                } catch {
+                    Write-Warning "[BurnBridgers] Failed to copy crash trace $($trace.FullName): $_"
+                    $traceInfo += "Crash trace (copy failed): $($trace.FullName)"
+                }
+            }
+            
+            # Append trace file references to the log file
+            if (Test-Path $logFile) {
+                Add-Content -Path $logFile -Value "`n========== CRASH TRACE DETECTED =========="
+                Add-Content -Path $logFile -Value "Exit code: $exitCode"
+                Add-Content -Path $logFile -Value "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+                Add-Content -Path $logFile -Value "Found $($foundTraces.Count) crash trace file(s):"
+                foreach ($info in $traceInfo) {
+                    Add-Content -Path $logFile -Value "  $info"
+                }
+                Add-Content -Path $logFile -Value "==========================================`n"
+            }
+        } elseif ($exitCode -ne 0 -and $exitCode -ne $null) {
+            Write-Host "[BurnBridgers] Process exited with non-zero code ($exitCode) but no crash traces found." -ForegroundColor Yellow
+        }
+    }
+    
+    exit $exitCode
 }
 
 Write-Host "[BurnBridgers] Launching... (mode: $Mode)" -ForegroundColor Cyan

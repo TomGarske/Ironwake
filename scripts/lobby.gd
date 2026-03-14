@@ -12,6 +12,7 @@ extends Control
 @onready var invite_note_label: Label = $VBoxContainer/InviteNoteLabel
 @onready var ready_button: Button = $VBoxContainer/ReadyButton
 @onready var start_button: Button = $VBoxContainer/StartButton
+@onready var back_button: Button = $VBoxContainer/BackButton
 @onready var refresh_timer: Timer = $RefreshTimer
 
 # ---------------------------------------------------------------------------
@@ -165,6 +166,22 @@ func _on_handshake_status_updated(status_text: String) -> void:
 
 func _on_avatar_texture_updated(_steam_id: int) -> void:
 	_refresh_player_list(0)
+
+func _on_back_button_pressed() -> void:
+	_leave_lobby_and_return_to_menu()
+
+func _leave_lobby_and_return_to_menu() -> void:
+	DebugOverlay.log_message("[Lobby] Leaving lobby and returning to main menu...")
+	
+	# Clean up Steam lobby (this also closes multiplayer peer)
+	if SteamManager != null:
+		SteamManager.leave_lobby()
+	
+	# Reset game manager state
+	GameManager.reset()
+	
+	# Return to main menu
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 func _create_avatar_rect(steam_id: int, size: int) -> TextureRect:
 	var avatar := TextureRect.new()

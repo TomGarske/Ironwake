@@ -128,6 +128,22 @@ func join_lobby(target_lobby_id: int) -> void:
 	_emit_debug("[SteamManager] Joining lobby %d..." % target_lobby_id, false)
 	_steam.call("joinLobby", target_lobby_id)
 
+func leave_lobby() -> void:
+	if not steam_ready or _steam == null or lobby_id == 0:
+		_emit_debug("[SteamManager] No active lobby to leave.", false)
+		return
+	
+	_emit_debug("[SteamManager] Leaving lobby %d..." % lobby_id, false)
+	_steam.call("leaveLobby", lobby_id)
+	lobby_id = 0
+	is_host = false
+	
+	# Close multiplayer peer if active
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()
+		multiplayer.multiplayer_peer = null
+		_emit_debug("[SteamManager] Closed multiplayer peer.", false)
+
 func request_burnbridgers_lobby_list() -> void:
 	if not steam_ready or _steam == null:
 		_emit_debug("[SteamManager] Cannot request lobby list yet: Steam is not initialized.", true)

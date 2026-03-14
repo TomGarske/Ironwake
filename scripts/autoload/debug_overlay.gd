@@ -11,7 +11,7 @@ var _log_container: MarginContainer
 var _collapse_button: Button
 var _root: VBoxContainer
 var _connected_to_steam: bool = false
-var _collapsed: bool = false
+var _collapsed: bool = true
 
 func _ready() -> void:
 	if not OS.is_debug_build():
@@ -91,6 +91,9 @@ func _build_ui() -> void:
 	margin.add_child(_log)
 
 	log_message("[DebugOverlay] Enabled (toggle with F3).")
+	
+	# Apply collapsed state by default
+	_apply_collapsed_state()
 
 func _try_connect_steam() -> void:
 	if not has_node("/root/SteamManager"):
