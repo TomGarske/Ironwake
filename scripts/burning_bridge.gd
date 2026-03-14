@@ -5,9 +5,14 @@ extends CanvasLayer
 # ---------------------------------------------------------------------------
 
 var _flame_particles: Array[CPUParticles2D] = []
+var _flame_base_positions: Array[Vector2] = []
 var _bridge_points: Array[Vector2] = []
 var _time: float = 0.0
 var _bridge_drawer: Node2D
+var _bridge_center_y: float = 0.0
+var _bridge_width: float = 0.0
+var _bridge_start_x: float = 0.0
+var _flame_texture: Texture2D
 
 func _ready() -> void:
 	layer = -1  # Behind everything
@@ -17,6 +22,7 @@ func _ready() -> void:
 	_bridge_drawer.name = "BridgeDrawer"
 	_bridge_drawer.set_script(preload("res://scripts/bridge_drawer.gd"))
 	add_child(_bridge_drawer)
+	_flame_texture = _create_flame_texture()
 	
 	# Wait for viewport to be ready
 	call_deferred("_setup_bridge")
@@ -43,6 +49,10 @@ func _setup_bridge() -> void:
 	var bridge_height = 80.0
 	var start_x = viewport_size.x * 0.1
 	var end_x = start_x + bridge_width
+
+	_bridge_center_y = center_y
+	_bridge_width = bridge_width
+	_bridge_start_x = start_x
 	
 	# Bridge deck (horizontal line)
 	_bridge_points = [
@@ -58,10 +68,7 @@ func _setup_bridge() -> void:
 		Vector2(start_x + bridge_width * 0.75, center_y + bridge_height * 0.6),
 		Vector2(end_x, center_y + bridge_height)
 	])
-	
-var _flame_base_positions: Array[Vector2] = []
-
-func _create_flame_particle(x: float, y: float) -> CPUParticles2D:
+func _create_flame_particle(x: float, y: float, flame_texture: Texture2D) -> CPUParticles2D:
 	var particles = CPUParticles2D.new()
 	particles.position = Vector2(x, y)
 	particles.emitting = true
@@ -90,7 +97,7 @@ func _create_flame_particle(x: float, y: float) -> CPUParticles2D:
 	particles.color_ramp = color_ramp
 	
 	# Use texture for particles
-	particles.texture = _create_flame_texture()
+	particles.texture = flame_texture
 	
 	return particles
 
@@ -118,17 +125,21 @@ func _setup_flames() -> void:
 		# Viewport not ready yet, try again next frame
 		call_deferred("_setup_flames")
 		return
-	
-	var center_y = viewport_size.y * 0.7
-	var bridge_width = viewport_size.x * 0.8
-	var start_x = viewport_size.x * 0.1
+	if _bridge_width <= 0.0:
+		_setup_bridge()
+		call_deferred("_setup_flames")
+		return
+	if _flame_texture == null:
+		_flame_texture = _create_flame_texture()
+	_flame_base_positions.clear()
+	_flame_particles.clear()
 	
 	# Create 5 flame sources along the bridge
 	for i in range(5):
-		var flame_x = start_x + (bridge_width / 4.0) * i
-		var flame_pos = Vector2(flame_x, center_y - 10)
+		var flame_x = _bridge_start_x + (_bridge_width / 4.0) * i
+		var flame_pos = Vector2(flame_x, _bridge_center_y - 10.0)
 		_flame_base_positions.append(flame_pos)
-		var flame = _create_flame_particle(flame_x, center_y - 10)
+		var flame = _create_flame_particle(flame_x, _bridge_center_y - 10.0, _flame_texture)
 		_bridge_drawer.add_child(flame)
 		_flame_particles.append(flame)
 

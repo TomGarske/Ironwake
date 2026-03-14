@@ -4,7 +4,7 @@ extends Node2D
 # Constants
 # ---------------------------------------------------------------------------
 const UNIT_DRAW_SIZE: int = 52  # Slightly inset from tile edge
-const TEAM_COLORS: Array = [Color.CORNFLOWER_BLUE, Color.TOMATO]
+const TEAM_COLORS: Array[Color] = [Color.CORNFLOWER_BLUE, Color.TOMATO]
 
 # ---------------------------------------------------------------------------
 # Exported fields (set at spawn time by TacticalMap)
@@ -59,7 +59,7 @@ func move_to(target_pos: Vector2i) -> void:
 	has_moved = true
 
 func take_damage(amount: int) -> void:
-	health -= amount
+	health = maxi(health - amount, 0)
 	_update_health_label()
 	print("[Unit %d] Took %d damage. HP: %d/%d" % [unit_id, amount, health, max_health])
 	if health <= 0:
@@ -82,7 +82,7 @@ func can_move_to(target: Vector2i) -> bool:
 func can_attack(target_pos: Vector2i) -> bool:
 	if has_attacked:
 		return false
-	# TODO: ranged attack (attack_range > 1) is a future extension; see docs/systems/combat_system.md
+	# TODO: ranged attack (attack_range > 1) is a future extension.
 	var dist: int = abs(target_pos.x - grid_pos.x) + abs(target_pos.y - grid_pos.y)
 	return dist > 0 and dist <= attack_range
 

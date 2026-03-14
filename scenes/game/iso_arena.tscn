@@ -18,3 +18,9 @@ offset_right = -16.0
 offset_bottom = 52.0
 grow_horizontal = 0
 text = "Quit Game"
+
+[node name="QuitConfirmDialog" type="ConfirmationDialog" parent="UILayer"]
+title = "Leave Match?"
+ok_button_text = "Yes, bail out"
+dialog_text = "You are giving up already?\nThe bridge is still burning.\n\nQuit the match anyway?"
+initial_position = 1

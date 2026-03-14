@@ -7,6 +7,8 @@ extends Node
 # TODO: assign GAME_OVER in _on_match_over handler once end-match UI flow is implemented.
 enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
 const MATCH_SCENE_PATH: String = "res://scenes/game/iso_arena.tscn"
+const MAIN_MENU_SCENE_PATH: String = "res://scenes/main_menu.tscn"
+const LOBBY_SCENE_PATH: String = "res://scenes/lobby.tscn"
 
 # ---------------------------------------------------------------------------
 # State

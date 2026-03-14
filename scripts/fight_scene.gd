@@ -60,6 +60,7 @@ var _p2 := {
 # ── Match state ───────────────────────────────────────────────────────────────
 var _winner: int = 0   # 0 = in progress, 1 = P1 wins, 2 = P2 wins, -1 = draw
 var _end_timer: float = 0.0
+var _stars: Array[Dictionary] = []
 
 # ── Input action names ────────────────────────────────────────────────────────
 const _A1 := { left="fp1_l", right="fp1_r", jump="fp1_j", attack="fp1_a", block="fp1_b" }
@@ -71,7 +72,20 @@ func _ready() -> void:
 	var vp := get_viewport_rect().size
 	_p1.x = vp.x * 0.28
 	_p2.x = vp.x * 0.72
+	_build_star_field(vp)
 	queue_redraw()
+
+func _build_star_field(vp: Vector2) -> void:
+	_stars.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 0xDEAD_BEEF
+	for _i in 150:
+		_stars.append({
+			"x": int(rng.randf_range(0.0, vp.x)),
+			"y": int(rng.randf_range(0.0, vp.y * 0.50)),
+			"b": rng.randf_range(0.5, 1.0),
+			"sz": 1 if rng.randf() < 0.72 else 2,
+		})
 
 func _register_inputs() -> void:
 	var map := {
@@ -91,13 +105,13 @@ func _register_inputs() -> void:
 
 func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("ui_cancel"):
-		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+		get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
 		return
 
 	if _winner != 0:
 		_end_timer += delta
 		if _end_timer >= _END_DELAY:
-			get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+			get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
 		queue_redraw()
 		return
 
@@ -229,7 +243,7 @@ func _draw_fighter(p: Dictionary, pa: Color, pb: Color, pc: Color, vp: Vector2) 
 	var fy:     float = vp.y * 0.65 + bob + p.jump_y
 	_draw_knight_at(p.x, fy, stride, swing, p.dir, p.attack_time, p.blocking, pa, pb, pc)
 
-# ── Knight drawing (based on background_scene.gd) ────────────────────────────
+# ── Knight drawing ────────────────────────────────────────────────────────────
 func _kr(bx: float, fy: float, ox: float, oy: float, rw: float, rh: float, col: Color) -> void:
 	draw_rect(Rect2(bx + ox, fy + oy, rw, rh), col)
 
@@ -413,7 +427,7 @@ func _draw_win_screen(vp: Vector2) -> void:
 			"Returning to menu in %d..." % remaining,
 			HORIZONTAL_ALIGNMENT_CENTER, -1, 20, Color(0.8, 0.8, 0.8))
 
-# ── Background drawing (identical to background_scene.gd) ────────────────────
+# ── Background drawing ────────────────────────────────────────────────────────
 func _draw_sky(vp: Vector2) -> void:
 	var stops: Array[float] = [0.00, 0.14, 0.30, 0.46, 0.58, 0.65]
 	for i in range(_C_SKY.size()):
@@ -422,13 +436,13 @@ func _draw_sky(vp: Vector2) -> void:
 		draw_rect(Rect2(0.0, y0, vp.x, y1 - y0 + 1.0), _C_SKY[i])
 
 func _draw_stars(vp: Vector2) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 0xDEAD_BEEF
-	for _i in 150:
-		var x  := int(rng.randf_range(0.0, vp.x))
-		var y  := int(rng.randf_range(0.0, vp.y * 0.50))
-		var b  := rng.randf_range(0.5, 1.0)
-		var sz := 1 if rng.randf() < 0.72 else 2
+	if _stars.is_empty():
+		_build_star_field(vp)
+	for star in _stars:
+		var x: int = int(star.get("x", 0))
+		var y: int = int(star.get("y", 0))
+		var b: float = float(star.get("b", 0.8))
+		var sz: int = int(star.get("sz", 1))
 		draw_rect(Rect2(x, y, sz, sz), Color(b, b, b * 0.92, 0.88))
 
 func _mountain_poly(vp: Vector2, peaks: Array, base_frac: float, col: Color) -> void:

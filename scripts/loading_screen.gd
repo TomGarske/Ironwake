@@ -5,7 +5,6 @@ extends Control
 @onready var spinner: Label = $Center/CardPanel/VBoxContainer/Spinner
 @onready var glow_top: ColorRect = $AmbientGlowTop
 
-const _TARGET_SCENE: String = "res://scenes/main_menu.tscn"
 const _LOAD_DURATION: float = 2.2
 const _SPINNER_FRAMES: Array[String] = ["|", "/", "-", "\\"]
 
@@ -45,4 +44,4 @@ func _update_glow() -> void:
 
 func _go_to_main_menu() -> void:
 	set_process(false)
-	get_tree().change_scene_to_file(_TARGET_SCENE)
+	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
