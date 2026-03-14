@@ -10,6 +10,7 @@ signal peer_disconnected(peer_id: int)
 signal debug_message(message: String, is_error: bool)
 signal lobby_members_updated()
 signal invite_join_requested(lobby_id: int)
+signal lobby_invite_received(friend_id: int, lobby_id: int)
 signal handshake_status_updated(status_text: String)
 signal avatar_texture_updated(steam_id: int)
 
@@ -28,6 +29,9 @@ var local_ready: bool = false
 var _handshake_row_text: String = "Join test handshake: Idle"
 var _avatar_cache: Dictionary = {}
 var _avatar_requests_in_flight: Dictionary = {}
+var _pending_invite_notifications: Array[Dictionary] = []
+var _active_invite_lobby_id: int = 0
+var _invite_dialog: ConfirmationDialog = null
 
 const _RESULT_OK: int = 1
 const _LOBBY_TYPE_PUBLIC: int = 2
@@ -84,6 +88,8 @@ func _ready() -> void:
 	_steam.connect("lobby_created", Callable(self, "_on_steam_lobby_created"))
 	_steam.connect("lobby_joined", Callable(self, "_on_steam_lobby_joined"))
 	_steam.connect("lobby_chat_update", Callable(self, "_on_lobby_chat_update"))
+	if _steam.has_signal("lobby_invite"):
+		_steam.connect("lobby_invite", Callable(self, "_on_lobby_invite"))
 	if _steam.has_signal("game_lobby_join_requested"):
 		_steam.connect("game_lobby_join_requested", Callable(self, "_on_game_lobby_join_requested"))
 	if _steam.has_signal("avatar_loaded"):
@@ -294,17 +300,17 @@ func _on_lobby_chat_update(_updated_lobby: int, changed_id: int, _making_change_
 	_emit_debug("[SteamManager] Lobby member update for Steam ID: %d" % changed_id, false)
 	lobby_members_updated.emit()
 
+func _on_lobby_invite(friend_id: int, invited_lobby_id: int, _game_id: int) -> void:
+	var friend_name: String = "Steam ID %d" % friend_id
+	if steam_ready and _steam != null:
+		friend_name = str(_steam.call("getFriendPersonaName", friend_id))
+	_emit_debug("[SteamManager] Lobby invite received from %s for lobby %d." % [friend_name, invited_lobby_id], false)
+	lobby_invite_received.emit(friend_id, invited_lobby_id)
+	_enqueue_invite_notification(friend_name, invited_lobby_id)
+
 func _on_game_lobby_join_requested(requested_lobby_id: int, friend_id: int) -> void:
 	_emit_debug("[SteamManager] Invite accepted from Steam friend %d. Joining lobby %d..." % [friend_id, requested_lobby_id], false)
-	invite_join_requested.emit(requested_lobby_id)
-	# Reset current session state if needed before joining invite target.
-	if lobby_id != 0 and lobby_id != requested_lobby_id:
-		_steam.call("leaveLobby", lobby_id)
-		lobby_id = 0
-	if multiplayer.multiplayer_peer != null:
-		multiplayer.multiplayer_peer.close()
-		multiplayer.multiplayer_peer = null
-	join_lobby(requested_lobby_id)
+	_join_requested_lobby(requested_lobby_id)
 
 func _on_avatar_loaded(user_id: int, avatar_size: int, avatar_buffer: PackedByteArray) -> void:
 	_avatar_requests_in_flight.erase(user_id)
@@ -381,3 +387,63 @@ func _set_invite_state(friend_steam_id: int, state: String) -> void:
 		friend_name = str(_steam.call("getFriendPersonaName", friend_steam_id))
 	_handshake_row_text = "Join test handshake: %s -> %s" % [friend_name, state]
 	handshake_status_updated.emit(_handshake_row_text)
+
+func _enqueue_invite_notification(friend_name: String, invited_lobby_id: int) -> void:
+	_pending_invite_notifications.append({
+		"friend_name": friend_name,
+		"lobby_id": invited_lobby_id
+	})
+	_show_next_invite_notification()
+
+func _show_next_invite_notification() -> void:
+	if _active_invite_lobby_id != 0:
+		return
+	if _pending_invite_notifications.is_empty():
+		return
+	var next_invite: Dictionary = _pending_invite_notifications.pop_front()
+	_active_invite_lobby_id = int(next_invite.get("lobby_id", 0))
+	var friend_name: String = str(next_invite.get("friend_name", "A friend"))
+	if _active_invite_lobby_id <= 0:
+		_active_invite_lobby_id = 0
+		return
+	_ensure_invite_dialog()
+	if _invite_dialog == null:
+		_emit_debug("[SteamManager] Invite popup unavailable. Use Steam overlay to accept invite.", true)
+		return
+	_invite_dialog.dialog_text = "%s invited you to lobby %d.\nJoin now?" % [friend_name, _active_invite_lobby_id]
+	_invite_dialog.popup_centered_ratio(0.35)
+
+func _ensure_invite_dialog() -> void:
+	if is_instance_valid(_invite_dialog):
+		return
+	if get_tree() == null or get_tree().root == null:
+		return
+	_invite_dialog = ConfirmationDialog.new()
+	_invite_dialog.title = "Lobby Invite"
+	_invite_dialog.ok_button_text = "Join"
+	_invite_dialog.initial_position = Window.WINDOW_INITIAL_POSITION_CENTER_MAIN_WINDOW_SCREEN
+	_invite_dialog.confirmed.connect(_on_invite_dialog_confirmed)
+	_invite_dialog.canceled.connect(_on_invite_dialog_canceled)
+	get_tree().root.add_child(_invite_dialog)
+
+func _on_invite_dialog_confirmed() -> void:
+	var target_lobby_id: int = _active_invite_lobby_id
+	_active_invite_lobby_id = 0
+	if target_lobby_id > 0:
+		_join_requested_lobby(target_lobby_id)
+	_show_next_invite_notification()
+
+func _on_invite_dialog_canceled() -> void:
+	_active_invite_lobby_id = 0
+	_show_next_invite_notification()
+
+func _join_requested_lobby(target_lobby_id: int) -> void:
+	invite_join_requested.emit(target_lobby_id)
+	# Reset current session state if needed before joining invite target.
+	if lobby_id != 0 and lobby_id != target_lobby_id:
+		_steam.call("leaveLobby", lobby_id)
+		lobby_id = 0
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()
+		multiplayer.multiplayer_peer = null
+	join_lobby(target_lobby_id)
