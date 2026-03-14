@@ -12,17 +12,29 @@ const COLS    := 13
 const ROWS    := 13
 
 # ── Palette ───────────────────────────────────────────────────────────────────
-const _C_SKY      := Color(0.06, 0.07, 0.12)
-const _C_TILE_LO  := Color(0.20, 0.28, 0.14)   # grass dark
-const _C_TILE_HI  := Color(0.26, 0.36, 0.18)   # grass light
-const _C_TILE_SH  := Color(0.10, 0.14, 0.07)   # grass south-edge
-const _C_WATER    := Color(0.10, 0.24, 0.62)    # water face
-const _C_WATER_SH := Color(0.06, 0.14, 0.40)   # water south-edge
-const _C_MTN      := Color(0.44, 0.42, 0.40)   # mountain face
-const _C_MTN_SH   := Color(0.26, 0.24, 0.22)   # mountain south-edge
-const _C_SNOW     := Color(0.80, 0.82, 0.86)   # mountain highlight
-const _C_BORDER   := Color(0.34, 0.26, 0.14)   # border stone
-const _C_BORDER_SH:= Color(0.18, 0.13, 0.07)
+const _C_SKY       := Color(0.06, 0.07, 0.12)
+const _C_BORDER    := Color(0.34, 0.26, 0.14)
+const _C_BORDER_SH := Color(0.18, 0.13, 0.07)
+
+# ── Terrain types ─────────────────────────────────────────────────────────────
+const T_DEEP   := 0   # deep ocean
+const T_WATER  := 1   # shallow water
+const T_SAND   := 2   # beach / desert
+const T_GRASS  := 3   # grassland
+const T_FOREST := 4   # forest
+const T_MTN    := 5   # mountain
+const T_SNOW   := 6   # snow peak
+
+# [face color, south-edge shadow] per terrain type
+const _TC: Array = [
+	[Color(0.05, 0.12, 0.44), Color(0.02, 0.06, 0.26)],  # deep water
+	[Color(0.12, 0.28, 0.68), Color(0.07, 0.16, 0.42)],  # shallow water
+	[Color(0.74, 0.68, 0.46), Color(0.46, 0.40, 0.24)],  # sand
+	[Color(0.22, 0.50, 0.16), Color(0.10, 0.26, 0.07)],  # grass
+	[Color(0.10, 0.30, 0.10), Color(0.05, 0.16, 0.05)],  # forest
+	[Color(0.48, 0.46, 0.42), Color(0.26, 0.24, 0.20)],  # mountain
+	[Color(0.82, 0.84, 0.88), Color(0.58, 0.60, 0.64)],  # snow
+]
 
 # Player palettes — [primary, highlight]
 const _PALETTES: Array = [
@@ -52,7 +64,7 @@ var _my_index:  int   = 0    # which player in _players this peer controls
 var _winner:    int   = -2   # -2 = playing, -1 = draw, 0+ = index of winner
 var _end_timer: float = 0.0
 var _origin:    Vector2      # screen anchor: world (0,0) maps here
-var _noise:     FastNoiseLite
+var _terrain:   Array = []   # _terrain[tx][ty] = terrain type int
 
 # ── Spawn positions (world units, well inside the arena) ──────────────────────
 const _SPAWNS: Array = [
@@ -67,11 +79,90 @@ func _ready() -> void:
 	_register_inputs()
 	var vp := get_viewport_rect().size
 	_origin = Vector2(vp.x * 0.5, vp.y * 0.08)
-	_noise = FastNoiseLite.new()
-	_noise.seed = randi()
-	_noise.frequency = 0.08
+	_generate_map()
 	_spawn_players()
 	queue_redraw()
+
+# ── Map generation ────────────────────────────────────────────────────────────
+## Pre-bakes a terrain type for every tile using:
+##   • Domain-warped FBM elevation noise
+##   • Independent moisture noise
+##   • Whittaker-inspired biome table (elevation × moisture)
+##   • Two-pass cellular automata smoothing
+func _generate_map() -> void:
+	var seed_val: int = randi()
+
+	# --- Noise helpers ----------------------------------------------------------
+	var elev_noise := FastNoiseLite.new()
+	elev_noise.seed        = seed_val
+	elev_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	elev_noise.frequency   = 0.06
+	elev_noise.fractal_type        = FastNoiseLite.FRACTAL_FBM
+	elev_noise.fractal_octaves     = 5
+	elev_noise.fractal_lacunarity  = 2.0
+	elev_noise.fractal_gain        = 0.50
+
+	var warp_noise := FastNoiseLite.new()
+	warp_noise.seed       = seed_val + 1
+	warp_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	warp_noise.frequency  = 0.12
+
+	var moist_noise := FastNoiseLite.new()
+	moist_noise.seed       = seed_val + 2
+	moist_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	moist_noise.frequency  = 0.09
+
+	# --- Sample raw elevation with domain warping --------------------------------
+	var raw: Array = []
+	for tx in range(COLS):
+		raw.append([])
+		for ty in range(ROWS):
+			var wx: float = float(tx) + warp_noise.get_noise_2d(float(tx), float(ty)) * 4.0
+			var wy: float = float(ty) + warp_noise.get_noise_2d(float(tx) + 100.0, float(ty) + 100.0) * 4.0
+			raw[tx].append(elev_noise.get_noise_2d(wx, wy))
+
+	# --- Two-pass cellular-automata elevation smoothing -------------------------
+	for _pass in range(2):
+		var smoothed: Array = []
+		for tx in range(COLS):
+			smoothed.append([])
+			for ty in range(ROWS):
+				var sum: float = 0.0
+				var cnt: int   = 0
+				for ox in range(-1, 2):
+					for oy in range(-1, 2):
+						var nx: int = tx + ox
+						var ny: int = ty + oy
+						if nx >= 0 and nx < COLS and ny >= 0 and ny < ROWS:
+							var w: float = 0.5 if (ox != 0 and oy != 0) else 1.0
+							sum += float(raw[nx][ny]) * w
+							cnt += 1 if ox == 0 or oy == 0 else 0
+				smoothed[tx].append(sum / float(maxi(cnt, 1)))
+		raw = smoothed
+
+	# --- Classify tiles ---------------------------------------------------------
+	for tx in range(COLS):
+		_terrain.append([])
+		for ty in range(ROWS):
+			if tx == 0 or ty == 0 or tx == COLS - 1 or ty == ROWS - 1:
+				_terrain[tx].append(-1)   # -1 = border (drawn separately)
+				continue
+			var e: float = float(raw[tx][ty])
+			var m: float = moist_noise.get_noise_2d(float(tx), float(ty))
+			var t: int
+			if e < -0.30:
+				t = T_DEEP
+			elif e < -0.05:
+				t = T_WATER
+			elif e < 0.10:
+				t = T_SAND
+			elif e < 0.35:
+				t = T_FOREST if m > 0.10 else T_GRASS
+			elif e < 0.55:
+				t = T_MTN
+			else:
+				t = T_SNOW
+			_terrain[tx].append(t)
 
 # ── Coordinate helpers ────────────────────────────────────────────────────────
 func _w2s(wx: float, wy: float) -> Vector2:
@@ -321,19 +412,16 @@ func _draw_tile(tx: int, ty: int, is_border: bool) -> void:
 		face = _C_BORDER
 		edge = _C_BORDER_SH
 	else:
-		var n: float = _noise.get_noise_2d(tx, ty)
-		if n < -0.15:
-			# Water — flat blue with subtle shimmer via checkerboard
-			face = _C_WATER if (tx + ty) % 2 == 0 else _C_WATER.lightened(0.06)
-			edge = _C_WATER_SH
-		elif n < 0.35:
-			# Grass — two-tone checkerboard
-			face = _C_TILE_LO if (tx + ty) % 2 == 0 else _C_TILE_HI
-			edge = _C_TILE_SH
+		var tt: int = _terrain[tx][ty]
+		var tc: Array = _TC[tt]
+		# Checkerboard shimmer on water tiles; all others use tc directly
+		if tt == T_DEEP or tt == T_WATER:
+			face = tc[0].lightened(0.06) if (tx + ty) % 2 == 0 else tc[0]
+		elif tt == T_GRASS or tt == T_FOREST:
+			face = tc[0] if (tx + ty) % 2 == 0 else tc[0].lightened(0.04)
 		else:
-			# Mountain — grey base; brightest peaks get a snow cap
-			face = _C_SNOW if n > 0.55 else _C_MTN
-			edge = _C_MTN_SH
+			face = tc[0]
+		edge = tc[1]
 
 	draw_polygon(PackedVector2Array([top, rgt, bot, lft]), PackedColorArray([face]))
 	draw_line(lft, bot, edge, 1.2)
