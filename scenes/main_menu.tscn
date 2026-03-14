@@ -49,6 +49,32 @@ text = "Test (Offline)"
 [node name="ExitButton" type="Button" parent="VBoxContainer"]
 text = "Exit"
 
+[node name="DebugPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -220.0
+offset_right = -12.0
+offset_bottom = -12.0
+
+[node name="MarginContainer" type="MarginContainer" parent="DebugPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="DebugLog" type="RichTextLabel" parent="DebugPanel/MarginContainer"]
+custom_minimum_size = Vector2(0, 180)
+layout_mode = 2
+bbcode_enabled = false
+fit_content = false
+scroll_active = true
+
 [connection signal="pressed" from="VBoxContainer/HostButton" to="." method="_on_host_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/JoinButton" to="." method="_on_join_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/ConfirmJoinButton" to="." method="_on_confirm_join_button_pressed"]

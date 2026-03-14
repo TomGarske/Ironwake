@@ -10,11 +10,12 @@ config_version=5
 config/name="BurnBridgers"
 config/description="Multiplayer 2D squad tactics — proof of concept"
 run/main_scene="res://scenes/main_menu.tscn"
-config/features=PackedStringArray("4.3", "GL Compatibility")
+config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
 
+DebugOverlay="*res://scripts/autoload/debug_overlay.gd"
 SteamManager="*res://scripts/autoload/steam_manager.gd"
 GameManager="*res://scripts/autoload/game_manager.gd"
 
