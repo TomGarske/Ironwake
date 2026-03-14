@@ -1,19 +1,21 @@
-[gd_scene load_steps=3 format=3 uid="uid://burnbridgers_main_menu"]
+[gd_scene format=3 uid="uid://c3tanyp60wrif"]
 
-[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_main_menu"]
-[ext_resource type="Script" path="res://scripts/burning_bridge.gd" id="2_burning_bridge"]
+[ext_resource type="Script" uid="uid://3jcvv2rri2bc" path="res://scripts/main_menu.gd" id="1_main_menu"]
+[ext_resource type="Script" uid="uid://nx1ihqstq1si" path="res://scripts/burning_bridge.gd" id="2_burning_bridge"]
 
-[node name="MainMenu" type="Control"]
+[node name="MainMenu" type="Control" unique_id=391934863]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_main_menu")
 
-[node name="BurningBridge" type="CanvasLayer" parent="."]
+[node name="BurningBridge" type="CanvasLayer" parent="." unique_id=1677095546]
 script = ExtResource("2_burning_bridge")
 
-[node name="LeftMenuPanel" type="PanelContainer" parent="."]
+[node name="LeftMenuPanel" type="PanelContainer" parent="." unique_id=7481326]
 layout_mode = 1
 anchors_preset = 4
 anchor_top = 0.5
@@ -22,30 +24,36 @@ offset_left = 40.0
 offset_top = -180.0
 offset_right = 300.0
 offset_bottom = 180.0
+grow_vertical = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="LeftMenuPanel"]
+[node name="VBoxContainer" type="VBoxContainer" parent="LeftMenuPanel" unique_id=1443276902]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="Title" type="Label" parent="LeftMenuPanel/VBoxContainer"]
+[node name="Title" type="Label" parent="LeftMenuPanel/VBoxContainer" unique_id=1576182769]
+layout_mode = 2
 text = "BURN BRIDGERS"
 horizontal_alignment = 1
 
-[node name="HostButton" type="Button" parent="LeftMenuPanel/VBoxContainer"]
+[node name="HostButton" type="Button" parent="LeftMenuPanel/VBoxContainer" unique_id=1462478616]
+layout_mode = 2
 text = "Host Game"
 
-[node name="Separator" type="HSeparator" parent="LeftMenuPanel/VBoxContainer"]
+[node name="Separator" type="HSeparator" parent="LeftMenuPanel/VBoxContainer" unique_id=1608539323]
+layout_mode = 2
 
-[node name="TestButton" type="Button" parent="LeftMenuPanel/VBoxContainer"]
+[node name="TestButton" type="Button" parent="LeftMenuPanel/VBoxContainer" unique_id=1107888195]
+layout_mode = 2
 text = "Test (Offline)"
 
-[node name="ExitButton" type="Button" parent="LeftMenuPanel/VBoxContainer"]
+[node name="ExitButton" type="Button" parent="LeftMenuPanel/VBoxContainer" unique_id=597697900]
+layout_mode = 2
 text = "Exit"
 
-[node name="RightLobbyPanel" type="PanelContainer" parent="."]
+[node name="RightLobbyPanel" type="PanelContainer" parent="." unique_id=856532468]
 layout_mode = 1
 anchors_preset = 6
 anchor_left = 1.0
@@ -56,42 +64,53 @@ offset_left = -410.0
 offset_top = -200.0
 offset_right = -20.0
 offset_bottom = 200.0
+grow_horizontal = 0
+grow_vertical = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="RightLobbyPanel"]
+[node name="VBoxContainer" type="VBoxContainer" parent="RightLobbyPanel" unique_id=587421955]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="LobbyListTitle" type="Label" parent="RightLobbyPanel/VBoxContainer"]
+[node name="LobbyListTitle" type="Label" parent="RightLobbyPanel/VBoxContainer" unique_id=907249822]
+layout_mode = 2
 text = "Join Game"
 horizontal_alignment = 1
 
-[node name="JoinLobbyIdInput" type="LineEdit" parent="RightLobbyPanel/VBoxContainer"]
+[node name="JoinLobbyIdInput" type="LineEdit" parent="RightLobbyPanel/VBoxContainer" unique_id=1339839877]
+layout_mode = 2
 placeholder_text = "Enter Lobby ID"
 
-[node name="ConfirmJoinButton" type="Button" parent="RightLobbyPanel/VBoxContainer"]
+[node name="ConfirmJoinButton" type="Button" parent="RightLobbyPanel/VBoxContainer" unique_id=469737823]
+layout_mode = 2
 text = "Connect"
 
-[node name="Separator1" type="HSeparator" parent="RightLobbyPanel/VBoxContainer"]
+[node name="Separator1" type="HSeparator" parent="RightLobbyPanel/VBoxContainer" unique_id=1749935040]
+layout_mode = 2
 
-[node name="PublicLobbiesTitle" type="Label" parent="RightLobbyPanel/VBoxContainer"]
+[node name="PublicLobbiesTitle" type="Label" parent="RightLobbyPanel/VBoxContainer" unique_id=1657681715]
+layout_mode = 2
 text = "Public BurnBridgers Lobbies"
 horizontal_alignment = 1
 
-[node name="RefreshLobbiesButton" type="Button" parent="RightLobbyPanel/VBoxContainer"]
+[node name="RefreshLobbiesButton" type="Button" parent="RightLobbyPanel/VBoxContainer" unique_id=1678034002]
+layout_mode = 2
 text = "Refresh Lobbies"
 
-[node name="LobbyListStatus" type="Label" parent="RightLobbyPanel/VBoxContainer"]
+[node name="LobbyListStatus" type="Label" parent="RightLobbyPanel/VBoxContainer" unique_id=378713310]
+layout_mode = 2
 text = "Searching for BurnBridgers lobbies..."
 autowrap_mode = 2
 
-[node name="LobbyListScroll" type="ScrollContainer" parent="RightLobbyPanel/VBoxContainer"]
+[node name="LobbyListScroll" type="ScrollContainer" parent="RightLobbyPanel/VBoxContainer" unique_id=965262630]
 custom_minimum_size = Vector2(0, 250)
+layout_mode = 2
 
-[node name="LobbyList" type="VBoxContainer" parent="RightLobbyPanel/VBoxContainer/LobbyListScroll"]
+[node name="LobbyList" type="VBoxContainer" parent="RightLobbyPanel/VBoxContainer/LobbyListScroll" unique_id=868576998]
+layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="DebugPanel" type="PanelContainer" parent="."]
+[node name="DebugPanel" type="PanelContainer" parent="." unique_id=1936072513]
 visible = false
 layout_mode = 1
 anchors_preset = 12
@@ -102,22 +121,21 @@ offset_left = 12.0
 offset_top = -220.0
 offset_right = -12.0
 offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 0
 
-[node name="MarginContainer" type="MarginContainer" parent="DebugPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="DebugPanel" unique_id=999521425]
 layout_mode = 2
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="DebugLog" type="RichTextLabel" parent="DebugPanel/MarginContainer"]
+[node name="DebugLog" type="RichTextLabel" parent="DebugPanel/MarginContainer" unique_id=55270191]
 custom_minimum_size = Vector2(0, 180)
 layout_mode = 2
-bbcode_enabled = false
-fit_content = false
-scroll_active = true
 
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/HostButton" to="." method="_on_host_button_pressed"]
-[connection signal="pressed" from="RightLobbyPanel/VBoxContainer/ConfirmJoinButton" to="." method="_on_confirm_join_button_pressed"]
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/TestButton" to="." method="_on_test_button_pressed"]
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/ExitButton" to="." method="_on_exit_button_pressed"]
+[connection signal="pressed" from="RightLobbyPanel/VBoxContainer/ConfirmJoinButton" to="." method="_on_confirm_join_button_pressed"]

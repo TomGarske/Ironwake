@@ -38,7 +38,6 @@ const _SWORD_REACH:   float = 95.0   # px for hit detection
 const _HIT_WIN_START: float = 0.38   # fraction of swing where damage lands
 const _HIT_WIN_END:   float = 0.72
 const _DMG_FULL:      float = 20.0
-const _DMG_BLOCK:     float = 5.0
 const _MAX_HP:        float = 100.0
 const _END_DELAY:     float = 3.0    # seconds before returning to menu
 
@@ -77,9 +76,9 @@ func _ready() -> void:
 func _register_inputs() -> void:
 	var map := {
 		"fp1_l": KEY_A,     "fp1_r": KEY_D,
-		"fp1_j": KEY_W,     "fp1_a": KEY_Q,     "fp1_b": KEY_S,
+		"fp1_j": KEY_SHIFT, "fp1_a": KEY_W,     "fp1_b": KEY_S,
 		"fp2_l": KEY_LEFT,  "fp2_r": KEY_RIGHT,
-		"fp2_j": KEY_UP,    "fp2_a": KEY_K,     "fp2_b": KEY_DOWN,
+		"fp2_j": KEY_SPACE, "fp2_a": KEY_UP,    "fp2_b": KEY_DOWN,
 	}
 	for action: String in map:
 		if not InputMap.has_action(action):
@@ -158,7 +157,7 @@ func _tick_fighter(p: Dictionary, a: Dictionary, delta: float) -> void:
 # ── Collision — keep knights from overlapping ─────────────────────────────────
 func _resolve_collision() -> void:
 	const MIN_DIST := 50.0
-	var dx := _p2.x - _p1.x
+	var dx: float = _p2.x - _p1.x
 	if absf(dx) < MIN_DIST:
 		var push := (MIN_DIST - absf(dx)) * 0.5
 		if dx >= 0.0:
@@ -172,7 +171,7 @@ func _resolve_collision() -> void:
 func _check_hit(attacker: Dictionary, defender: Dictionary) -> void:
 	if not attacker.alive or attacker.attack_time <= 0.0 or attacker.hit_landed:
 		return
-	var phase := 1.0 - (attacker.attack_time / _ATTACK_DUR)
+	var phase: float = 1.0 - (attacker.attack_time / _ATTACK_DUR)
 	if phase < _HIT_WIN_START or phase > _HIT_WIN_END:
 		return
 	# Must be facing the defender
@@ -185,7 +184,9 @@ func _check_hit(attacker: Dictionary, defender: Dictionary) -> void:
 	if absf(attacker.jump_y - defender.jump_y) > 80.0:
 		return
 	attacker.hit_landed = true
-	var dmg: float = _DMG_BLOCK if defender.blocking else _DMG_FULL
+	if defender.blocking:
+		return
+	var dmg: float = _DMG_FULL
 	defender.health = maxf(defender.health - dmg, 0.0)
 	if defender.health <= 0.0:
 		defender.alive = false
@@ -193,8 +194,8 @@ func _check_hit(attacker: Dictionary, defender: Dictionary) -> void:
 func _check_win() -> void:
 	if _winner != 0:
 		return
-	var p1_dead := not _p1.alive
-	var p2_dead := not _p2.alive
+	var p1_dead: bool = not _p1.alive
+	var p2_dead: bool = not _p2.alive
 	if p1_dead and p2_dead:
 		_winner = -1
 	elif p1_dead:
@@ -349,7 +350,7 @@ func _draw_knight_at(cx: float, fy: float, stride: float, swing: float,
 	# Sword when attacking
 	if attack_time > 0.0:
 		var t     := 1.0 - (attack_time / _ATTACK_DUR)
-		var angle := lerp(-PI * 0.65, PI * 0.12, t)
+		var angle: float = lerp(-PI * 0.65, PI * 0.12, t)
 		var base  := Vector2(ra + 26.0, fy - 74.0)
 		var bdir  := Vector2(cos(angle), sin(angle))
 		var perp  := Vector2(-bdir.y, bdir.x)
@@ -371,7 +372,7 @@ func _draw_hud(vp: Vector2) -> void:
 
 	# P1 bar (left)
 	draw_rect(Rect2(margin, bar_y, bar_w, bar_h), Color(0.15, 0.15, 0.15))
-	var p1_fill := bar_w * (_p1.health / _MAX_HP)
+	var p1_fill: float = bar_w * (_p1.health / _MAX_HP)
 	draw_rect(Rect2(margin, bar_y, p1_fill, bar_h), Color(0.25, 0.65, 0.25))
 	draw_rect(Rect2(margin, bar_y, bar_w, bar_h), Color.WHITE, false, 1.5)
 	draw_string(font, Vector2(margin + 4.0, bar_y + bar_h - 5.0), "P1  %d HP" % int(_p1.health),
@@ -380,7 +381,7 @@ func _draw_hud(vp: Vector2) -> void:
 	# P2 bar (right, fills right-to-left)
 	var p2_x := vp.x - margin - bar_w
 	draw_rect(Rect2(p2_x, bar_y, bar_w, bar_h), Color(0.15, 0.15, 0.15))
-	var p2_fill := bar_w * (_p2.health / _MAX_HP)
+	var p2_fill: float = bar_w * (_p2.health / _MAX_HP)
 	draw_rect(Rect2(p2_x + bar_w - p2_fill, bar_y, p2_fill, bar_h), Color(0.65, 0.20, 0.20))
 	draw_rect(Rect2(p2_x, bar_y, bar_w, bar_h), Color.WHITE, false, 1.5)
 	draw_string(font, Vector2(p2_x + bar_w - 4.0, bar_y + bar_h - 5.0), "%d HP  P2" % int(_p2.health),
