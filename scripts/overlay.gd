@@ -10,9 +10,6 @@ const TILE_SIZE: int = 64
 const GRID_WIDTH: int = 10
 const GRID_HEIGHT: int = 10
 
-const TILE_COLOR_A := Color(0.15, 0.25, 0.15)
-const TILE_COLOR_B := Color(0.20, 0.32, 0.20)
-
 # ---------------------------------------------------------------------------
 # State (set by TacticalMap)
 # ---------------------------------------------------------------------------
@@ -24,17 +21,10 @@ var valid_attack_positions: Array = [] # Array[Vector2i]
 # Drawing
 # ---------------------------------------------------------------------------
 func _draw() -> void:
-	_draw_grid_background()
 	_draw_move_highlights()
 	_draw_attack_highlights()
 	_draw_selection_highlight()
 	_draw_grid_lines()
-
-func _draw_grid_background() -> void:
-	for x in range(GRID_WIDTH):
-		for y in range(GRID_HEIGHT):
-			var color := TILE_COLOR_A if (x + y) % 2 == 0 else TILE_COLOR_B
-			draw_rect(Rect2(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE), color)
 
 func _draw_move_highlights() -> void:
 	for tile: Vector2i in valid_move_tiles:
@@ -72,7 +62,7 @@ func _draw_selection_highlight() -> void:
 	)
 
 func _draw_grid_lines() -> void:
-	var line_color := Color(0.0, 0.0, 0.0, 0.2)
+	var line_color := Color(0.0, 0.0, 0.0, 0.45)
 	for x in range(GRID_WIDTH + 1):
 		draw_line(
 			Vector2(x * TILE_SIZE, 0),

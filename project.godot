@@ -1,7 +1,10 @@
 ; Engine configuration file.
 ; It's best edited using the editor UI and not directly,
-; since the format is not well documented.
-; Edits will be lost if the file is edited externally while it is open in the editor.
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -30,3 +33,10 @@ window/stretch/aspect="expand"
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+
+[steam]
+
+initialization/app_id=0
+initialization/initialize_on_startup=false
+initialization/embed_callbacks=false
+multiplayer_peer/max_channels=4

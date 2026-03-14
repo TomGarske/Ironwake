@@ -32,7 +32,7 @@ func _process(delta: float) -> void:
 
 func _setup_bridge() -> void:
 	# Create bridge structure points (simple arch/bridge shape)
-	var viewport_size = get_viewport_rect().size
+	var viewport_size = get_viewport().get_visible_rect().size
 	if viewport_size.x == 0 or viewport_size.y == 0:
 		# Viewport not ready yet, try again next frame
 		call_deferred("_setup_bridge")
@@ -78,8 +78,8 @@ func _create_flame_particle(x: float, y: float) -> CPUParticles2D:
 	particles.initial_velocity_min = 30.0
 	particles.initial_velocity_max = 60.0
 	particles.gravity = Vector2(0, -20)  # Negative gravity makes particles go up
-	particles.scale_min = 0.8
-	particles.scale_max = 2.0
+	particles.scale_amount_min = 0.8
+	particles.scale_amount_max = 2.0
 	
 	# Flame colors (orange to red to yellow)
 	particles.color = Color(1.0, 0.5, 0.0)  # Orange
@@ -117,11 +117,9 @@ func _create_flame_texture() -> Texture2D:
 	var texture = ImageTexture.create_from_image(image)
 	return texture
 
-var _flame_base_positions: Array[Vector2] = []
-
 func _setup_flames() -> void:
 	# Create multiple flame particle systems along the bridge
-	var viewport_size = get_viewport_rect().size
+	var viewport_size = get_viewport().get_visible_rect().size
 	if viewport_size.x == 0 or viewport_size.y == 0:
 		# Viewport not ready yet, try again next frame
 		call_deferred("_setup_flames")
@@ -155,4 +153,3 @@ func _update_flames() -> void:
 		var base_rate = 100.0
 		var flicker = 0.7 + sin(_time * 5.0 + i * 2.0) * 0.3
 		flame.amount = int(base_rate * flicker)
-

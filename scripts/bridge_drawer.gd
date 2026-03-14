@@ -35,7 +35,7 @@ func _draw() -> void:
 	
 	# Add some glowing embers
 	for i in range(8):
-		var t = (time * 0.5 + i * 0.3) % 1.0
+		var t = fmod(time * 0.5 + i * 0.3, 1.0)
 		var x = lerp(bridge_points[0].x, bridge_points[1].x, t)
 		var y = bridge_points[0].y + sin(time * 2.0 + i) * 5.0
 		var ember_size = 2.0 + sin(time * 4.0 + i) * 1.0
