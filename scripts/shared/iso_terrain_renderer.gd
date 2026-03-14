@@ -9,23 +9,26 @@ const T_FOREST: int = 4
 const T_MTN: int = 5
 const T_SNOW: int = 6
 
-# ── KyleD grass tileset ────────────────────────────────────────────────────────
+# ── Terrain tileset ────────────────────────────────────────────────────────────
 # Spritesheet is 96×128 → 3 cols × 2 rows → 32×64 px per tile.
 # Drawn at 2× scale → 64×128 px, matching TILE_W=64 / TILE_H=32 exactly.
 #
-#  Row 0: clean grass | grass+plants | tall grass
-#  Row 1: bare dirt   | dirt+pebbles | dirt+rock
-const _GRASS_TEX: Texture2D = preload("res://Free Isometric Tileset by KyleD/Grass Pack Spritesheet.png")
+#  Row 0: shallow water | deep water | sand
+#  Row 1: mountain      | snow       | forest/grass
+const _TERRAIN_TEX: Texture2D = preload("res://assets/tilesets/tileset.png")
 const _SP_W: int = 32   # tile width in sheet
 const _SP_H: int = 64   # tile height in sheet
 const _SP_SCALE: float = 2.0
 
-# Per terrain type: [sheet_row, first_col, num_variant_cols]
-# Deterministic variant chosen via cheap hash so neighbours don't all match.
+# Per terrain type: [sheet_row, sheet_col]
 const _SPRITE_MAP: Dictionary = {
-	T_GRASS:  [0, 0, 3],   # all three grass variants
-	T_FOREST: [0, 1, 2],   # plants / tall-grass variants
-	T_SAND:   [1, 0, 2],   # bare dirt / dirt+pebbles
+	T_DEEP:   [0, 1],
+	T_WATER:  [0, 0],
+	T_SAND:   [0, 2],
+	T_GRASS:  [1, 2],
+	T_FOREST: [1, 2],
+	T_MTN:    [1, 0],
+	T_SNOW:   [1, 1],
 }
 
 const _TC: Array = [
@@ -106,29 +109,13 @@ func _draw_tile(canvas: CanvasItem, origin: Vector2, tile_w: float, tile_h: floa
 
 	var tt: int = _get_tile(tx, ty)
 
-	# Use KyleD sprite for supported terrain types
-	if _SPRITE_MAP.has(tt):
-		var info: Array    = _SPRITE_MAP[tt]
-		var row: int       = info[0]
-		var col_base: int  = info[1]
-		var col_vars: int  = info[2]
-		var col: int       = col_base + ((tx * 31 + ty * 17) % col_vars)
-		var src  := Rect2(col * _SP_W, row * _SP_H, _SP_W, _SP_H)
-		var dw   := _SP_W * _SP_SCALE
-		var dh   := _SP_H * _SP_SCALE
-		var dest := Rect2(top.x - dw * 0.5, top.y, dw, dh)
-		canvas.draw_texture_rect_region(_GRASS_TEX, dest, src)
-		return
-
-	# Polygon fallback for water, mountain, snow (no sprite available)
-	var rgt := _w2s(origin, tile_w, tile_h, float(tx + 1), ty + 0.5)
-	var bot := _w2s(origin, tile_w, tile_h, tx + 0.5, float(ty + 1))
-	var lft := _w2s(origin, tile_w, tile_h, float(tx), ty + 0.5)
-	var tc: Array = _TC[tt]
-	var face: Color = tc[0].lightened(0.06) if (tt == T_DEEP or tt == T_WATER) and (tx + ty) % 2 == 0 else tc[0]
-	canvas.draw_polygon(PackedVector2Array([top, rgt, bot, lft]), PackedColorArray([face]))
-	canvas.draw_line(lft, bot, tc[1], 1.2)
-	canvas.draw_line(rgt, bot, tc[1], 1.2)
+	# All terrain types now have sprites
+	var info: Array = _SPRITE_MAP[tt]
+	var src  := Rect2(info[1] * _SP_W, info[0] * _SP_H, _SP_W, _SP_H)
+	var dw   := _SP_W * _SP_SCALE
+	var dh   := _SP_H * _SP_SCALE
+	var dest := Rect2(top.x - dw * 0.5, top.y, dw, dh)
+	canvas.draw_texture_rect_region(_TERRAIN_TEX, dest, src)
 
 func _w2s(origin: Vector2, tile_w: float, tile_h: float, wx: float, wy: float) -> Vector2:
 	return origin + Vector2((wx - wy) * tile_w * 0.5, (wx + wy) * tile_h * 0.5)
