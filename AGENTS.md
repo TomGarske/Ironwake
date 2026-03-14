@@ -100,6 +100,9 @@ If yes to any, flag clearly and propose corrective action.
 - Avoid direct commits to long-lived branches except controlled integration flows.
 - Architecture-sensitive changes should include ADR updates in same branch when practical.
 - If architecture requires discussion first, land ADR branch before broad implementation.
+- After an agent pushes commits to a short-lived branch, it must immediately create a PR (do not leave pushed work without an open PR unless explicitly instructed).
+- Default PR targets: `feature/*`, `fix/*`, `adr/*` -> `develop`; `hotfix/*` -> `main`.
+- PR creation must include required metadata from the PR template and ADR references/classification.
 
 Every PR should state:
 

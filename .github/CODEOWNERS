@@ -1,0 +1,11 @@
+# Default owner
+* @TomGarske
+
+# Architecture-sensitive paths
+scripts/autoload/ @TomGarske
+scripts/*.gd @TomGarske
+scenes/ @TomGarske
+addons/ @TomGarske
+infra/ @TomGarske
+terraform/ @TomGarske
+docs/adr/ @TomGarske

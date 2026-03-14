@@ -198,6 +198,9 @@ Rules:
 3. Every material change happens in short-lived branches
 4. Architecture-sensitive changes should include ADR changes in the same branch when possible
 5. If architecture needs discussion first, open an `adr/*` branch and merge ADR before implementation
+6. When an agent pushes a short-lived branch, it must immediately create a PR unless the user explicitly says not to
+7. Default PR targets: `feature/*`, `fix/*`, `adr/*` -> `develop`; `hotfix/*` -> `main`
+8. PR body must satisfy required metadata fields and include ADR references/classification
 
 Branch intent:
 
