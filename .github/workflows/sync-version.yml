@@ -20,8 +20,10 @@ jobs:
         id: update
         shell: bash
         run: |
+          base_version="0.1.0"
           short_sha="${GITHUB_SHA::7}"
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+          echo "base_version=$base_version" >> "$GITHUB_OUTPUT"
 
           python - <<'PY'
           import pathlib
@@ -30,8 +32,9 @@ jobs:
 
           path = pathlib.Path("project.godot")
           text = path.read_text(encoding="utf-8")
+          base_version = "0.1.0"
           short_sha = os.environ["GITHUB_SHA"][:7]
-          new_line = f'config/version="{short_sha}"'
+          new_line = f'config/version="{base_version} ({short_sha})"'
 
           if re.search(r'^config/version="[^"]*"$', text, flags=re.MULTILINE):
               updated = re.sub(r'^config/version="[^"]*"$', new_line, text, count=1, flags=re.MULTILINE)
@@ -52,5 +55,5 @@ jobs:
         if: ${{ steps.update.outputs.changed == 'true' }}
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore(version): sync config/version to ${{ steps.update.outputs.short_sha }} [skip ci]"
+          commit_message: "chore(version): sync config/version to ${{ steps.update.outputs.base_version }} (${{ steps.update.outputs.short_sha }}) [skip ci]"
           file_pattern: project.godot

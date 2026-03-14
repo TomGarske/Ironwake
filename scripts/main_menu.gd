@@ -42,7 +42,7 @@ func _update_version_label() -> void:
 	if version_label == null:
 		return
 	var version: String = str(ProjectSettings.get_setting("application/config/version", "dev"))
-	version_label.text = "v%s" % version
+	version_label.text = version
 
 func _exit_tree() -> void:
 	if SteamManager == null:
