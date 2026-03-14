@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="BurnBridgers"
-config/version="68c5d29"
+config/version="6b5c0bf"
 config/description="Multiplayer 2D squad tactics — proof of concept"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
