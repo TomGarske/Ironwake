@@ -66,7 +66,7 @@ func _on_confirm_join_button_pressed() -> void:
 		DebugOverlay.log_message("[MainMenu] Invalid lobby ID entered.", true)
 
 func _on_test_button_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/game/fight_scene.tscn")
+	get_tree().change_scene_to_file(GameManager.MATCH_SCENE_PATH)
 
 func _on_exit_button_pressed() -> void:
 	get_tree().quit()

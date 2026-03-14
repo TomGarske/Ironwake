@@ -6,6 +6,7 @@ extends Node
 # GAME_OVER is set when the match ends (currently only win/draw is handled via TurnManager signal).
 # TODO: assign GAME_OVER in _on_match_over handler once end-match UI flow is implemented.
 enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
+const MATCH_SCENE_PATH: String = "res://scenes/game/fight_scene.tscn"
 
 # ---------------------------------------------------------------------------
 # State
@@ -58,11 +59,11 @@ func start_match() -> void:
 
 	match_phase = MatchPhase.IN_MATCH
 	print("[GameManager] Starting match with %d players." % players.size())
-	_load_tactical_map.rpc()
+	_load_match_scene.rpc()
 
 @rpc("authority", "call_local", "reliable")
-func _load_tactical_map() -> void:
-	get_tree().change_scene_to_file("res://scenes/game/tactical_map.tscn")
+func _load_match_scene() -> void:
+	get_tree().change_scene_to_file(MATCH_SCENE_PATH)
 
 # ---------------------------------------------------------------------------
 # Cleanup
