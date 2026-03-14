@@ -13,6 +13,7 @@ signal invite_join_requested(lobby_id: int)
 signal lobby_invite_received(friend_id: int, lobby_id: int)
 signal handshake_status_updated(status_text: String)
 signal avatar_texture_updated(steam_id: int)
+signal lobby_list_updated(lobbies: Array)
 
 # ---------------------------------------------------------------------------
 # State
@@ -32,6 +33,9 @@ var _avatar_requests_in_flight: Dictionary = {}
 var _pending_invite_notifications: Array[Dictionary] = []
 var _active_invite_lobby_id: int = 0
 var _invite_dialog: ConfirmationDialog = null
+var _pending_join_lobby_id: int = 0
+var _next_init_retry_at_ms: int = 0
+var _cached_public_lobbies: Array[Dictionary] = []
 
 const _RESULT_OK: int = 1
 const _LOBBY_TYPE_PUBLIC: int = 2
@@ -40,68 +44,22 @@ const _FRIEND_FLAG_IMMEDIATE: int = 4
 const _PERSONA_STATE_OFFLINE: int = 0
 const _AVATAR_MEDIUM: int = 2
 const _INVITE_TIMEOUT_SECONDS: int = 45
+const _INIT_RETRY_MS: int = 2500
 
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
 func _ready() -> void:
-	if not Engine.has_singleton("Steam"):
-		var extension_path := "res://addons/godotsteam/godotsteam.gdextension"
-		if FileAccess.file_exists(extension_path):
-			var load_status: int = GDExtensionManager.load_extension(extension_path)
-			_emit_debug("[SteamManager] Attempted to load GodotSteam extension. Status: %d" % load_status, false)
-		else:
-			_emit_debug("[SteamManager] GodotSteam extension file missing at %s" % extension_path, true)
-			return
-	if not Engine.has_singleton("Steam"):
-		_emit_debug("[SteamManager] Steam singleton not available after loading extension. Check GodotSteam/Godot version compatibility.", true)
-		return
-
-	_steam = Engine.get_singleton("Steam")
-	var init_response: Variant = _steam.call("steamInit")
-	var status: int = -1
-	var verbal: String = ""
-	var init_ok: bool = false
-	if init_response is Dictionary:
-		var init_result: Dictionary = init_response
-		status = int(init_result.get("status", -1))
-		verbal = str(init_result.get("verbal", ""))
-		# GodotSteam status enums vary slightly by version; accept known OK values + verbal fallback.
-		init_ok = status == 0 or status == 1 or verbal.to_upper().find("OK") != -1
-	elif init_response is bool:
-		init_ok = bool(init_response)
-		status = 1 if init_ok else 0
-		verbal = "steamInit() bool response"
-	else:
-		verbal = "Unexpected steamInit() response type: %s" % [typeof(init_response)]
-	if not init_ok:
-		_emit_debug("[SteamManager] Steam failed to init: " + verbal + " (status=" + str(status) + ")", true)
-		return
-
-	steam_id = int(_steam.call("getSteamID"))
-	steam_username = str(_steam.call("getPersonaName"))
-	steam_ready = true
-	_emit_debug("[SteamManager] Initialized. User: %s (%d)" % [steam_username, steam_id], false)
-	_emit_debug("[SteamManager] Runtime platform: %s, App ID: %d" % [OS.get_name(), get_current_app_id()], false)
-
-	# Connect Steamworks signals
-	_steam.connect("lobby_created", Callable(self, "_on_steam_lobby_created"))
-	_steam.connect("lobby_joined", Callable(self, "_on_steam_lobby_joined"))
-	_steam.connect("lobby_chat_update", Callable(self, "_on_lobby_chat_update"))
-	if _steam.has_signal("lobby_invite"):
-		_steam.connect("lobby_invite", Callable(self, "_on_lobby_invite"))
-	if _steam.has_signal("game_lobby_join_requested"):
-		_steam.connect("game_lobby_join_requested", Callable(self, "_on_game_lobby_join_requested"))
-	if _steam.has_signal("avatar_loaded"):
-		_steam.connect("avatar_loaded", Callable(self, "_on_avatar_loaded"))
-	# Favor Steam relay when available for better cross-OS/NAT compatibility.
-	if _steam.has_method("allowP2PPacketRelay"):
-		_steam.call("allowP2PPacketRelay", true)
+	_try_initialize_steam()
 
 func _process(_delta: float) -> void:
 	# Must be called every frame to dispatch Steam callbacks
 	if steam_ready and _steam != null:
 		_steam.call("run_callbacks")
+		return
+	var now_ms: int = Time.get_ticks_msec()
+	if now_ms >= _next_init_retry_at_ms:
+		_try_initialize_steam()
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -126,12 +84,32 @@ func host_lobby() -> void:
 
 func join_lobby(target_lobby_id: int) -> void:
 	if not steam_ready:
-		_emit_debug("[SteamManager] Cannot join lobby: Steam is not initialized.", true)
+		_pending_join_lobby_id = target_lobby_id
+		_emit_debug("[SteamManager] Steam not initialized yet. Queueing join for lobby %d and retrying init..." % target_lobby_id, true)
+		_try_initialize_steam()
 		return
 
 	is_host = false
 	_emit_debug("[SteamManager] Joining lobby %d..." % target_lobby_id, false)
 	_steam.call("joinLobby", target_lobby_id)
+
+func request_burnbridgers_lobby_list() -> void:
+	if not steam_ready or _steam == null:
+		_emit_debug("[SteamManager] Cannot request lobby list yet: Steam is not initialized.", true)
+		_cached_public_lobbies = []
+		lobby_list_updated.emit(_cached_public_lobbies.duplicate(true))
+		_try_initialize_steam()
+		return
+
+	# Ask Steam for public lobbies then filter to this game by lobby data.
+	if _steam.has_method("addRequestLobbyListStringFilter"):
+		# EQUAL comparison is 0 in Steam matchmaking string comparison enum.
+		_steam.call("addRequestLobbyListStringFilter", "game", "BurnBridgers", 0)
+	_steam.call("requestLobbyList")
+	_emit_debug("[SteamManager] Requested BurnBridgers lobby list.", false)
+
+func get_cached_public_lobbies() -> Array[Dictionary]:
+	return _cached_public_lobbies.duplicate(true)
 
 func get_lobby_member_names() -> Array[String]:
 	var members: Array[String] = []
@@ -308,6 +286,28 @@ func _on_lobby_invite(friend_id: int, invited_lobby_id: int, _game_id: int) -> v
 	lobby_invite_received.emit(friend_id, invited_lobby_id)
 	_enqueue_invite_notification(friend_name, invited_lobby_id)
 
+func _on_lobby_match_list(lobbies: Array) -> void:
+	var filtered: Array[Dictionary] = []
+	for entry in lobbies:
+		var lobby_id: int = int(entry)
+		if lobby_id == 0:
+			continue
+		var game_name: String = str(_steam.call("getLobbyData", lobby_id, "game"))
+		if game_name != "BurnBridgers":
+			continue
+		var lobby_name: String = str(_steam.call("getLobbyData", lobby_id, "name"))
+		if lobby_name.strip_edges().is_empty():
+			lobby_name = "BurnBridgers Lobby"
+		var member_count: int = int(_steam.call("getNumLobbyMembers", lobby_id))
+		filtered.append({
+			"lobby_id": lobby_id,
+			"name": lobby_name,
+			"members": member_count
+		})
+	_cached_public_lobbies = filtered
+	lobby_list_updated.emit(_cached_public_lobbies.duplicate(true))
+	_emit_debug("[SteamManager] Lobby list updated (%d BurnBridgers lobbies)." % _cached_public_lobbies.size(), false)
+
 func _on_game_lobby_join_requested(requested_lobby_id: int, friend_id: int) -> void:
 	_emit_debug("[SteamManager] Invite accepted from Steam friend %d. Joining lobby %d..." % [friend_id, requested_lobby_id], false)
 	_join_requested_lobby(requested_lobby_id)
@@ -447,3 +447,75 @@ func _join_requested_lobby(target_lobby_id: int) -> void:
 		multiplayer.multiplayer_peer.close()
 		multiplayer.multiplayer_peer = null
 	join_lobby(target_lobby_id)
+
+func _try_initialize_steam() -> void:
+	if steam_ready and _steam != null:
+		return
+	_next_init_retry_at_ms = Time.get_ticks_msec() + _INIT_RETRY_MS
+
+	if not Engine.has_singleton("Steam"):
+		var extension_path := "res://addons/godotsteam/godotsteam.gdextension"
+		if FileAccess.file_exists(extension_path):
+			var load_status: int = GDExtensionManager.load_extension(extension_path)
+			_emit_debug("[SteamManager] Attempted to load GodotSteam extension. Status: %d" % load_status, false)
+		else:
+			_emit_debug("[SteamManager] GodotSteam extension file missing at %s" % extension_path, true)
+			return
+	if not Engine.has_singleton("Steam"):
+		_emit_debug("[SteamManager] Steam singleton not available after loading extension. Will retry.", true)
+		return
+
+	_steam = Engine.get_singleton("Steam")
+	var init_response: Variant = _steam.call("steamInit")
+	var status: int = -1
+	var verbal: String = ""
+	var init_ok: bool = false
+	if init_response is Dictionary:
+		var init_result: Dictionary = init_response
+		status = int(init_result.get("status", -1))
+		verbal = str(init_result.get("verbal", ""))
+		# GodotSteam status enums vary slightly by version; accept known OK values + verbal fallback.
+		init_ok = status == 0 or status == 1 or verbal.to_upper().find("OK") != -1
+	elif init_response is bool:
+		init_ok = bool(init_response)
+		status = 1 if init_ok else 0
+		verbal = "steamInit() bool response"
+	else:
+		verbal = "Unexpected steamInit() response type: %s" % [typeof(init_response)]
+	if not init_ok:
+		_emit_debug("[SteamManager] Steam failed to init: " + verbal + " (status=" + str(status) + "). Will retry.", true)
+		return
+
+	steam_id = int(_steam.call("getSteamID"))
+	steam_username = str(_steam.call("getPersonaName"))
+	steam_ready = true
+	_emit_debug("[SteamManager] Initialized. User: %s (%d)" % [steam_username, steam_id], false)
+	_emit_debug("[SteamManager] Runtime platform: %s, App ID: %d" % [OS.get_name(), get_current_app_id()], false)
+
+	# Connect Steamworks signals once.
+	if not _steam.is_connected("lobby_created", Callable(self, "_on_steam_lobby_created")):
+		_steam.connect("lobby_created", Callable(self, "_on_steam_lobby_created"))
+	if not _steam.is_connected("lobby_joined", Callable(self, "_on_steam_lobby_joined")):
+		_steam.connect("lobby_joined", Callable(self, "_on_steam_lobby_joined"))
+	if not _steam.is_connected("lobby_chat_update", Callable(self, "_on_lobby_chat_update")):
+		_steam.connect("lobby_chat_update", Callable(self, "_on_lobby_chat_update"))
+	if _steam.has_signal("lobby_match_list") and not _steam.is_connected("lobby_match_list", Callable(self, "_on_lobby_match_list")):
+		_steam.connect("lobby_match_list", Callable(self, "_on_lobby_match_list"))
+	if _steam.has_signal("lobby_invite") and not _steam.is_connected("lobby_invite", Callable(self, "_on_lobby_invite")):
+		_steam.connect("lobby_invite", Callable(self, "_on_lobby_invite"))
+	if _steam.has_signal("game_lobby_join_requested") and not _steam.is_connected("game_lobby_join_requested", Callable(self, "_on_game_lobby_join_requested")):
+		_steam.connect("game_lobby_join_requested", Callable(self, "_on_game_lobby_join_requested"))
+	if _steam.has_signal("avatar_loaded") and not _steam.is_connected("avatar_loaded", Callable(self, "_on_avatar_loaded")):
+		_steam.connect("avatar_loaded", Callable(self, "_on_avatar_loaded"))
+	# Favor Steam relay when available for better cross-OS/NAT compatibility.
+	if _steam.has_method("allowP2PPacketRelay"):
+		_steam.call("allowP2PPacketRelay", true)
+
+	# If a user accepted an invite before init completed, finish that join now.
+	if _pending_join_lobby_id > 0:
+		var queued_lobby_id: int = _pending_join_lobby_id
+		_pending_join_lobby_id = 0
+		_emit_debug("[SteamManager] Resuming queued join for lobby %d after Steam init." % queued_lobby_id, false)
+		join_lobby(queued_lobby_id)
+	# Refresh lobby browser data on successful init.
+	request_burnbridgers_lobby_list()

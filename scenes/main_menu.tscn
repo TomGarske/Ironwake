@@ -41,6 +41,24 @@ visible = false
 text = "Connect"
 visible = false
 
+[node name="LobbyListTitle" type="Label" parent="VBoxContainer"]
+text = "Public BurnBridgers Lobbies"
+horizontal_alignment = 1
+
+[node name="RefreshLobbiesButton" type="Button" parent="VBoxContainer"]
+text = "Refresh Lobbies"
+
+[node name="LobbyListStatus" type="Label" parent="VBoxContainer"]
+text = "Searching for BurnBridgers lobbies..."
+autowrap_mode = 2
+
+[node name="LobbyListScroll" type="ScrollContainer" parent="VBoxContainer"]
+custom_minimum_size = Vector2(0, 130)
+
+[node name="LobbyList" type="VBoxContainer" parent="VBoxContainer/LobbyListScroll"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
 [node name="Separator" type="HSeparator" parent="VBoxContainer"]
 
 [node name="TestButton" type="Button" parent="VBoxContainer"]
