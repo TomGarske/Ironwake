@@ -83,13 +83,3 @@ This repository uses feature-branch workflow:
 - `feature/*`, `fix/*` — short-lived branches off `main`
 
 Fill in the [PR template](.github/PULL_REQUEST_TEMPLATE.md) when submitting a PR.
-
-### Local branch-protection hook
-
-Install the local pre-commit guard (run once per clone):
-
-```powershell
-.\install-hooks.ps1
-```
-
-This blocks commits on `main`/`master` and only allows commits from `feature/*` branches.
