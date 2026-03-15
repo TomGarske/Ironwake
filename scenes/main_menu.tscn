@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c3tanyp60wrif"]
 
-[ext_resource type="Script" uid="uid://3jcvv2rri2bc" path="res://scripts/main_menu.gd" id="1_main_menu"]
-[ext_resource type="Script" uid="uid://nx1ihqstq1si" path="res://scripts/burning_bridge.gd" id="2_burning_bridge"]
+[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_main_menu"]
+[ext_resource type="Script" path="res://scripts/burning_bridge.gd" id="2_burning_bridge"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu_panel"]
 bg_color = Color(0.14, 0.11, 0.09, 0.94)

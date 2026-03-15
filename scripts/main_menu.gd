@@ -328,6 +328,9 @@ func _exit_tree() -> void:
 			SteamManager.lobby_list_updated.disconnect(_on_lobby_list_updated)
 	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
+	if menu_music_player != null:
+		menu_music_player.stop()
+	_music_playback = null
 
 # ---------------------------------------------------------------------------
 # Button handlers
@@ -388,6 +391,7 @@ func _apply_music_enabled_state() -> void:
 			_music_playback = menu_music_player.get_stream_playback() as AudioStreamGeneratorPlayback
 	else:
 		menu_music_player.stop()
+		_music_playback = null
 
 func _on_quit_confirmed() -> void:
 	get_tree().quit()

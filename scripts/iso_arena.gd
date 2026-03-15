@@ -155,6 +155,7 @@ func _exit_tree() -> void:
 		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
 	if game_music_player != null:
 		game_music_player.stop()
+	_music_playback = null
 
 # ── World seed — RPC ensures every peer uses the same noise ───────────────────
 @rpc("authority", "call_local", "reliable")
@@ -245,6 +246,7 @@ func _on_music_enabled_changed(enabled: bool) -> void:
 			_music_playback = game_music_player.get_stream_playback() as AudioStreamGeneratorPlayback
 	else:
 		game_music_player.stop()
+		_music_playback = null
 	_update_pause_music_button_label()
 
 func _update_pause_music_button_label() -> void:
