@@ -115,9 +115,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_rotate_globe(motion.relative)
 		elif _pan_dragging:
 			var pan_scale := 0.0015 * _cam_dist   # pan slower when zoomed in
-			_cam_offset_target.x -= motion.relative.x * pan_scale
 			_cam_offset_target.y += motion.relative.y * pan_scale
-			_cam_offset_target = _cam_offset_target.clampf(-PAN_LIMIT, PAN_LIMIT)
+			_cam_offset_target.y = clampf(_cam_offset_target.y, -PAN_LIMIT, PAN_LIMIT)
 
 	elif event is InputEventKey:
 		var key := event as InputEventKey
