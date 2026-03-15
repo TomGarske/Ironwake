@@ -7,10 +7,10 @@ extends Node3D
 
 # ── Orbit camera ──────────────────────────────────────────────────────────────
 const CAM_DIST_MIN:      float = 1.2
-const CAM_DIST_MAX:      float = 6.0
-const ZOOM_STEP:         float = 0.25
+const CAM_DIST_MAX:      float = 10.0
+const ZOOM_STEP:         float = 0.1
 const ZOOM_SMOOTH:       float = 8.0
-const ORBIT_SENSITIVITY: float = 0.35   # degrees per pixel
+const ORBIT_DEG_PER_SEC: float = 90.0   # arrow-key orbit speed
 const ELEVATION_LIMIT:   float = 85.0   # keep away from pole singularity
 
 const DEFAULT_CAM_DIST:  float = 3.0
@@ -28,15 +28,13 @@ var   _default_quat:  Quaternion
 
 # ── Time-driven rotation ──────────────────────────────────────────────────────
 # 1 real minute = 1 full rotation  →  6 °/s at time_scale 1.0
-const BASE_DEG_PER_SEC: float = 6.0
+const BASE_DEG_PER_SEC: float = 0.25   # 360° / 1440 s = 1 rotation per 24 min
 const TIME_SCALE_MIN:   float = 0.0
 const TIME_SCALE_MAX:   float = 120.0
 const SPEED_DRAG_SENS:  float = 0.05
 var   _sim_angle:       float = 0.0
 var   _time_scale:      float = 1.0
 
-# ── Drag state ───────────────────────────────────────────────────────────────
-var _left_dragging: bool = false
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
@@ -51,6 +49,18 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_sim_angle  += BASE_DEG_PER_SEC * _time_scale * delta
 	_cam_dist    = lerpf(_cam_dist, _cam_dist_target, ZOOM_SMOOTH * delta)
+
+	# Arrow-key orbit
+	var orbit_speed := ORBIT_DEG_PER_SEC * delta
+	if Input.is_key_pressed(KEY_LEFT):
+		_cam_azimuth -= orbit_speed
+	if Input.is_key_pressed(KEY_RIGHT):
+		_cam_azimuth += orbit_speed
+	if Input.is_key_pressed(KEY_UP):
+		_cam_elevation = clampf(_cam_elevation + orbit_speed, -ELEVATION_LIMIT, ELEVATION_LIMIT)
+	if Input.is_key_pressed(KEY_DOWN):
+		_cam_elevation = clampf(_cam_elevation - orbit_speed, -ELEVATION_LIMIT, ELEVATION_LIMIT)
+
 	_update_globe()
 	_update_camera()
 
@@ -71,18 +81,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				_cam_dist_target = clampf(_cam_dist_target - ZOOM_STEP, CAM_DIST_MIN, CAM_DIST_MAX)
 			MOUSE_BUTTON_WHEEL_DOWN:
 				_cam_dist_target = clampf(_cam_dist_target + ZOOM_STEP, CAM_DIST_MIN, CAM_DIST_MAX)
-			MOUSE_BUTTON_LEFT:
-				_left_dragging = mbe.pressed
-
-	elif event is InputEventMouseMotion:
-		var motion := event as InputEventMouseMotion
-		if _left_dragging:
-			# Orbit the camera around the globe — horizontal = azimuth, vertical = elevation
-			_cam_azimuth  += motion.relative.x * ORBIT_SENSITIVITY
-			_cam_elevation = clampf(
-				_cam_elevation - motion.relative.y * ORBIT_SENSITIVITY,
-				-ELEVATION_LIMIT, ELEVATION_LIMIT
-			)
 
 	elif event is InputEventKey:
 		var key := event as InputEventKey
@@ -111,6 +109,7 @@ func _apply_globe_texture() -> void:
 	if img == null:
 		push_error("globe_arena: cannot load res://assets/maps/globe.png")
 		return
+	img.convert(Image.FORMAT_RGB8)
 	img.generate_mipmaps()
 	var tex := ImageTexture.create_from_image(img)
 	var mat := StandardMaterial3D.new()
@@ -146,18 +145,11 @@ func _add_grid_overlay() -> void:
 shader_type spatial;
 render_mode unshaded, cull_back, blend_add;
 
-uniform int   grid_cols  : hint_range(1, 72)  = 24;
-uniform int   grid_rows  : hint_range(1, 36)  = 12;
-uniform float line_width : hint_range(0.001, 0.1) = 0.012;
-uniform vec3  line_color                       = vec3(0.3, 0.7, 1.0);
-
 void fragment() {
-	float fx = fract(UV.x * float(grid_cols));
-	float fy = fract(UV.y * float(grid_rows));
-	if (fx > line_width && fy > line_width) {
-		discard;
-	}
-	ALBEDO = line_color * 0.45;
+\tfloat fx = fract(UV.x * 24.0);
+\tfloat fy = fract(UV.y * 12.0);
+\tif (fx > 0.012 && fy > 0.012) { discard; }
+\tALBEDO = vec3(0.3, 0.7, 1.0) * 0.45;
 }
 """
 
