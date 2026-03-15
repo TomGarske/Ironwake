@@ -14,6 +14,16 @@ fi
 
 source "$CONFIG"
 
+# Warn if Godot is running (locked files will cause errors on reinstall)
+if pgrep -xi "godot" &>/dev/null; then
+    echo "WARNING: Godot appears to be running. Please close it before continuing."
+    read -rp "Continue anyway? (y/N): " confirm
+    if [[ "$confirm" != [yY] ]]; then
+        echo "Aborted."
+        exit 1
+    fi
+fi
+
 DOWNLOAD_URL="${GODOTSTEAM_BASE_URL}/${GODOTSTEAM_GDE_TAG}/${GODOTSTEAM_ARCHIVE}"
 ADDON_DIR="$SCRIPT_DIR/addons/godotsteam"
 
