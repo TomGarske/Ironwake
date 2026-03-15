@@ -12,24 +12,30 @@ git clone https://github.com/TomGarske/BurnBridgers.git
 cd BurnBridgers
 ```
 
-## 2. Install the GodotSteam Plugin (Required — not in repo)
-GodotSteam binaries are **not committed** to this repository due to their size and binary nature.
+## 2. Install Addons (Required — not in repo)
+Addon binaries (GodotSteam, LimboAI) are **not committed** to this repository due to their size and binary nature.
 
+The easiest way to install them is with the setup scripts:
+- **macOS:** `./setup-mac.sh`
+- **Linux / SteamOS:** `./setup-steamos.sh`
+- **Windows:** `.\setup-windows.ps1`
+
+The scripts read versions from `addons/addons.cfg` and download both plugins automatically.
+
+### Manual installation
+If you prefer to install manually:
+
+**GodotSteam:**
 1. Visit: https://codeberg.org/godotsteam/godotsteam/releases
-2. Download the **GDExtension** zip matching your Godot Engine version:
-   - Godot 4.4+: use the latest `GodotSteam-gdextension-plugin-4.x.zip`
-   - Godot 4.1–4.3: use the legacy version linked on the releases page
-3. Extract the zip contents into `addons/godotsteam/` at the project root:
-   ```
-   BurnBridgers/
-   └── addons/
-       └── godotsteam/
-           ├── godotsteam.gdextension
-           ├── win64/
-           │   └── godotsteam.dll
-           └── ...
-   ```
-4. The `addons/godotsteam/` directory is git-ignored — each developer must do this step.
+2. Download the **GDExtension** archive matching your Godot Engine version.
+3. Extract into `addons/godotsteam/` at the project root.
+
+**LimboAI (Behavior Trees & State Machines):**
+1. Visit: https://github.com/limbonaut/limboai/releases
+2. Download the **GDExtension** zip for your Godot version (e.g. `limboai+v1.7.0.gdextension-4.6.zip`).
+3. Extract into the project root — files land in `addons/limboai/`.
+
+Both `addons/godotsteam/` and `addons/limboai/` are git-ignored — each developer must do this step.
 
 ## 3. Create steam_appid.txt
 Create a file named `steam_appid.txt` at the project root containing just the app ID:
