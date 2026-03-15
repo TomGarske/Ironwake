@@ -43,6 +43,7 @@ func _ready() -> void:
 	_default_quat = Quaternion(Vector3.RIGHT, deg_to_rad(AXIAL_TILT_DEG))
 	_apply_globe_texture()
 	_apply_atmosphere_material()
+	_add_grid_overlay()
 	_add_reset_button()
 	_update_globe()
 	_update_camera()
@@ -110,9 +111,11 @@ func _apply_globe_texture() -> void:
 	if img == null:
 		push_error("globe_arena: cannot load res://assets/maps/globe.png")
 		return
+	img.generate_mipmaps()
 	var tex := ImageTexture.create_from_image(img)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = tex
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mat.roughness      = 0.85
 	mat.metallic       = 0.0
 	mat.specular_mode  = BaseMaterial3D.SPECULAR_DISABLED
@@ -130,6 +133,44 @@ func _apply_atmosphere_material() -> void:
 	mat.emission        = Color(0.20, 0.50, 0.95)
 	mat.emission_energy_multiplier = 0.15
 	_atmo_mesh.material_override = mat
+
+# ── Lat/lon grid overlay ──────────────────────────────────────────────────────
+func _add_grid_overlay() -> void:
+	var mesh := SphereMesh.new()
+	mesh.radius           = 1.003
+	mesh.height           = 2.006
+	mesh.radial_segments  = 72
+	mesh.rings            = 36
+
+	var shader_code := """
+shader_type spatial;
+render_mode unshaded, cull_back, blend_add;
+
+uniform int   grid_cols  : hint_range(1, 72)  = 24;
+uniform int   grid_rows  : hint_range(1, 36)  = 12;
+uniform float line_width : hint_range(0.001, 0.1) = 0.012;
+uniform vec3  line_color                       = vec3(0.3, 0.7, 1.0);
+
+void fragment() {
+	float fx = fract(UV.x * float(grid_cols));
+	float fy = fract(UV.y * float(grid_rows));
+	if (fx > line_width && fy > line_width) {
+		discard;
+	}
+	ALBEDO = line_color * 0.45;
+}
+"""
+
+	var shader := Shader.new()
+	shader.code = shader_code
+
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+
+	var grid_mesh := MeshInstance3D.new()
+	grid_mesh.mesh              = mesh
+	grid_mesh.material_override = mat
+	_globe_root.add_child(grid_mesh)
 
 # ── Reset button ──────────────────────────────────────────────────────────────
 func _add_reset_button() -> void:
