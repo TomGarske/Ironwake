@@ -20,6 +20,17 @@ Get-Content $ConfigPath | ForEach-Object {
     }
 }
 
+# Warn if Godot is running (locked DLLs will cause errors on reinstall)
+$GodotProc = Get-Process -Name "Godot*" -ErrorAction SilentlyContinue
+if ($GodotProc) {
+    Write-Host "WARNING: Godot appears to be running. Please close it before continuing."
+    $confirm = Read-Host "Continue anyway? (y/N)"
+    if ($confirm -ne "y" -and $confirm -ne "Y") {
+        Write-Host "Aborted."
+        exit 1
+    }
+}
+
 $Version    = $Config["GODOTSTEAM_VERSION"]
 $GdeTag     = $Config["GODOTSTEAM_GDE_TAG"]
 $Archive    = $Config["GODOTSTEAM_ARCHIVE"]
