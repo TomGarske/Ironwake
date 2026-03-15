@@ -16,7 +16,7 @@ extends Node3D
 @export var ejecta_ray:    Color = Color("#4A4A4A")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-const ORBIT_DIST:           float = 60.0
+const ORBIT_DIST:           float = 6.0
 # 27.3 day orbit at time_scale=1 is imperceptibly slow; useful range needs time_scale >> 1
 const BASE_ORBIT_DEG_PER_SEC: float = 360.0 / (27.3 * 86400.0)
 
