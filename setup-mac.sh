@@ -36,6 +36,13 @@ curl -fSL --progress-bar -o "$TMPFILE" "$DOWNLOAD_URL"
 echo "Extracting to addons/godotsteam/..."
 tar -xJf "$TMPFILE" -C "$SCRIPT_DIR"
 
+# Create steam_appid.txt if it doesn't exist
+STEAM_APPID_FILE="$SCRIPT_DIR/steam_appid.txt"
+if [[ ! -f "$STEAM_APPID_FILE" ]]; then
+    echo "$STEAM_APP_ID" > "$STEAM_APPID_FILE"
+    echo "Created steam_appid.txt (app ID: $STEAM_APP_ID)"
+fi
+
 echo ""
 echo "GodotSteam v${GODOTSTEAM_VERSION} installed successfully."
 echo "Open the project in Godot to verify."

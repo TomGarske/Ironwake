@@ -92,6 +92,13 @@ try {
         exit 1
     }
 
+    # Create steam_appid.txt if it doesn't exist
+    $AppIdFile = Join-Path $ScriptDir "steam_appid.txt"
+    if (-not (Test-Path $AppIdFile)) {
+        $Config["STEAM_APP_ID"] | Out-File -FilePath $AppIdFile -Encoding ascii -NoNewline
+        Write-Host "Created steam_appid.txt (app ID: $($Config['STEAM_APP_ID']))"
+    }
+
     Write-Host ""
     Write-Host "GodotSteam v$Version installed successfully."
     Write-Host "Open the project in Godot to verify."
