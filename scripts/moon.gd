@@ -16,7 +16,9 @@ extends Node3D
 @export var ejecta_ray:    Color = Color("#4A4A4A")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-const ORBIT_DIST:             float = 6.0
+const ORBIT_DIST:             float = 60.27  # 384,400 km / 6,371 km = 60.27 Earth radii
+# Orbital plane is tilted 5.14° from the ecliptic (XZ plane).
+const ORBITAL_INCLINATION_DEG: float = 5.14
 # At time_scale 1.0 = real-time: one orbit per 27.3 days = 27.3 × 86400 real seconds.
 const BASE_ORBIT_DEG_PER_SEC: float = 360.0 / (27.3 * 86400.0)  # ≈ 0.0001526°/s
 
@@ -43,13 +45,18 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_orbit_angle += BASE_ORBIT_DEG_PER_SEC * orbit_speed * time_scale * delta
-	rotation_degrees.y = _orbit_angle   # pivot rotates → Moon orbits; tidal lock is automatic
+	# Combine orbital rotation (around Y) with the 5.14° ecliptic inclination (tilt around X).
+	# Multiplying incline * orbit applies the tilt to the whole orbital plane while
+	# preserving tidal lock — the Moon mesh at (ORBIT_DIST, 0, 0) still always faces Earth.
+	var orbit_q   := Quaternion(Vector3.UP,   deg_to_rad(_orbit_angle))
+	var incline_q := Quaternion(Vector3.RIGHT, deg_to_rad(ORBITAL_INCLINATION_DEG))
+	quaternion = incline_q * orbit_q
 
 	# Update Earthshine direction each frame
 	if _moon_mat != null and _moon_mesh != null:
 		var cam := get_viewport().get_camera_3d()
 		if cam != null:
-			var to_earth := (Vector3.ZERO - _moon_mesh.global_position).normalized()
+			var to_earth := (global_position - _moon_mesh.global_position).normalized()
 			var view_dir := cam.global_transform.basis.inverse() * to_earth
 			_moon_mat.set_shader_parameter("earth_dir_view", view_dir)
 
@@ -77,6 +84,7 @@ func _build_moon_mesh() -> void:
 func _build_surface_material() -> ShaderMaterial:
 	var shader_code := """
 shader_type spatial;
+render_mode unshaded;
 
 uniform sampler2D albedo_tex    : hint_default_white,  filter_linear_mipmap_anisotropic;
 uniform sampler2D displacement_tex : hint_default_black, filter_linear_mipmap_anisotropic;
@@ -288,6 +296,16 @@ func _update_hex_highlight() -> void:
 
 
 # ── Public API (called by globe_arena.gd) ─────────────────────────────────────
+func set_display_scale(s: float) -> void:
+	if _moon_mesh != null:
+		_moon_mesh.scale = Vector3.ONE * s
+
+
+func set_hex_grid_visible(v: bool) -> void:
+	if _hex_overlay  != null: _hex_overlay.visible  = v
+	if _hex_highlight != null: _hex_highlight.visible = v
+
+
 func get_world_center() -> Vector3:
 	if _moon_mesh == null:
 		return Vector3.ZERO
