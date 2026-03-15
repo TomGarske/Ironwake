@@ -17,9 +17,9 @@ GEOJSON_URL = (
     "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
     "master/geojson/ne_10m_land.geojson"
 )
-BBOX_LON_MIN, BBOX_LON_MAX = -90.0, -55.0
-BBOX_LAT_MIN, BBOX_LAT_MAX =   9.0,  28.0
-GRID_W, GRID_H = 256, 128
+BBOX_LON_MIN, BBOX_LON_MAX = -100.0, -55.0
+BBOX_LAT_MIN, BBOX_LAT_MAX =   -5.0,  35.0
+GRID_W, GRID_H = 256, 228
 OUTPUT_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "assets", "maps", "caribbean.json",
