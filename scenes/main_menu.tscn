@@ -298,7 +298,7 @@ initial_position = 1
 [node name="SettingsMargin" type="MarginContainer" parent="SettingsPopup" unique_id=112702938]
 offset_left = 4.0
 offset_top = 4.0
-offset_right = 284.0
+offset_right = 96.0
 offset_bottom = 96.0
 theme_override_constants/margin_left = 14
 theme_override_constants/margin_top = 14
