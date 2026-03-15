@@ -62,10 +62,10 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var grabbing := _left_dragging or _pan_dragging
 
-	# Auto-rotation around tilted axis — paused while user holds the globe
+	# Auto-rotation around the globe's own axis — paused while user holds the globe
 	if not grabbing:
-		var auto_q := Quaternion(_axial_tilt_axis, deg_to_rad(AUTO_ROT_DEG_SEC * delta))
-		_globe_quat = (auto_q * _globe_quat).normalized()
+		var auto_q := Quaternion(Vector3.UP, deg_to_rad(AUTO_ROT_DEG_SEC * delta))
+		_globe_quat = (_globe_quat * auto_q).normalized()
 
 	# Spin momentum — only while not actively dragging
 	if not _left_dragging and _spin_velocity.length_squared() > SPIN_MIN_SQ:
@@ -123,10 +123,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key.pressed and not key.echo and key.keycode == KEY_R:
 			_reset_view()
 
-# ── Rotate only around the tilted spin axis (no pitch / axis-tipping) ────────
+# ── Spin around the globe's own (local) Y axis — no pitch / axis-tipping ─────
 func _rotate_globe(delta: Vector2) -> void:
-	var spin_q := Quaternion(_axial_tilt_axis, deg_to_rad(delta.x * ROT_SENSITIVITY))
-	_globe_quat = (spin_q * _globe_quat).normalized()
+	# Post-multiply = rotate in local space, so we spin around the globe's own
+	# tilted axis regardless of its current world orientation.
+	var spin_q := Quaternion(Vector3.UP, deg_to_rad(delta.x * ROT_SENSITIVITY))
+	_globe_quat = (_globe_quat * spin_q).normalized()
 
 func _apply_globe_quat() -> void:
 	_globe_root.quaternion = _globe_quat
