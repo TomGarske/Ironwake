@@ -163,6 +163,15 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 text = "Test (Offline)"
 
+[node name="GlobeButton" type="Button" parent="LeftMenuPanel/VBoxContainer" unique_id=631047201]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.89, 0.94, 1, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "Globe"
+
 [node name="SettingsButton" type="Button" parent="LeftMenuPanel/VBoxContainer" unique_id=742518400]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.89, 0.94, 1, 1)
@@ -325,6 +334,7 @@ text = "Music Enabled"
 
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/HostButton" to="." method="_on_host_button_pressed"]
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/TestButton" to="." method="_on_test_button_pressed"]
+[connection signal="pressed" from="LeftMenuPanel/VBoxContainer/GlobeButton" to="." method="_on_globe_button_pressed"]
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/SettingsButton" to="." method="_on_settings_button_pressed"]
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/ExitButton" to="." method="_on_exit_button_pressed"]
 [connection signal="pressed" from="RightLobbyPanel/VBoxContainer/ConfirmJoinButton" to="." method="_on_confirm_join_button_pressed"]
