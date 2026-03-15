@@ -1,6 +1,6 @@
 # BurnBridgers — Windows GodotSteam setup
 # Downloads and installs the GodotSteam GDExtension plugin.
-# Requires: PowerShell 5.1+, Windows 10 1903+ (for built-in tar with xz support)
+# Requires: PowerShell 5.1+, 7-Zip or Windows tar with xz support
 
 $ErrorActionPreference = "Stop"
 
@@ -37,13 +37,28 @@ if (Test-Path $AddonDir) {
     Remove-Item -Recurse -Force $AddonDir
 }
 
-# Check that tar.exe is available (built into Windows 10 1903+)
-if (-not (Get-Command tar -ErrorAction SilentlyContinue)) {
-    Write-Error "tar.exe not found. Windows 10 1903 or later is required."
+# Locate an extraction tool that supports .tar.xz
+$7zPaths = @(
+    "C:\Program Files\7-Zip\7z.exe",
+    "C:\Program Files (x86)\7-Zip\7z.exe"
+)
+$7zExe = $null
+foreach ($p in $7zPaths) {
+    if (Test-Path $p) { $7zExe = $p; break }
+}
+if (-not $7zExe -and (Get-Command 7z -ErrorAction SilentlyContinue)) {
+    $7zExe = "7z"
+}
+
+$HasTar = [bool](Get-Command tar -ErrorAction SilentlyContinue)
+
+if (-not $7zExe -and -not $HasTar) {
+    Write-Error "No extraction tool found. Install 7-Zip (https://7-zip.org) or use Windows 10 1903+."
     exit 1
 }
 
 $TmpFile = Join-Path $env:TEMP "godotsteam-$Version.tar.xz"
+$TmpTar  = Join-Path $env:TEMP "godotsteam-$Version.tar"
 
 try {
     Write-Host "Downloading GodotSteam GDExtension v$Version..."
@@ -51,14 +66,37 @@ try {
     Invoke-WebRequest -Uri $DownloadUrl -OutFile $TmpFile -UseBasicParsing
 
     Write-Host "Extracting to addons\godotsteam\..."
-    tar -xf $TmpFile -C $ScriptDir
+
+    $extracted = $false
+
+    # Try 7-Zip first (most reliable for .tar.xz on Windows)
+    if ($7zExe) {
+        # 7z requires two steps: .tar.xz -> .tar -> files
+        & $7zExe x $TmpFile "-o$env:TEMP" -y | Out-Null
+        if (Test-Path $TmpTar) {
+            & $7zExe x $TmpTar "-o$ScriptDir" -y | Out-Null
+            $extracted = $true
+        }
+    }
+
+    # Fall back to built-in tar
+    if (-not $extracted -and $HasTar) {
+        tar -xf $TmpFile -C $ScriptDir 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $extracted = $true
+        }
+    }
+
+    if (-not $extracted) {
+        Write-Error "Extraction failed. Install 7-Zip (https://7-zip.org) and try again."
+        exit 1
+    }
 
     Write-Host ""
     Write-Host "GodotSteam v$Version installed successfully."
     Write-Host "Open the project in Godot to verify."
 }
 finally {
-    if (Test-Path $TmpFile) {
-        Remove-Item $TmpFile -Force
-    }
+    if (Test-Path $TmpFile) { Remove-Item $TmpFile -Force }
+    if (Test-Path $TmpTar)  { Remove-Item $TmpTar  -Force }
 }
