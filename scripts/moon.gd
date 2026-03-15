@@ -99,7 +99,7 @@ void vertex() {
 }
 
 void fragment() {
-	float lum = texture(albedo_tex, UV).r;
+	float lum = dot(texture(albedo_tex, UV).rgb, vec3(0.2126, 0.7152, 0.0722));
 
 	vec3 col = mix(crater_shadow.rgb,
 	               mix(mare_basalt.rgb,
