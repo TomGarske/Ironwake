@@ -511,7 +511,7 @@ func _invite_state_from_value(value: Variant) -> InviteState:
 	if value is int:
 		var state_int: int = int(value)
 		if state_int >= InviteState.INVITED and state_int <= InviteState.FAILED:
-			return state_int
+			return state_int as InviteState
 		return InviteState.INVITED
 	var state_name: String = str(value)
 	match state_name:

@@ -162,7 +162,20 @@ func _exit_tree() -> void:
 func _init_world_seed(seed_val: int) -> void:
 	_terrain_renderer.chunk_size = CHUNK_SIZE
 	_terrain_renderer.configure_seed(seed_val)
+	for p in _players:
+		var dw := _find_deep_water_near(p.wx, p.wy)
+		p.wx = dw.x
+		p.wy = dw.y
 	queue_redraw()
+
+func _find_deep_water_near(wx: float, wy: float) -> Vector2:
+	for radius in range(0, 30):
+		for dx in range(-radius, radius + 1):
+			for dy in range(-radius, radius + 1):
+				if abs(dx) == radius or abs(dy) == radius:
+					if _terrain_renderer.get_tile_at(wx + dx, wy + dy) == IsoTerrainRenderer.T_DEEP:
+						return Vector2(wx + dx + 0.5, wy + dy + 0.5)
+	return Vector2(wx, wy)
 
 # ── Coordinate helpers ────────────────────────────────────────────────────────
 func _w2s(wx: float, wy: float) -> Vector2:
@@ -205,7 +218,7 @@ func _ensure_key_for_action(action: String, keycode: Key) -> void:
 	key_event.keycode = keycode
 	InputMap.action_add_event(action, key_event)
 
-func _ensure_joy_button_for_action(action: String, button_index: int, device: int = -1) -> void:
+func _ensure_joy_button_for_action(action: String, button_index: JoyButton) -> void:
 	for event in InputMap.action_get_events(action):
 		if event is InputEventJoypadButton and event.button_index == button_index and event.device == device:
 			return
@@ -461,11 +474,9 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 	if Input.is_action_pressed(_ACTIONS.down):  move.y += 1.0
 	if move.length_squared() > 0.0:
 		move = move.normalized()
-		var current_tile: int = _terrain_renderer.get_tile_at(p.wx, p.wy)
-		var spd: float = SPEED * (0.5 if current_tile == _TERRAIN_WATER else 1.0)
-		var new_wx: float = p.wx + move.x * spd * delta
-		var new_wy: float = p.wy + move.y * spd * delta
-		if _terrain_renderer.get_tile_at(new_wx, new_wy) != _TERRAIN_DEEP:
+		var new_wx: float = p.wx + move.x * SPEED * delta
+		var new_wy: float = p.wy + move.y * SPEED * delta
+		if _terrain_renderer.get_tile_at(new_wx, new_wy) != IsoTerrainRenderer.T_SAND:
 			p.wx = new_wx
 			p.wy = new_wy
 		p.dir        = move
@@ -619,82 +630,82 @@ func _draw() -> void:
 func _draw_tiles(vp: Vector2) -> void:
 	_terrain_renderer.draw_tiles(self, _origin, vp, TILE_W, TILE_H, RENDER_MARGIN)
 
-# ── Character drawing ─────────────────────────────────────────────────────────
+# ── Character drawing (pirate ship) ──────────────────────────────────────────
 func _draw_player(p: Dictionary) -> void:
-	var sp := _w2s(p.wx, p.wy)
+	var sp  := _w2s(p.wx, p.wy)
 	var pa: Color = p.palette[0]
 	var pb: Color = p.palette[1]
-	var dim := Color(pa.r * 0.45, pa.g * 0.45, pa.b * 0.45)
+	var hull_dark := Color(pa.r * 0.40, pa.g * 0.40, pa.b * 0.40)
+	var wood      := Color(0.38, 0.24, 0.10)
 
-	# Ground shadow — squashed circle
-	draw_set_transform(sp + Vector2(0.0, 3.0), 0.0, Vector2(1.0, 0.40))
-	draw_circle(Vector2.ZERO, 15.0, Color(0.0, 0.0, 0.0, 0.40))
+	# Wake ripple shadow
+	draw_set_transform(sp + Vector2(0.0, 5.0), 0.0, Vector2(1.0, 0.30))
+	draw_circle(Vector2.ZERO, 20.0, Color(0.0, 0.15, 0.35, 0.28))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	if not p.alive:
-		draw_line(sp + Vector2(-9.0, -9.0), sp + Vector2(9.0, 9.0), Color(0.7, 0.1, 0.1, 0.9), 3.5)
-		draw_line(sp + Vector2(9.0, -9.0),  sp + Vector2(-9.0, 9.0), Color(0.7, 0.1, 0.1, 0.9), 3.5)
+		# Sunken wreck — broken planks
+		draw_line(sp + Vector2(-12.0, -4.0), sp + Vector2(12.0,  4.0), Color(0.38, 0.24, 0.10, 0.85), 4.0)
+		draw_line(sp + Vector2( 12.0, -4.0), sp + Vector2(-12.0, 4.0), Color(0.38, 0.24, 0.10, 0.85), 4.0)
 		return
 
-	# Walk bob
-	var bob: float = sin(p.walk_time * 9.0) * 3.5 if p.moving else 0.0
+	var ds   := _dir_screen(p.dir.x, p.dir.y)
+	var perp := Vector2(-ds.y, ds.x)
+	var bob  := sin(p.walk_time * 5.0) * 1.5 if p.moving else 0.0
+	var lift := Vector2(0.0, -6.0 + bob)
 
-	# Legs
-	draw_rect(Rect2(sp.x - 8.0, sp.y - 18.0 + bob,  7.0, 18.0), dim)
-	draw_rect(Rect2(sp.x + 1.0, sp.y - 18.0 - bob,  7.0, 18.0), dim)
+	# Hull — diamond with pointed bow and stern
+	var bow    := sp + ds * 22.0  + lift
+	var stern  := sp - ds * 18.0  + lift
+	var port   := sp + perp * 9.0 + lift + Vector2(0.0, 2.0)
+	var stbd   := sp - perp * 9.0 + lift + Vector2(0.0, 2.0)
+	draw_polygon(PackedVector2Array([bow, port, stern, stbd]),
+				 PackedColorArray([hull_dark, pa, hull_dark, pa]))
+	# Gunwale outline
+	draw_polyline(PackedVector2Array([bow, port, stern, stbd, bow]),
+				  Color(0.0, 0.0, 0.0, 0.45), 1.5)
 
-	# Body
-	draw_rect(Rect2(sp.x - 9.0, sp.y - 42.0, 18.0, 26.0), pa)
-	# Body shading
-	draw_rect(Rect2(sp.x - 9.0, sp.y - 42.0,  4.0, 26.0), pb)   # left highlight
-	draw_rect(Rect2(sp.x - 9.0, sp.y - 42.0, 18.0,  3.0), pb)   # top highlight
-	draw_rect(Rect2(sp.x + 5.0, sp.y - 19.0,  4.0,  3.0), pb)   # belt detail
+	# Deck stripe
+	var deck_bow   := sp + ds * 8.0  + lift
+	var deck_stern := sp - ds * 8.0  + lift
+	draw_line(deck_bow + perp * 6.0, deck_bow - perp * 6.0,   pb, 2.0)
+	draw_line(deck_stern + perp * 5.0, deck_stern - perp * 5.0, pb, 2.0)
 
-	# Head
-	draw_circle(sp + Vector2(0.0, -51.0), 10.0, pb)
-	draw_circle(sp + Vector2(0.0, -51.0), 10.0, Color(0.0, 0.0, 0.0, 0.18), false, 1.5)
-	# Face dot (shows which direction player faces)
-	var fwd := _dir_screen(p.dir.x, p.dir.y) * 4.5
-	draw_circle(sp + Vector2(fwd.x, -51.0 + fwd.y * 0.5), 2.5, Color(0.0, 0.0, 0.0, 0.35))
+	# Mast
+	var mast_base := sp + lift
+	var mast_top  := mast_base + Vector2(0.0, -32.0)
+	draw_line(mast_base, mast_top, wood, 3.0)
 
-	# Weapon / attack
+	# Yard-arm (horizontal spar)
+	var yard := mast_base + Vector2(0.0, -24.0)
+	draw_line(yard - perp * 12.0, yard + perp * 12.0, wood, 2.0)
+
 	if p.atk_time > 0.0:
+		# Cannon fire — flash on both sides
 		var t: float = 1.0 - float(p.atk_time) / ATK_DUR
-		var ds   := _dir_screen(p.dir.x, p.dir.y)
-		var perp := Vector2(-ds.y, ds.x)
-		var angle: float = lerp(-0.9, 0.9, t)
-		var arm  := sp + ds * 9.0 + Vector2(0.0, -32.0)
-		var tip  := arm + (ds * cos(angle) + perp * sin(angle)) * 30.0
-		# Weapon trail
-		var trail := arm + (ds * cos(angle * 0.5) + perp * sin(angle * 0.5)) * 22.0
-		draw_line(arm, trail, Color(pa.r, pa.g, pa.b, 0.30), 8.0)
-		# Blade
-		draw_line(arm, tip, Color(0.65, 0.60, 0.22), 3.5)
-		draw_circle(tip, 3.5, Color(0.88, 0.82, 0.30))
-	else:
-		# Idle arm stubs
-		var ds := _dir_screen(p.dir.x, p.dir.y)
-		draw_line(sp + Vector2(0.0, -38.0),
-				  sp + Vector2(0.0, -38.0) + ds * 8.0 + Vector2(0.0, 4.0),
-				  dim, 5.0)
+		var cannon_l := sp + perp * 10.0 + ds * 6.0 + lift
+		var cannon_r := sp - perp * 10.0 + ds * 6.0 + lift
+		draw_circle(cannon_l + ds * 18.0 * t, 6.0 * (1.0 - t * 0.6), Color(1.0, 0.65, 0.1, 0.9 - t * 0.7))
+		draw_circle(cannon_r + ds * 18.0 * t, 6.0 * (1.0 - t * 0.6), Color(1.0, 0.65, 0.1, 0.9 - t * 0.7))
 
-	# Name tag — small, floats above head with a gentle independent bob per player
-	var float_y: float = sin(Time.get_ticks_msec() * 0.0018 + float(p.peer_id) * 0.9) * 3.5
+	# Sail — rectangle between yard and lower tie
+	var sail_tl := yard - perp * 11.0
+	var sail_tr := yard + perp * 11.0
+	var sail_br := mast_base + Vector2(0.0, -10.0) + perp * 8.0
+	var sail_bl := mast_base + Vector2(0.0, -10.0) - perp * 8.0
+	draw_polygon(PackedVector2Array([sail_tl, sail_tr, sail_br, sail_bl]),
+				 PackedColorArray([pb, pb, Color(pb.r, pb.g, pb.b, 0.8), Color(pb.r, pb.g, pb.b, 0.8)]))
+	draw_polyline(PackedVector2Array([sail_tl, sail_tr, sail_br, sail_bl, sail_tl]),
+				  Color(0.0, 0.0, 0.0, 0.25), 1.0)
+
+	# Skull flag at mast top
+	draw_rect(Rect2(mast_top.x - 6.0, mast_top.y - 8.0, 10.0, 8.0), Color(0.0, 0.0, 0.0, 0.9))
+	draw_circle(mast_top + Vector2(1.0, -4.0), 2.5, Color(1.0, 1.0, 1.0, 0.85))
+
+	# Name tag
 	var font := ThemeDB.fallback_font
-	var label_pos := sp + Vector2(0.0, -82.0 + float_y)
-	var label_size: Vector2 = font.get_string_size(p.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9)
-	var tag_pad := 4.0
-	var tag_rect := Rect2(
-		label_pos.x - label_size.x * 0.5 - tag_pad,
-		label_pos.y - label_size.y - 1.0,
-		label_size.x + tag_pad * 2.0,
-		label_size.y + tag_pad
-	)
-	draw_rect(tag_rect, Color(0.0, 0.0, 0.0, 0.55))
-	draw_rect(tag_rect, pa, false, 1.0)
-	var text_pos := Vector2(label_pos.x - label_size.x * 0.5, label_pos.y)
-	draw_string(font, text_pos, p.label,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(1.0, 1.0, 1.0, 0.92))
+	draw_string(font, sp + Vector2(0.0, -54.0), p.label,
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1.0, 1.0, 1.0, 0.88))
 
 # ── HUD ───────────────────────────────────────────────────────────────────────
 func _draw_hud(vp: Vector2) -> void:
