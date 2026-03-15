@@ -7,6 +7,7 @@ extends Node
 # TODO: assign GAME_OVER in _on_match_over handler once end-match UI flow is implemented.
 enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
 const MATCH_SCENE_PATH: String = "res://scenes/game/iso_arena.tscn"
+const BLACKSITE_CONTAINMENT_SCENE_PATH: String = "res://scenes/game/blacksite/blacksite_containment_arena.tscn"
 const CHIMERA_SCENE_PATH: String = "res://scenes/game/chrimera/chrimera_landing.tscn"
 const REPLICANTS_SCENE_PATH: String = "res://scenes/game/replicants/replicants_landing.tscn"
 const BLACKSITE_BREAKOUT_SCENE_PATH: String = "res://scenes/game/area51/blacksite_breakout_landing.tscn"
@@ -19,19 +20,19 @@ const DEFAULT_MUSIC_PROFILE: Dictionary = {
 	"tone": 1.0,
 }
 const MODE_MUSIC_PROFILES: Dictionary = {
-	"pirates": {"intensity": 1.05, "speed": 0.95, "tone": 0.96},
+	"blacksite_containment": {"intensity": 1.05, "speed": 0.95, "tone": 0.96},
 	"chrimera": {"intensity": 1.20, "speed": 1.15, "tone": 1.08},
 	"replicants": {"intensity": 0.92, "speed": 0.88, "tone": 0.90},
 	"blacksite_breakout": {"intensity": 1.30, "speed": 1.12, "tone": 1.15},
 }
 const GAME_MODES: Array[Dictionary] = [
 	{
-		"id": "pirates",
+		"id": "blacksite_containment",
 		"label": "Blacksite Containment",
 		"subtitle": "Blacksite Border Patrol",
 		"badge": "[CONTAIN]",
-		"scene_path": MATCH_SCENE_PATH,
-		"description": "Pilot floating containment drones to eliminate escapees using lasers, side shotguns, orbital strikes, and burst speed.",
+		"scene_path": BLACKSITE_CONTAINMENT_SCENE_PATH,
+		"description": "Pilot floating containment drones with a directional charge laser, orbital strikes, burst speed, and framerate control to intercept escapees.",
 		"enabled": true,
 	},
 	{

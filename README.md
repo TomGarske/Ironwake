@@ -12,7 +12,7 @@ The project uses [GodotSteam](https://godotsteam.com/) for Steam lobbies and pee
 ## Current Game Modes
 
 - **Blacksite Containment** (`Blacksite Border Patrol`)  
-  Floating drone defense mode: front laser, side shotguns, orbital strike support, and burst speed interception.
+  Floating drone defense mode with a directional charge laser, orbital strikes, burst speed, and framerate-control perception.
 - **Chrimera** (`Bioforge Run`)  
   Side-scroller roguelike escape concept.
 - **Replicants** (`Swarm Command`)  
