@@ -1,7 +1,7 @@
 extends Node3D
 
 # ── Exports ───────────────────────────────────────────────────────────────────
-@export var time_scale:            float = 1.0
+@export var time_scale:            float = 86400.0   # 1 s = 1 simulated day → orbit in ~27 s
 @export var orbit_speed:           float = 1.0
 @export var rotation_speed:        float = 1.0   # kept == orbit_speed for tidal lock
 @export var moon_radius:           float = 0.27
