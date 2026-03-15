@@ -1,7 +1,7 @@
 extends Node3D
 
 # ── Exports ───────────────────────────────────────────────────────────────────
-@export var time_scale:            float = 86400.0   # 1 s = 1 simulated day → orbit in ~27 s
+@export var time_scale:            float = 1.0
 @export var orbit_speed:           float = 1.0
 @export var rotation_speed:        float = 1.0   # kept == orbit_speed for tidal lock
 @export var moon_radius:           float = 0.27
@@ -16,9 +16,10 @@ extends Node3D
 @export var ejecta_ray:    Color = Color("#4A4A4A")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-const ORBIT_DIST:           float = 6.0
-# 27.3 day orbit at time_scale=1 is imperceptibly slow; useful range needs time_scale >> 1
-const BASE_ORBIT_DEG_PER_SEC: float = 360.0 / (27.3 * 86400.0)
+const ORBIT_DIST:             float = 6.0
+# Earth rotates 360° in 24 game-seconds (globe_arena BASE_DEG_PER_SEC = 15°/s).
+# Moon's real orbital period = 27.3 Earth days = 27.3 × 24 game-seconds ≈ 655 s/orbit.
+const BASE_ORBIT_DEG_PER_SEC: float = 360.0 / (27.3 * 24.0)  # ≈ 0.5495°/s
 
 # ── Internal nodes ────────────────────────────────────────────────────────────
 var _moon_mesh:      MeshInstance3D = null
