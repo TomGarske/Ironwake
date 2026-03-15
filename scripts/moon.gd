@@ -293,12 +293,12 @@ func navigate(dir: Vector2, cam_right: Vector3, cam_up: Vector3) -> void:
 	var neighbors: Array = _hex_data[_selected_hex].n
 	if neighbors.is_empty():
 		return
-	var basis    := _moon_mesh.global_transform.basis
-	var cur_world := basis * (_hex_data[_selected_hex].c as Vector3)
-	var best: int  = int(neighbors[0])
-	var best_score := -INF
+	var mesh_basis := _moon_mesh.global_transform.basis
+	var cur_world  := mesh_basis * (_hex_data[_selected_hex].c as Vector3)
+	var best: int   = int(neighbors[0])
+	var best_score  := -INF
 	for ni in neighbors:
-		var nw    := basis * (_hex_data[int(ni)].c as Vector3)
+		var nw    := mesh_basis * (_hex_data[int(ni)].c as Vector3)
 		var delta := nw - cur_world
 		var score := delta.dot(cam_right) * dir.x + delta.dot(cam_up) * dir.y
 		if score > best_score:
