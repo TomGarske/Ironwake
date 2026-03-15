@@ -162,9 +162,9 @@ func _update_camera_earth(delta: float) -> void:
 
 
 func _update_camera_moon(delta: float) -> void:
-	var moon_center := _moon.get_world_center()
-	var hex_world   := _moon.get_selected_hex_world()
-	var target      := (hex_world - moon_center).normalized()
+	var moon_center: Vector3 = _moon.get_world_center()
+	var hex_world:   Vector3 = _moon.get_selected_hex_world()
+	var target:      Vector3 = (hex_world - moon_center).normalized()
 
 	if _cam_dir.is_zero_approx():
 		_cam_dir = target
