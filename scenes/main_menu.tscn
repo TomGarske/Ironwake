@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c3tanyp60wrif"]
 
-[ext_resource type="Script" uid="uid://3jcvv2rri2bc" path="res://scripts/main_menu.gd" id="1_main_menu"]
-[ext_resource type="Script" uid="uid://nx1ihqstq1si" path="res://scripts/burning_bridge.gd" id="2_burning_bridge"]
+[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_main_menu"]
+[ext_resource type="Script" path="res://scripts/burning_bridge.gd" id="2_burning_bridge"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu_panel"]
 content_margin_left = 16.0
@@ -294,6 +294,7 @@ Quit anyway?"
 
 [node name="SettingsPopup" type="PopupPanel" parent="." unique_id=1832641910]
 initial_position = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_menu_panel")
 
 [node name="SettingsMargin" type="MarginContainer" parent="SettingsPopup" unique_id=112702938]
 offset_left = 4.0
@@ -315,10 +316,12 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "Settings"
 horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
 
 [node name="MusicToggle" type="CheckButton" parent="SettingsPopup/SettingsMargin/VBoxContainer" unique_id=1748494922]
 layout_mode = 2
 text = "Music Enabled"
+theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
 
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/HostButton" to="." method="_on_host_button_pressed"]
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/TestButton" to="." method="_on_test_button_pressed"]

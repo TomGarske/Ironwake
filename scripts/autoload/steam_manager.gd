@@ -117,8 +117,8 @@ func _attempt_create_lobby() -> void:
 		_emit_debug("[SteamManager] Enabled P2P packet relay for lobby creation.", false)
 	
 	_emit_debug("[SteamManager] Creating lobby (platform: %s, App ID: %d)..." % [OS.get_name(), get_current_app_id()], false)
-	# LOBBY_TYPE_PUBLIC so others can find it; max 4 players per spec
-	_steam.call("createLobby", _LOBBY_TYPE_PUBLIC, 4)
+	# LOBBY_TYPE_PUBLIC so others can find it
+	_steam.call("createLobby", _LOBBY_TYPE_PUBLIC, GameConstants.MAX_PLAYERS)
 
 func join_lobby(target_lobby_id: int) -> void:
 	if not steam_ready:

@@ -9,11 +9,6 @@ enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
 const MATCH_SCENE_PATH: String = "res://scenes/game/iso_arena.tscn"
 const MAIN_MENU_SCENE_PATH: String = "res://scenes/main_menu.tscn"
 const LOBBY_SCENE_PATH: String = "res://scenes/lobby.tscn"
-const _UI_DPAD_LEFT: int = JOY_BUTTON_DPAD_LEFT
-const _UI_DPAD_RIGHT: int = JOY_BUTTON_DPAD_RIGHT
-const _UI_DPAD_UP: int = JOY_BUTTON_DPAD_UP
-const _UI_DPAD_DOWN: int = JOY_BUTTON_DPAD_DOWN
-
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
@@ -29,7 +24,6 @@ signal music_enabled_changed(enabled: bool)
 # Lifecycle
 # ---------------------------------------------------------------------------
 func _ready() -> void:
-	_ensure_controller_ui_actions()
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
 func set_music_enabled(enabled: bool) -> void:
@@ -72,7 +66,7 @@ func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: fl
 	InputMap.action_add_event(action, motion_event)
 
 # ---------------------------------------------------------------------------
-# Player registration (called via RPC from clients)
+# Player registration
 # ---------------------------------------------------------------------------
 ## Any peer can call this; only the host processes it.
 @rpc("any_peer", "call_local", "reliable")
@@ -107,8 +101,8 @@ func start_match() -> void:
 	if not multiplayer.is_server():
 		push_warning("[GameManager] start_match called on non-host — ignoring.")
 		return
-	if players.size() < 1:
-		push_warning("[GameManager] Not enough players to start (%d registered)." % players.size())
+	if players.size() < 2:
+		push_warning("[GameManager] Not enough players to start (%d registered, need at least 2)." % players.size())
 		return
 	if SteamManager.lobby_id != 0 and not SteamManager.are_all_lobby_members_ready():
 		push_warning("[GameManager] Cannot start: not all lobby players are ready.")
