@@ -26,10 +26,17 @@ var _chunks:     Dictionary  = {}
 var _elev_noise: FastNoiseLite = null
 var _warp_noise: FastNoiseLite = null
 
-var _static_mode:   bool            = false
-var _static_width:  int             = 0
-var _static_height: int             = 0
-var _static_tiles:  PackedByteArray = PackedByteArray()
+var _static_mode:    bool            = false
+var _static_width:   int             = 0
+var _static_height:  int             = 0
+var _static_tiles:   PackedByteArray = PackedByteArray()
+var _overview_tex:   ImageTexture    = null
+
+# LOD threshold: use overview texture when tiles are smaller than this many pixels wide
+const _LOD_TILE_PX: float = 4.0
+const _C_DEEP:  Color = Color(0.04, 0.15, 0.35)
+const _C_WATER: Color = Color(0.12, 0.42, 0.70)
+const _C_SAND:  Color = Color(0.76, 0.65, 0.40)
 
 func configure_seed(seed_val: int) -> void:
 	_elev_noise = FastNoiseLite.new()
@@ -57,6 +64,20 @@ func load_static_map(data: Dictionary) -> void:
 		_static_tiles[i] = int(raw[i])
 	_static_mode = true
 	_chunks.clear()
+	_bake_overview_texture()
+
+func _bake_overview_texture() -> void:
+	var img := Image.create(_static_width, _static_height, false, Image.FORMAT_RGB8)
+	for ty in range(_static_height):
+		for tx in range(_static_width):
+			var t := int(_static_tiles[ty * _static_width + tx])
+			var c: Color
+			match t:
+				T_DEEP:  c = _C_DEEP
+				T_WATER: c = _C_WATER
+				_:       c = _C_SAND
+			img.set_pixel(tx, ty, c)
+	_overview_tex = ImageTexture.create_from_image(img)
 
 func draw_tiles(canvas: CanvasItem, origin: Vector2, viewport: Vector2, tile_w: float, tile_h: float, render_margin: int = 2) -> void:
 	if _elev_noise == null and not _static_mode:
@@ -74,6 +95,23 @@ func draw_tiles(canvas: CanvasItem, origin: Vector2, viewport: Vector2, tile_w: 
 		tx_max = maxi(tx_max, ceili((u + v) * 0.5) + render_margin)
 		ty_min = mini(ty_min, floori((v - u) * 0.5) - render_margin)
 		ty_max = maxi(ty_max, ceili((v - u) * 0.5) + render_margin)
+
+	# Clamp to map bounds so zooming out never generates a million-tile range
+	if _static_mode:
+		tx_min = maxi(tx_min, 0)
+		tx_max = mini(tx_max, _static_width - 1)
+		ty_min = maxi(ty_min, 0)
+		ty_max = mini(ty_max, _static_height - 1)
+		# LOD: when tiles are sub-pixel, draw the pre-baked overview texture
+		if tile_w < _LOD_TILE_PX and _overview_tex != null:
+			var xform := Transform2D(
+				Vector2(tile_w * 0.5, tile_h * 0.5),
+				Vector2(-tile_w * 0.5, tile_h * 0.5),
+				origin)
+			canvas.draw_set_transform_matrix(xform)
+			canvas.draw_texture(_overview_tex, Vector2.ZERO)
+			canvas.draw_set_transform_matrix(Transform2D.IDENTITY)
+			return
 
 	for cx in range(floori(float(tx_min) / chunk_size), ceili(float(tx_max) / chunk_size) + 1):
 		for cy in range(floori(float(ty_min) / chunk_size), ceili(float(ty_max) / chunk_size) + 1):

@@ -1,39 +1,38 @@
-[gd_scene load_steps=3 format=3 uid="uid://burnbridgers_iso_arena"]
+[gd_scene format=3 uid="uid://drqq7exddiirw"]
 
-[ext_resource type="Script" path="res://scripts/iso_arena.gd" id="1_iso"]
+[ext_resource type="Script" uid="uid://dljaydhlw717l" path="res://scripts/iso_arena.gd" id="1_iso"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pause_panel"]
 bg_color = Color(0.14, 0.11, 0.09, 0.95)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
 border_color = Color(0.48, 0.35, 0.22, 0.84)
-shadow_size = 18
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
 shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 18
 
-[node name="IsoArena" type="Node2D"]
+[node name="IsoArena" type="Node2D" unique_id=1122283763]
 y_sort_enabled = true
 script = ExtResource("1_iso")
 
-[node name="UILayer" type="CanvasLayer" parent="."]
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=819313691]
 
-[node name="PauseBackdrop" type="ColorRect" parent="UILayer"]
+[node name="PauseBackdrop" type="ColorRect" parent="UILayer" unique_id=515740792]
 visible = false
-layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.02, 0.02, 0.02, 0.52)
 mouse_filter = 2
+color = Color(0.02, 0.02, 0.02, 0.52)
 
-[node name="QuitGameButton" type="Button" parent="UILayer"]
+[node name="QuitGameButton" type="Button" parent="UILayer" unique_id=1720654103]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -44,7 +43,7 @@ offset_bottom = 52.0
 grow_horizontal = 0
 text = "Quit Game"
 
-[node name="PauseMenuPanel" type="PanelContainer" parent="UILayer"]
+[node name="PauseMenuPanel" type="PanelContainer" parent="UILayer" unique_id=263045873]
 visible = false
 anchors_preset = 8
 anchor_left = 0.5
@@ -57,42 +56,43 @@ offset_right = 150.0
 offset_bottom = 120.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_pause_panel")
 
-[node name="PauseMenuMargin" type="MarginContainer" parent="UILayer/PauseMenuPanel"]
+[node name="PauseMenuMargin" type="MarginContainer" parent="UILayer/PauseMenuPanel" unique_id=290817975]
 layout_mode = 2
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 16
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 16
 
-[node name="PauseMenuVBox" type="VBoxContainer" parent="UILayer/PauseMenuPanel/PauseMenuMargin"]
+[node name="PauseMenuVBox" type="VBoxContainer" parent="UILayer/PauseMenuPanel/PauseMenuMargin" unique_id=646705258]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="PauseMenuTitle" type="Label" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+[node name="PauseMenuTitle" type="Label" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox" unique_id=111794624]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
+theme_override_font_sizes/font_size = 22
 text = "Pause Menu"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
 
-[node name="PauseResumeButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+[node name="PauseResumeButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox" unique_id=958172438]
 layout_mode = 2
 text = "Resume"
 
-[node name="PauseMusicButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+[node name="PauseMusicButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox" unique_id=1440651011]
 layout_mode = 2
 text = "Music: On"
 
-[node name="PauseQuitButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+[node name="PauseQuitButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox" unique_id=587535979]
 layout_mode = 2
 text = "Quit Match"
 
-[node name="QuitConfirmDialog" type="ConfirmationDialog" parent="UILayer"]
+[node name="QuitConfirmDialog" type="ConfirmationDialog" parent="UILayer" unique_id=45097249]
 title = "Leave Match?"
-ok_button_text = "Yes, bail out"
-dialog_text = "You are giving up already?\nThe bridge is still burning.\n\nQuit the match anyway?"
 initial_position = 1
+ok_button_text = "Yes, bail out"
+dialog_text = "You are giving up already?
+The bridge is still burning.
 
-[node name="GameMusicPlayer" type="AudioStreamPlayer" parent="UILayer"]
-autoplay = false
-bus = &"Master"
+Quit the match anyway?"
+
+[node name="GameMusicPlayer" type="AudioStreamPlayer" parent="UILayer" unique_id=2122353253]

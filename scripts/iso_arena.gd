@@ -66,8 +66,8 @@ var _music_bass_phase: float = 0.0
 var _music_time: float = 0.0
 var _terrain_renderer = TERRAIN_RENDERER_SCRIPT.new()
 var _zoom: float = 1.0
-const _ZOOM_MIN: float = 0.25
-const _ZOOM_MAX: float = 3.0
+const _ZOOM_MIN: float = 0.001
+const _ZOOM_MAX: float = 1.0
 const _ZOOM_STEP: float = 0.1
 
 # ── Spawn positions (world units) — populated by _load_geo_map() ──────────────
