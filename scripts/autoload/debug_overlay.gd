@@ -137,6 +137,11 @@ func _sync_version_label_visibility() -> void:
 	var scene_root: Node = get_tree().current_scene
 	if scene_root == null:
 		return
-	var version_node: Node = scene_root.get_node_or_null("VersionLabel")
-	if version_node is CanvasItem:
-		(version_node as CanvasItem).visible = _panel.visible
+	var linked_nodes: Array[String] = [
+		"VersionLabel",
+		"ControllerDebugLine"
+	]
+	for node_name in linked_nodes:
+		var ui_node: Node = scene_root.get_node_or_null(node_name)
+		if ui_node is CanvasItem:
+			(ui_node as CanvasItem).visible = _panel.visible

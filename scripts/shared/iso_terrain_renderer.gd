@@ -15,7 +15,7 @@ const T_SNOW: int = 6
 #
 #  Row 0: shallow water | deep water | sand
 #  Row 1: mountain      | snow       | forest/grass
-const _TERRAIN_TEX: Texture2D = preload("res://assets/tilesets/tileset.png")
+const _TERRAIN_TEX_PATH: String = "res://assets/tilesets/tileset.png"
 const _SP_W: int = 32   # tile width in sheet
 const _SP_H: int = 64   # tile height in sheet
 const _SP_SCALE: float = 2.0
@@ -47,8 +47,14 @@ var _chunks: Dictionary = {}
 var _elev_noise: FastNoiseLite = null
 var _warp_noise: FastNoiseLite = null
 var _moist_noise: FastNoiseLite = null
+var _terrain_tex: Texture2D = null
 
 func configure_seed(seed_val: int) -> void:
+	# Keep map rendering resilient even when optional art assets are missing.
+	if ResourceLoader.exists(_TERRAIN_TEX_PATH):
+		_terrain_tex = load(_TERRAIN_TEX_PATH) as Texture2D
+	else:
+		_terrain_tex = null
 	_elev_noise = FastNoiseLite.new()
 	_elev_noise.seed               = seed_val
 	_elev_noise.noise_type         = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -109,13 +115,25 @@ func _draw_tile(canvas: CanvasItem, origin: Vector2, tile_w: float, tile_h: floa
 
 	var tt: int = _get_tile(tx, ty)
 
-	# All terrain types now have sprites
-	var info: Array = _SPRITE_MAP[tt]
-	var src  := Rect2(info[1] * _SP_W, info[0] * _SP_H, _SP_W, _SP_H)
-	var dw   := _SP_W * _SP_SCALE
-	var dh   := _SP_H * _SP_SCALE
-	var dest := Rect2(top.x - dw * 0.5, top.y, dw, dh)
-	canvas.draw_texture_rect_region(_TERRAIN_TEX, dest, src)
+	# Draw sprite tiles when the texture sheet is available.
+	if _terrain_tex != null and _SPRITE_MAP.has(tt):
+		var info: Array = _SPRITE_MAP[tt]
+		var src  := Rect2(info[1] * _SP_W, info[0] * _SP_H, _SP_W, _SP_H)
+		var dw   := _SP_W * _SP_SCALE
+		var dh   := _SP_H * _SP_SCALE
+		var dest := Rect2(top.x - dw * 0.5, top.y, dw, dh)
+		canvas.draw_texture_rect_region(_terrain_tex, dest, src)
+		return
+
+	# Fallback rendering keeps gameplay usable when art assets are unavailable.
+	var rgt := _w2s(origin, tile_w, tile_h, float(tx + 1), ty + 0.5)
+	var bot := _w2s(origin, tile_w, tile_h, tx + 0.5, float(ty + 1))
+	var lft := _w2s(origin, tile_w, tile_h, float(tx), ty + 0.5)
+	var tc: Array = _TC[tt]
+	var face: Color = tc[0].lightened(0.06) if (tt == T_DEEP or tt == T_WATER) and (tx + ty) % 2 == 0 else tc[0]
+	canvas.draw_polygon(PackedVector2Array([top, rgt, bot, lft]), PackedColorArray([face]))
+	canvas.draw_line(lft, bot, tc[1], 1.2)
+	canvas.draw_line(rgt, bot, tc[1], 1.2)
 
 func _w2s(origin: Vector2, tile_w: float, tile_h: float, wx: float, wy: float) -> Vector2:
 	return origin + Vector2((wx - wy) * tile_w * 0.5, (wx + wy) * tile_h * 0.5)
@@ -189,6 +207,12 @@ func _get_tile(tx: int, ty: int) -> int:
 	var lx: int = tx - cx * chunk_size
 	var ly: int = ty - cy * chunk_size
 	return _chunks[key][lx * chunk_size + ly]
+
+func get_tile_at(wx: float, wy: float) -> int:
+	# Public sampling helper used by gameplay logic (movement slowdown/blocking).
+	if _elev_noise == null:
+		return T_GRASS
+	return _get_tile(floori(wx), floori(wy))
 
 func _draw_fallback_tiles(canvas: CanvasItem, origin: Vector2, viewport: Vector2, tile_w: float, tile_h: float) -> void:
 	var rows: int = int(ceili(viewport.y / tile_h)) + 6

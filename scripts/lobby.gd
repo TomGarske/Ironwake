@@ -27,11 +27,9 @@ const _FRIENDS_REFRESH_INTERVAL: float = 6.0
 func _ready() -> void:
 	lobby_id_label.text = "Lobby ID: %d" % SteamManager.lobby_id
 	_apply_warm_tactical_theme()
-	_enable_controller_focus()
-	_configure_navigation()
-
-	# Only the host sees the Start button
+	# Set visibility BEFORE configuring navigation so focus chains reflect actual visibility.
 	start_button.visible = SteamManager.is_host
+	_configure_navigation()
 	start_button.disabled = true
 	ready_button.text = "Ready"
 	ready_button.pressed.connect(_on_ready_button_pressed)
@@ -75,11 +73,6 @@ func _apply_warm_tactical_theme() -> void:
 	UiStyleScript.style_button(ready_button)
 	UiStyleScript.style_button(start_button)
 	UiStyleScript.style_button(back_button)
-
-func _enable_controller_focus() -> void:
-	ready_button.focus_mode = Control.FOCUS_ALL
-	start_button.focus_mode = Control.FOCUS_ALL
-	back_button.focus_mode = Control.FOCUS_ALL
 
 func _exit_tree() -> void:
 	if SteamManager == null:

@@ -224,6 +224,7 @@ func _setup_controller_debug_line() -> void:
 	_controller_debug_label.add_theme_font_size_override("font_size", 12)
 	_controller_debug_label.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95, 0.95))
 	_controller_debug_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_controller_debug_label.visible = false
 	_controller_debug_label.text = "Controller debug initializing..."
 	add_child(_controller_debug_label)
 

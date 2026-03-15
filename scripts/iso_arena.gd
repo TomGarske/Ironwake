@@ -11,6 +11,8 @@ const TILE_W        := 64.0   # diamond width in screen pixels
 const TILE_H        := 32.0   # diamond height in screen pixels
 const CHUNK_SIZE    := 16     # tiles per chunk side
 const RENDER_MARGIN := 2      # extra tile buffer outside visible screen edge
+const _TERRAIN_DEEP := 0
+const _TERRAIN_WATER := 1
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 const _C_SKY := Color(0.06, 0.07, 0.12)
@@ -455,22 +457,13 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 	if Input.is_action_pressed(_ACTIONS.right): move.x += 1.0
 	if Input.is_action_pressed(_ACTIONS.up):    move.y -= 1.0
 	if Input.is_action_pressed(_ACTIONS.down):  move.y += 1.0
-	var pad_id: int = _get_primary_pad_id()
-	if pad_id >= 0:
-		var stick_input := Vector2(
-			Input.get_joy_axis(pad_id, JOY_AXIS_LEFT_X),
-			Input.get_joy_axis(pad_id, JOY_AXIS_LEFT_Y)
-		)
-		if stick_input.length() > 0.22:
-			move = stick_input
-
 	if move.length_squared() > 0.0:
 		move = move.normalized()
 		var current_tile: int = _terrain_renderer.get_tile_at(p.wx, p.wy)
-		var spd: float = SPEED * (0.5 if current_tile == IsoTerrainRenderer.T_WATER else 1.0)
+		var spd: float = SPEED * (0.5 if current_tile == _TERRAIN_WATER else 1.0)
 		var new_wx: float = p.wx + move.x * spd * delta
 		var new_wy: float = p.wy + move.y * spd * delta
-		if _terrain_renderer.get_tile_at(new_wx, new_wy) != IsoTerrainRenderer.T_DEEP:
+		if _terrain_renderer.get_tile_at(new_wx, new_wy) != _TERRAIN_DEEP:
 			p.wx = new_wx
 			p.wy = new_wy
 		p.dir        = move
@@ -791,7 +784,6 @@ func _draw_offscreen_indicators(vp: Vector2) -> void:
 		if abs(dir.x) > 0.0001:
 			var tx0: float = (EDGE_PAD - screen_center.x) / dir.x
 			var tx1: float = (vp.x - EDGE_PAD - screen_center.x) / dir.x
-			t_x = max(tx0, tx1) if dir.x > 0.0 else max(tx0, tx1)
 			t_x = tx1 if dir.x > 0.0 else tx0
 		if abs(dir.y) > 0.0001:
 			var ty0: float = (EDGE_PAD - screen_center.y) / dir.y
