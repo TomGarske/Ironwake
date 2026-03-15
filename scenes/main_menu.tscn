@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c3tanyp60wrif"]
 
-[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_main_menu"]
-[ext_resource type="Script" path="res://scripts/burning_bridge.gd" id="2_burning_bridge"]
+[ext_resource type="Script" uid="uid://c4vq8sqvnywxj" path="res://scripts/main_menu.gd" id="1_main_menu"]
+[ext_resource type="Script" uid="uid://5amruvkujxru" path="res://scripts/burning_bridge.gd" id="2_burning_bridge"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu_panel"]
 content_margin_left = 16.0
@@ -149,7 +149,7 @@ theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
-text = "Host Game"
+text = "Multiplayer"
 
 [node name="Separator" type="HSeparator" parent="LeftMenuPanel/VBoxContainer" unique_id=1608539323]
 layout_mode = 2
@@ -313,15 +313,15 @@ theme_override_constants/separation = 10
 
 [node name="SettingsTitle" type="Label" parent="SettingsPopup/SettingsMargin/VBoxContainer" unique_id=121768401]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
 theme_override_font_sizes/font_size = 20
 text = "Settings"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
 
 [node name="MusicToggle" type="CheckButton" parent="SettingsPopup/SettingsMargin/VBoxContainer" unique_id=1748494922]
 layout_mode = 2
-text = "Music Enabled"
 theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
+text = "Music Enabled"
 
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/HostButton" to="." method="_on_host_button_pressed"]
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/TestButton" to="." method="_on_test_button_pressed"]

@@ -7,7 +7,7 @@
 # Export configuration (may contain sensitive data)
 export_presets.cfg
 
-# GodotSteam GDExtension binaries — install manually per SETUP.md
+# GodotSteam GDExtension binaries — installed via setup scripts
 addons/godotsteam/
 
 # Steam test app ID file — never commit

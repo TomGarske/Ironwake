@@ -321,7 +321,9 @@ func _spawn_players() -> void:
 		labels   = ["P1", "P2"]
 
 	var count: int = mini(peer_ids.size(), _PALETTES.size())
-	var my_peer_id: int = multiplayer.get_unique_id()
+	var my_peer_id: int = peer_ids[0] if not peer_ids.is_empty() else 1
+	if multiplayer.has_multiplayer_peer():
+		my_peer_id = multiplayer.get_unique_id()
 	_my_index = 0
 	for i in range(count):
 		if peer_ids[i] == my_peer_id:
