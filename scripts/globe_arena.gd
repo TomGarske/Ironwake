@@ -42,11 +42,12 @@ var   _spin_velocity: Vector2 = Vector2.ZERO
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
-	# Axial tilt axis: Y rotated 23.5° toward +X (same convention as real Earth)
+	# _default_quat rotates around +X by 23.5°, so the north pole ends up at
+	# (0, cos23.5°, sin23.5°).  The auto-rotation axis must match that direction.
 	_axial_tilt_axis = Vector3(
-		sin(deg_to_rad(AXIAL_TILT_DEG)),
+		0.0,
 		cos(deg_to_rad(AXIAL_TILT_DEG)),
-		0.0
+		sin(deg_to_rad(AXIAL_TILT_DEG))
 	).normalized()
 	# Start with tilt visible so the poles are off-vertical
 	_default_quat = Quaternion(Vector3.RIGHT, deg_to_rad(AXIAL_TILT_DEG))

@@ -53,7 +53,7 @@ script = ExtResource("1_globe")
 environment = SubResource("Environment_1")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-transform = Transform3D(0.866, -0.354, 0.354, 0.0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 0, 0)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, 0)
 light_color = Color(1.0, 0.95, 0.85, 1)
 light_energy = 1.2
 shadow_enabled = false
