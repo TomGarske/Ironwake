@@ -1,6 +1,5 @@
 extends Node2D
 const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
-const ProceduralMusicScript := preload("res://scripts/audio/procedural_music.gd")
 
 ## Isometric arena — placeholder art, up to 8 players.
 ##
@@ -53,7 +52,6 @@ const TERRAIN_RENDERER_SCRIPT := preload("res://scripts/shared/iso_terrain_rende
 @onready var pause_music_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseMusicButton
 @onready var pause_quit_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseQuitButton
 @onready var quit_confirm_dialog: ConfirmationDialog = $UILayer/QuitConfirmDialog
-@onready var game_music_player: AudioStreamPlayer = $UILayer/GameMusicPlayer
 
 var _players:   Array = []
 var _my_index:  int   = 0    # which player in _players this peer controls
@@ -61,7 +59,6 @@ var _winner:    int   = -2   # -2 = playing, -1 = draw, 0+ = index of winner
 var _end_timer: float = 0.0
 var _origin:    Vector2      # screen position of world (0, 0) — updated each draw
 var _status_messages: Array[Dictionary] = []
-var _music_engine = ProceduralMusicScript.new()
 var _terrain_renderer = TERRAIN_RENDERER_SCRIPT.new()
 var _zoom: float = 1.0
 const _ZOOM_MIN: float = 0.001
@@ -126,7 +123,6 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
-	_music_engine.teardown()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -224,24 +220,28 @@ func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: fl
 	InputMap.action_add_event(action, motion_event)
 
 func _setup_game_music() -> void:
-	if game_music_player == null:
+	if MusicManager == null:
 		return
-	_music_engine.configure_preset("arena")
-	_music_engine.setup(game_music_player, GameManager != null and GameManager.music_enabled)
+	MusicManager.seek_to_phase("build1")
+	MusicManager.set_volume(0.52)
+	if GameManager != null and GameManager.music_enabled:
+		MusicManager.play()
+	else:
+		MusicManager.stop()
 
 func _on_music_enabled_changed(enabled: bool) -> void:
-	_music_engine.set_enabled(enabled)
+	if MusicManager == null:
+		return
+	if enabled:
+		MusicManager.play()
+	else:
+		MusicManager.stop()
 	_update_pause_music_button_label()
 
 func _update_pause_music_button_label() -> void:
 	if pause_music_button == null or GameManager == null:
 		return
 	pause_music_button.text = "Music: %s" % ("On" if GameManager.music_enabled else "Off")
-
-func _stream_game_music() -> void:
-	if GameManager == null:
-		return
-	_music_engine.stream_frames(GameManager)
 
 # ── Player spawning ───────────────────────────────────────────────────────────
 func _spawn_players() -> void:
@@ -382,7 +382,6 @@ func _tick_status_messages(delta: float) -> void:
 
 # ── Game loop ─────────────────────────────────────────────────────────────────
 func _process(delta: float) -> void:
-	_stream_game_music()
 	if Input.is_action_just_pressed("ui_cancel"):
 		_toggle_pause_menu()
 		return

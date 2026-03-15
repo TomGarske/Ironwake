@@ -1,6 +1,5 @@
 extends Control
 const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
-const ProceduralMusicScript := preload("res://scripts/audio/procedural_music.gd")
 
 # ---------------------------------------------------------------------------
 # Node references
@@ -18,11 +17,9 @@ const ProceduralMusicScript := preload("res://scripts/audio/procedural_music.gd"
 @onready var lobby_list: VBoxContainer = $RightLobbyPanel/VBoxContainer/LobbyListScroll/LobbyList
 @onready var version_label: Label = $VersionLabel
 @onready var quit_confirm_dialog: ConfirmationDialog = $QuitConfirmDialog
-@onready var menu_music_player: AudioStreamPlayer = $MenuMusicPlayer
 @onready var settings_popup: PopupPanel = $SettingsPopup
 @onready var music_toggle: CheckButton = $SettingsPopup/SettingsMargin/VBoxContainer/MusicToggle
 
-var _music_engine = ProceduralMusicScript.new()
 var _menu_index: int = 0
 var _menu_up_prev: bool = false
 var _menu_down_prev: bool = false
@@ -70,7 +67,6 @@ func _ready() -> void:
 		_refresh_lobby_browser()
 
 func _process(_delta: float) -> void:
-	_stream_menu_music()
 	_handle_simple_controller_menu_input()
 	_update_controller_debug_line()
 
@@ -262,15 +258,14 @@ func _update_controller_debug_line() -> void:
 	]
 
 func _setup_menu_music() -> void:
-	if menu_music_player == null:
+	if MusicManager == null:
 		return
-	_music_engine.configure_preset("menu")
-	_music_engine.setup(menu_music_player, GameManager != null and GameManager.music_enabled)
-
-func _stream_menu_music() -> void:
-	if GameManager == null:
-		return
-	_music_engine.stream_frames(GameManager)
+	MusicManager.seek_to_phase("intro")
+	MusicManager.set_volume(0.38)
+	if GameManager != null and GameManager.music_enabled:
+		MusicManager.play()
+	else:
+		MusicManager.stop()
 
 func _exit_tree() -> void:
 	if SteamManager != null:
@@ -284,7 +279,6 @@ func _exit_tree() -> void:
 			SteamManager.lobby_list_updated.disconnect(_on_lobby_list_updated)
 	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
-	_music_engine.teardown()
 
 # ---------------------------------------------------------------------------
 # Button handlers
@@ -341,9 +335,12 @@ func _sync_music_toggle() -> void:
 	music_toggle.set_pressed_no_signal(GameManager.music_enabled)
 
 func _apply_music_enabled_state() -> void:
-	if GameManager == null:
+	if GameManager == null or MusicManager == null:
 		return
-	_music_engine.set_enabled(GameManager.music_enabled)
+	if GameManager.music_enabled:
+		MusicManager.play()
+	else:
+		MusicManager.stop()
 
 func _on_quit_confirmed() -> void:
 	get_tree().quit()
