@@ -1,18 +1,18 @@
 extends RefCounted
 class_name UiStyle
 
-# Warm tactical palette
-const BG_DEEP: Color = Color(0.06, 0.05, 0.04, 1.0)
-const BG_SURFACE: Color = Color(0.14, 0.11, 0.09, 0.94)
-const BG_SURFACE_SOFT: Color = Color(0.19, 0.15, 0.12, 0.92)
-const BORDER: Color = Color(0.48, 0.35, 0.22, 0.88)
-const BORDER_SOFT: Color = Color(0.38, 0.28, 0.18, 0.70)
-const ACCENT: Color = Color(0.88, 0.66, 0.32, 1.0)
-const ACCENT_SOFT: Color = Color(0.72, 0.52, 0.27, 1.0)
-const DANGER: Color = Color(0.78, 0.33, 0.27, 1.0)
-const TEXT_PRIMARY: Color = Color(0.95, 0.90, 0.83, 1.0)
-const TEXT_SECONDARY: Color = Color(0.78, 0.70, 0.60, 0.95)
-const TEXT_MUTED: Color = Color(0.62, 0.56, 0.50, 0.95)
+# Sci-fi tactical palette
+const BG_DEEP: Color = Color(0.03, 0.04, 0.08, 1.0)
+const BG_SURFACE: Color = Color(0.08, 0.11, 0.18, 0.95)
+const BG_SURFACE_SOFT: Color = Color(0.11, 0.15, 0.25, 0.94)
+const BORDER: Color = Color(0.36, 0.70, 0.98, 0.92)
+const BORDER_SOFT: Color = Color(0.28, 0.50, 0.82, 0.74)
+const ACCENT: Color = Color(0.23, 0.95, 0.95, 1.0)
+const ACCENT_SOFT: Color = Color(0.49, 0.69, 1.0, 1.0)
+const DANGER: Color = Color(0.98, 0.33, 0.52, 1.0)
+const TEXT_PRIMARY: Color = Color(0.90, 0.97, 1.0, 1.0)
+const TEXT_SECONDARY: Color = Color(0.70, 0.83, 0.96, 0.96)
+const TEXT_MUTED: Color = Color(0.54, 0.67, 0.84, 0.96)
 
 static func make_panel_style() -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
@@ -48,17 +48,17 @@ static func make_button_styles() -> Dictionary:
 	normal.border_color = BORDER_SOFT
 
 	var hover := normal.duplicate()
-	hover.bg_color = Color(0.24, 0.18, 0.13, 1.0)
+	hover.bg_color = Color(0.15, 0.21, 0.33, 1.0)
 	hover.border_color = BORDER
 	hover.shadow_size = 5
-	hover.shadow_color = Color(0.35, 0.22, 0.11, 0.32)
+	hover.shadow_color = Color(0.08, 0.33, 0.58, 0.34)
 
 	var pressed := normal.duplicate()
-	pressed.bg_color = Color(0.16, 0.12, 0.09, 1.0)
+	pressed.bg_color = Color(0.07, 0.11, 0.18, 1.0)
 	pressed.border_color = ACCENT_SOFT
 
 	var focus := normal.duplicate()
-	focus.bg_color = Color(0.23, 0.17, 0.12, 1.0)
+	focus.bg_color = Color(0.14, 0.22, 0.35, 1.0)
 	focus.border_color = ACCENT
 	focus.border_width_left = 2
 	focus.border_width_top = 2
@@ -66,8 +66,8 @@ static func make_button_styles() -> Dictionary:
 	focus.border_width_bottom = 2
 
 	var disabled := normal.duplicate()
-	disabled.bg_color = Color(0.10, 0.08, 0.07, 0.92)
-	disabled.border_color = Color(0.28, 0.22, 0.18, 0.55)
+	disabled.bg_color = Color(0.07, 0.09, 0.13, 0.92)
+	disabled.border_color = Color(0.20, 0.30, 0.45, 0.58)
 
 	return {
 		"normal": normal,
@@ -79,7 +79,7 @@ static func make_button_styles() -> Dictionary:
 
 static func make_input_styles() -> Dictionary:
 	var normal := StyleBoxFlat.new()
-	normal.bg_color = Color(0.10, 0.08, 0.06, 0.95)
+	normal.bg_color = Color(0.05, 0.08, 0.14, 0.96)
 	normal.corner_radius_top_left = 10
 	normal.corner_radius_top_right = 10
 	normal.corner_radius_bottom_left = 10

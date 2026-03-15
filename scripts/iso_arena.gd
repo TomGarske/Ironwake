@@ -276,13 +276,17 @@ func _update_pause_music_button_label() -> void:
 func _stream_game_music() -> void:
 	if _music_playback == null or GameManager == null or not GameManager.music_enabled:
 		return
+	var intensity: float = clampf(GameManager.music_intensity, 0.2, 2.0)
+	var speed: float = clampf(GameManager.music_speed, 0.5, 1.8)
+	var tone: float = clampf(GameManager.music_tone, 0.7, 1.4)
+	var step_seconds: float = _MUSIC_STEP_SECONDS / speed
 	var frames_available: int = _music_playback.get_frames_available()
 	for _i in range(frames_available):
-		var step_idx: int = int(floor(_music_time / _MUSIC_STEP_SECONDS))
+		var step_idx: int = int(floor(_music_time / step_seconds))
 		var chord_idx: int = int(floor(float(step_idx) / _MUSIC_STEPS_PER_CHORD)) % _MUSIC_PROGRESS_ROOTS.size()
 		var step_in_chord: int = step_idx % _MUSIC_STEPS_PER_CHORD
-		var lead_freq: float = _music_lead_for_step(chord_idx, step_in_chord)
-		var root_freq: float = _MUSIC_PROGRESS_ROOTS[chord_idx]
+		var lead_freq: float = _music_lead_for_step(chord_idx, step_in_chord) * tone
+		var root_freq: float = _MUSIC_PROGRESS_ROOTS[chord_idx] * tone
 		var chord_tones: Array = _MUSIC_CHORD_TONES[chord_idx]
 		_music_phase += TAU * lead_freq / _MUSIC_SAMPLE_RATE
 		_music_bass_phase += TAU * root_freq / _MUSIC_SAMPLE_RATE
@@ -290,13 +294,14 @@ func _stream_game_music() -> void:
 		var lead_upper: float = sin(_music_phase * 2.0) * 0.26
 		var bass_square: float = 1.0 if sin(_music_bass_phase) >= 0.0 else -1.0
 		var pad: float = (
-			sin(_music_time * TAU * float(chord_tones[0])) +
-			sin(_music_time * TAU * float(chord_tones[1])) +
-			sin(_music_time * TAU * float(chord_tones[2]))
+			sin(_music_time * TAU * float(chord_tones[0]) * tone) +
+			sin(_music_time * TAU * float(chord_tones[1]) * tone) +
+			sin(_music_time * TAU * float(chord_tones[2]) * tone)
 		) / 3.0
-		var step_phase: float = fmod(_music_time, _MUSIC_STEP_SECONDS) / _MUSIC_STEP_SECONDS
+		var step_phase: float = fmod(_music_time, step_seconds) / step_seconds
 		var gate: float = 0.92 - step_phase * 0.12
-		var sample: float = (lead_square * 0.042 + lead_upper * 0.028 + bass_square * 0.022 + pad * 0.030) * gate
+		var sample: float = (lead_square * 0.042 + lead_upper * 0.028 + bass_square * 0.022 + pad * 0.030) * gate * intensity
+		sample = clampf(sample, -0.95, 0.95)
 		_music_playback.push_frame(Vector2(sample, sample))
 		_music_time += 1.0 / _MUSIC_SAMPLE_RATE
 

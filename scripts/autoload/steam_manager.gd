@@ -29,7 +29,7 @@ var _steam: Object = null
 var debug_history: Array[Dictionary] = []
 var invited_friend_ids: Dictionary = {}
 var local_ready: bool = false
-var _handshake_row_text: String = "Join test handshake: Idle"
+var _handshake_row_text: String = "Signal handshake: Idle"
 var _avatar_cache: Dictionary = {}
 var _avatar_requests_in_flight: Dictionary = {}
 var _pending_invite_notifications: Array[Dictionary] = []
@@ -53,6 +53,7 @@ const _INIT_RETRY_MS: int = 2500
 const _HOST_RETRY_MS: int = 3000
 const _MAX_HOST_RETRIES: int = 3
 const _MAX_DEBUG_HISTORY: int = 300
+const _GAME_NAME: String = "FireTeam MNG"
 const _STEAM_EXTENSION_CANDIDATES: Array[String] = [
 	"res://addons/godotsteam/godotsteam.gdextension",
 	"res://addons/GodotSteam/godotsteam.gdextension",
@@ -158,9 +159,9 @@ func request_burnbridgers_lobby_list() -> void:
 	# Ask Steam for public lobbies then filter to this game by lobby data.
 	if _steam.has_method("addRequestLobbyListStringFilter"):
 		# EQUAL comparison is 0 in Steam matchmaking string comparison enum.
-		_steam.call("addRequestLobbyListStringFilter", "game", "BurnBridgers", 0)
+		_steam.call("addRequestLobbyListStringFilter", "game", _GAME_NAME, 0)
 	_steam.call("requestLobbyList")
-	_emit_debug("[SteamManager] Requested BurnBridgers lobby list.", false)
+	_emit_debug("[SteamManager] Requested %s lobby list." % _GAME_NAME, false)
 
 func get_cached_public_lobbies() -> Array[Dictionary]:
 	return _cached_public_lobbies.duplicate(true)
@@ -316,7 +317,7 @@ func _on_steam_lobby_created(result: int, new_lobby_id: int) -> void:
 		_host_retry_count = 0
 		lobby_id = new_lobby_id
 		_steam.call("setLobbyData", lobby_id, "name", steam_username + "'s Lobby")
-		_steam.call("setLobbyData", lobby_id, "game", "BurnBridgers")
+		_steam.call("setLobbyData", lobby_id, "game", _GAME_NAME)
 		_steam.call("setLobbyData", lobby_id, "platform", OS.get_name())
 		if _steam.has_method("setLobbyJoinable"):
 			_steam.call("setLobbyJoinable", lobby_id, true)
@@ -393,11 +394,11 @@ func _on_lobby_match_list(lobbies: Variant) -> void:
 		if entry_lobby_id == 0:
 			continue
 		var game_name: String = str(_steam.call("getLobbyData", entry_lobby_id, "game"))
-		if game_name != "BurnBridgers":
+		if game_name != _GAME_NAME:
 			continue
 		var lobby_name: String = str(_steam.call("getLobbyData", entry_lobby_id, "name"))
 		if lobby_name.strip_edges().is_empty():
-			lobby_name = "BurnBridgers Lobby"
+			lobby_name = "%s Lobby" % _GAME_NAME
 		var member_count: int = int(_steam.call("getNumLobbyMembers", entry_lobby_id))
 		filtered.append({
 			"lobby_id": entry_lobby_id,
@@ -406,7 +407,7 @@ func _on_lobby_match_list(lobbies: Variant) -> void:
 		})
 	_cached_public_lobbies = filtered
 	lobby_list_updated.emit(_cached_public_lobbies.duplicate(true))
-	_emit_debug("[SteamManager] Lobby list updated (%d BurnBridgers lobbies)." % _cached_public_lobbies.size(), false)
+	_emit_debug("[SteamManager] Lobby list updated (%d %s lobbies)." % [_cached_public_lobbies.size(), _GAME_NAME], false)
 
 func _on_game_lobby_join_requested(requested_lobby_id: int, friend_id: int) -> void:
 	_emit_debug("[SteamManager] Invite accepted from Steam friend %d. Joining lobby %d..." % [friend_id, requested_lobby_id], false)
@@ -489,7 +490,7 @@ func _set_invite_state(friend_steam_id: int, state: InviteState, extra: Dictiona
 	var friend_name: String = "Steam ID %d" % friend_steam_id
 	if steam_ready and _steam != null:
 		friend_name = str(_steam.call("getFriendPersonaName", friend_steam_id))
-	_handshake_row_text = "Join test handshake: %s -> %s" % [friend_name, _invite_state_label(state)]
+	_handshake_row_text = "Signal handshake: %s -> %s" % [friend_name, _invite_state_label(state)]
 	handshake_status_updated.emit(_handshake_row_text)
 
 func _invite_state_label(state: InviteState) -> String:
@@ -559,7 +560,7 @@ func _ensure_invite_dialog() -> void:
 	if get_tree() == null or get_tree().root == null:
 		return
 	_invite_dialog = ConfirmationDialog.new()
-	_invite_dialog.title = "Lobby Invite"
+	_invite_dialog.title = "Operation Invite"
 	_invite_dialog.ok_button_text = "Join"
 	_invite_dialog.initial_position = Window.WINDOW_INITIAL_POSITION_CENTER_MAIN_WINDOW_SCREEN
 	_invite_dialog.confirmed.connect(_on_invite_dialog_confirmed)

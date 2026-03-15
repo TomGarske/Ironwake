@@ -1,49 +1,48 @@
-# BurnBridgers
+# FireTeam MNG
 
-A 2-player turn-based squad tactics game built in Godot 4. Two players control small squads of units on a tile grid, taking turns moving and attacking. Combat resolves through a tiered outcome system — no binary hit/miss — where positioning and coordination shift the probability of success.
+FireTeam MNG is a Godot 4 sci-fi multiplayer prototype with selectable mission profiles.  
+Every mode is currently **PVE** and supports **1 to max players**.
 
-Built with [GodotSteam](https://godotsteam.com/) for Steam lobbies and peer-to-peer multiplayer. One player hosts; the host is authoritative for all game state. No dedicated server required.
+The project uses [GodotSteam](https://godotsteam.com/) for Steam lobbies and peer-to-peer multiplayer. One player hosts and acts as authority for match start and mode selection.
 
-> **Status:** POC — core networked gameplay loop is playable. Art, abilities, and full combat resolution are in progress.
+> **Status:** Active prototype. Core lobby + mode routing is implemented; gameplay systems are in-progress per mode.
+
+---
+
+## Current Game Modes
+
+- **Pirates** (`Void Corsairs`)  
+  Naval combat baseline mode (current primary playable mode).
+- **Chrimera** (`Bioforge Run`)  
+  Side-scroller roguelike escape concept.
+- **Replicants** (`Swarm Command`)  
+  Strategy expansion and replication concept.
+- **Blacksite Breakout** (`Escape from Area 51`)  
+  Tactical escape concept with procedural map goals.
+
+Detailed concept docs live in `docs/game-info/`.
 
 ---
 
 ## Quickstart
 
-See **[SETUP.md](SETUP.md)** for full setup instructions, including the required GodotSteam plugin step.
+See **[SETUP.md](SETUP.md)** for full setup instructions.
 
 Short version:
 1. Install [Godot 4.x](https://godotengine.org/download)
 2. Download the GodotSteam GDExtension and extract it into `addons/godotsteam/`
 3. Create `steam_appid.txt` at the project root containing `480` (Valve's SpaceWar test app ID)
-4. Open the project in Godot — Steam must be running
+4. Open the project in Godot (Steam running)
 5. Press **F5** to run
 
-### Offline / No-Steam Testing
+---
 
-The main menu includes a **Test (Offline)** button that skips Steam entirely and loads a local two-player session. Both sides are controlled by the same keyboard/mouse. Useful for testing game logic without a second machine.
+## Play Flow
 
-### Debug Logging (Steam/Lobby Issues)
-
-Use the project launcher in debug mode to auto-capture runtime errors:
-
-```powershell
-.\run.ps1 -Mode debug
-```
-
-This runs Godot with verbose console output and writes logs to:
-
-`logs/godot-debug-<timestamp>.log`
-
-Share the latest log file when host/join fails so issues can be diagnosed quickly.
-
-To run with a non-default Steam App ID:
-
-```powershell
-.\run.ps1 -Mode debug -AppId <your_real_app_id>
-```
-
-You can also set `BURNBRIDGERS_STEAM_APPID` in your environment.
+- **Open Operations** in main menu to host a Steam lobby.
+- In lobby, choose a **Mission Profile** (game mode).
+- All players ready up, then host launches mission.
+- **Solo Sim (Offline)** starts local testing without Steam.
 
 ---
 
@@ -52,34 +51,25 @@ You can also set `BURNBRIDGERS_STEAM_APPID` in your environment.
 | Layer | Choice |
 |-------|--------|
 | Engine | Godot 4.x (GDScript) |
-| Multiplayer transport | GodotSteam GDExtension — Steam P2P via `SteamMultiplayerPeer` |
-| Authority model | Host-authoritative — host validates all actions, broadcasts results via RPC |
-| Grid | Discrete tile grid, 10×20, Manhattan-distance movement and attack |
+| Multiplayer transport | GodotSteam GDExtension (`SteamMultiplayerPeer`) |
+| Session model | Host-controlled lobby + mode selection |
+| Audio | Procedural synth with mode-specific presets (`intensity`, `speed`, `tone`) |
 
 ---
 
-## Project Layout
+## Repo Notes
 
-```
-scripts/
-  autoload/           # GameConstants, DebugOverlay, SteamManager, GameManager
-  tactical_map.gd     # Core game loop: input, unit selection, RPC dispatch
-  turn_manager.gd     # Turn sequencing and win condition
-  unit.gd             # Unit data, movement/attack validation, drawing
-  overlay.gd          # Grid highlights (selection, move range, attack range)
-  burning_bridge.gd   # Main menu background animation (CanvasLayer)
-  bridge_drawer.gd    # Bridge drawing helper (Node2D child of BurningBridge)
-  lobby.gd            # Lobby screen (player list, ready/start buttons)
-  main_menu.gd        # Main menu (host/join/test buttons, version label)
-scenes/               # Godot scene files corresponding to each script
-```
+- Main scene: `res://scenes/main_menu.tscn`
+- Lobby scene: `res://scenes/lobby.tscn`
+- Primary current match scene: `res://scenes/game/iso_arena.tscn`
+- Mode metadata and routing: `scripts/autoload/game_manager.gd`
 
 ---
 
 ## Contributing
 
 This repository uses feature-branch workflow:
-- `main` — stable; all PRs target here
-- `feature/*`, `fix/*` — short-lived branches off `main`
+- `main` stays stable; PRs target `main`
+- Use short-lived branches like `feature/*` and `fix/*`
 
-Fill in the [PR template](.github/PULL_REQUEST_TEMPLATE.md) when submitting a PR.
+Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md) for submissions.

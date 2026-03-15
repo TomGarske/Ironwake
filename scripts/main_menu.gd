@@ -295,13 +295,17 @@ func _setup_menu_music() -> void:
 func _stream_menu_music() -> void:
 	if _music_playback == null or GameManager == null or not GameManager.music_enabled:
 		return
+	var intensity: float = clampf(GameManager.music_intensity, 0.2, 2.0)
+	var speed: float = clampf(GameManager.music_speed, 0.5, 1.8)
+	var tone: float = clampf(GameManager.music_tone, 0.7, 1.4)
+	var step_seconds: float = _MUSIC_STEP_SECONDS / speed
 	var frames_available: int = _music_playback.get_frames_available()
 	for _i in range(frames_available):
-		var step_idx: int = int(floor(_music_time / _MUSIC_STEP_SECONDS))
+		var step_idx: int = int(floor(_music_time / step_seconds))
 		var chord_idx: int = int(floor(float(step_idx) / _MUSIC_STEPS_PER_CHORD)) % _MUSIC_PROGRESS_ROOTS.size()
 		var step_in_chord: int = step_idx % _MUSIC_STEPS_PER_CHORD
-		var lead_freq: float = _music_lead_for_step(chord_idx, step_in_chord)
-		var root_freq: float = _MUSIC_PROGRESS_ROOTS[chord_idx]
+		var lead_freq: float = _music_lead_for_step(chord_idx, step_in_chord) * tone
+		var root_freq: float = _MUSIC_PROGRESS_ROOTS[chord_idx] * tone
 		var chord_tones: Array = _MUSIC_CHORD_TONES[chord_idx]
 		_music_phase += TAU * lead_freq / _MUSIC_SAMPLE_RATE
 		_music_bass_phase += TAU * root_freq / _MUSIC_SAMPLE_RATE
@@ -309,13 +313,14 @@ func _stream_menu_music() -> void:
 		var lead_sine: float = sin(_music_phase * 0.5)
 		var bass_square: float = 1.0 if sin(_music_bass_phase) >= 0.0 else -1.0
 		var pad: float = (
-			sin(_music_time * TAU * float(chord_tones[0])) +
-			sin(_music_time * TAU * float(chord_tones[1])) +
-			sin(_music_time * TAU * float(chord_tones[2]))
+			sin(_music_time * TAU * float(chord_tones[0]) * tone) +
+			sin(_music_time * TAU * float(chord_tones[1]) * tone) +
+			sin(_music_time * TAU * float(chord_tones[2]) * tone)
 		) / 3.0
-		var step_phase: float = fmod(_music_time, _MUSIC_STEP_SECONDS) / _MUSIC_STEP_SECONDS
+		var step_phase: float = fmod(_music_time, step_seconds) / step_seconds
 		var gate: float = 0.94 - step_phase * 0.10
-		var sample: float = (lead_square * 0.040 + lead_sine * 0.026 + bass_square * 0.018 + pad * 0.026) * gate
+		var sample: float = (lead_square * 0.040 + lead_sine * 0.026 + bass_square * 0.018 + pad * 0.026) * gate * intensity
+		sample = clampf(sample, -0.95, 0.95)
 		_music_playback.push_frame(Vector2(sample, sample))
 		_music_time += 1.0 / _MUSIC_SAMPLE_RATE
 
@@ -368,9 +373,9 @@ func _on_globe_button_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/globe/globe_arena.tscn")
 
 func _on_exit_button_pressed() -> void:
-	quit_confirm_dialog.title = "Exit BurnBridgers"
+	quit_confirm_dialog.title = "Exit FireTeam MNG"
 	quit_confirm_dialog.ok_button_text = "Exit Game"
-	quit_confirm_dialog.dialog_text = "Are you sure you want to close BurnBridgers and return to desktop?"
+	quit_confirm_dialog.dialog_text = "Are you sure you want to close FireTeam MNG and return to desktop?"
 	quit_confirm_dialog.popup_centered()
 
 func _on_settings_button_pressed() -> void:
@@ -430,7 +435,7 @@ func _refresh_lobby_browser() -> void:
 		lobby_list_status.text = "Steam not initialized yet."
 		_rebuild_lobby_list([])
 		return
-	lobby_list_status.text = "Searching for BurnBridgers lobbies..."
+	lobby_list_status.text = "Scanning for FireTeam MNG operations..."
 	SteamManager.request_burnbridgers_lobby_list()
 	_rebuild_lobby_list(SteamManager.get_cached_public_lobbies())
 
@@ -443,16 +448,16 @@ func _on_join_lobby_from_list(target_lobby_id: int) -> void:
 func _on_lobby_list_updated(lobbies: Array) -> void:
 	_rebuild_lobby_list(lobbies)
 	if lobbies.is_empty():
-		lobby_list_status.text = "No public BurnBridgers lobbies found."
+		lobby_list_status.text = "No public FireTeam MNG operations found."
 	else:
-		lobby_list_status.text = "%d BurnBridgers lobby(s) found." % lobbies.size()
+		lobby_list_status.text = "%d FireTeam MNG operation(s) found." % lobbies.size()
 
 func _rebuild_lobby_list(lobbies: Array) -> void:
 	for child in lobby_list.get_children():
 		child.queue_free()
 	if lobbies.is_empty():
 		var empty_label := Label.new()
-		empty_label.text = "No lobbies yet. Host a game to create one."
+		empty_label.text = "No operations yet. Open one to begin."
 		UiStyleScript.style_body(empty_label, true)
 		lobby_list.add_child(empty_label)
 		return
@@ -465,7 +470,7 @@ func _rebuild_lobby_list(lobbies: Array) -> void:
 
 		var name_label := Label.new()
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var lobby_name: String = str(item.get("name", "BurnBridgers Lobby"))
+		var lobby_name: String = str(item.get("name", "FireTeam MNG Operation"))
 		var members: int = int(item.get("members", 0))
 		name_label.text = "%s (%d/%d)" % [lobby_name, members, GameConstants.MAX_PLAYERS]
 		UiStyleScript.style_body(name_label)

@@ -6,6 +6,9 @@ const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 # ---------------------------------------------------------------------------
 @onready var lobby_id_label: Label = $LobbyCard/VBoxContainer/LobbyIdLabel
 @onready var lobby_status_label: Label = $LobbyCard/VBoxContainer/LobbyStatusLabel
+@onready var game_mode_title_label: Label = $LobbyCard/VBoxContainer/GameModeTitle
+@onready var game_mode_selector: OptionButton = $LobbyCard/VBoxContainer/GameModeSelector
+@onready var game_mode_description_label: Label = $LobbyCard/VBoxContainer/GameModeDescriptionLabel
 @onready var player_list: VBoxContainer = $LobbyCard/VBoxContainer/PlayerList
 @onready var handshake_status_label: Label = $LobbyCard/VBoxContainer/HandshakeStatusLabel
 @onready var friends_title: Label = $LobbyCard/VBoxContainer/FriendsTitle
@@ -18,6 +21,7 @@ const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 
 var _lobby_members_updated_handler: Callable
 var _friends_refresh_elapsed: float = 0.0
+var _game_mode_ids: Array[String] = []
 
 const _FRIENDS_REFRESH_INTERVAL: float = 6.0
 
@@ -25,14 +29,20 @@ const _FRIENDS_REFRESH_INTERVAL: float = 6.0
 # Lifecycle
 # ---------------------------------------------------------------------------
 func _ready() -> void:
-	lobby_id_label.text = "Lobby ID: %d" % SteamManager.lobby_id
+	_refresh_fireteam_status()
 	_apply_warm_tactical_theme()
 	# Set visibility BEFORE configuring navigation so focus chains reflect actual visibility.
 	start_button.visible = SteamManager.is_host
+	game_mode_selector.disabled = not SteamManager.is_host
 	_configure_navigation()
 	start_button.disabled = true
 	ready_button.text = "Ready"
 	ready_button.pressed.connect(_on_ready_button_pressed)
+	if not game_mode_selector.item_selected.is_connected(_on_game_mode_selector_item_selected):
+		game_mode_selector.item_selected.connect(_on_game_mode_selector_item_selected)
+	if GameManager != null and not GameManager.selected_game_mode_changed.is_connected(_on_selected_game_mode_changed):
+		GameManager.selected_game_mode_changed.connect(_on_selected_game_mode_changed)
+	_setup_game_mode_selector()
 
 	# Refresh list when peers connect/disconnect
 	SteamManager.peer_connected.connect(_refresh_player_list)
@@ -52,21 +62,28 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		_leave_lobby_and_return_to_menu()
-		get_viewport().set_input_as_handled()
+		accept_event()
 
 func _configure_navigation() -> void:
 	ready_button.focus_mode = Control.FOCUS_ALL
+	game_mode_selector.focus_mode = Control.FOCUS_ALL
 	start_button.focus_mode = Control.FOCUS_ALL
 	back_button.focus_mode = Control.FOCUS_ALL
-	ready_button.focus_neighbor_bottom = ready_button.get_path_to(start_button if start_button.visible else back_button)
-	start_button.focus_neighbor_top = start_button.get_path_to(ready_button)
+	ready_button.focus_neighbor_bottom = ready_button.get_path_to(game_mode_selector)
+	game_mode_selector.focus_neighbor_top = game_mode_selector.get_path_to(ready_button)
+	game_mode_selector.focus_neighbor_bottom = game_mode_selector.get_path_to(start_button if start_button.visible else back_button)
+	start_button.focus_neighbor_top = start_button.get_path_to(game_mode_selector)
 	start_button.focus_neighbor_bottom = start_button.get_path_to(back_button)
-	back_button.focus_neighbor_top = back_button.get_path_to(start_button if start_button.visible else ready_button)
+	back_button.focus_neighbor_top = back_button.get_path_to(start_button if start_button.visible else game_mode_selector)
 	(ready_button if ready_button.visible else back_button).grab_focus()
 
 func _apply_warm_tactical_theme() -> void:
 	UiStyleScript.style_title(lobby_id_label, 20)
 	UiStyleScript.style_body(lobby_status_label)
+	UiStyleScript.style_title(game_mode_title_label, 16)
+	game_mode_selector.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
+	game_mode_selector.add_theme_color_override("font_disabled_color", UiStyleScript.TEXT_MUTED)
+	UiStyleScript.style_body(game_mode_description_label, true)
 	UiStyleScript.style_body(handshake_status_label, true)
 	UiStyleScript.style_body(invite_note_label, true)
 	UiStyleScript.style_title(friends_title, 16)
@@ -75,6 +92,8 @@ func _apply_warm_tactical_theme() -> void:
 	UiStyleScript.style_button(back_button)
 
 func _exit_tree() -> void:
+	if GameManager != null and GameManager.selected_game_mode_changed.is_connected(_on_selected_game_mode_changed):
+		GameManager.selected_game_mode_changed.disconnect(_on_selected_game_mode_changed)
 	if SteamManager == null:
 		return
 	if SteamManager.peer_connected.is_connected(_refresh_player_list):
@@ -91,6 +110,51 @@ func _exit_tree() -> void:
 # ---------------------------------------------------------------------------
 # Player list
 # ---------------------------------------------------------------------------
+func _setup_game_mode_selector() -> void:
+	_game_mode_ids.clear()
+	game_mode_selector.clear()
+	var modes: Array[Dictionary] = GameManager.get_game_modes()
+	for mode in modes:
+		if not bool(mode.get("enabled", true)):
+			continue
+		var mode_id: String = str(mode.get("id", ""))
+		if mode_id.is_empty():
+			continue
+		_game_mode_ids.append(mode_id)
+		var badge: String = str(mode.get("badge", "")).strip_edges()
+		var label: String = str(mode.get("label", mode_id.capitalize()))
+		if not badge.is_empty():
+			label = "%s %s" % [badge, label]
+		if mode_id != GameManager.DEFAULT_GAME_MODE_ID:
+			label += " [WIP]"
+		game_mode_selector.add_item(label)
+	_on_selected_game_mode_changed(GameManager.selected_game_mode_id)
+
+func _on_game_mode_selector_item_selected(index: int) -> void:
+	if not SteamManager.is_host:
+		return
+	if index < 0 or index >= _game_mode_ids.size():
+		return
+	GameManager.set_selected_game_mode(_game_mode_ids[index])
+
+func _on_selected_game_mode_changed(mode_id: String) -> void:
+	var selected_idx: int = -1
+	for i in range(_game_mode_ids.size()):
+		if _game_mode_ids[i] == mode_id:
+			selected_idx = i
+			break
+	if selected_idx >= 0:
+		game_mode_selector.select(selected_idx)
+	var mode: Dictionary = GameManager.get_selected_game_mode()
+	var subtitle: String = str(mode.get("subtitle", "")).strip_edges()
+	var mode_desc: String = str(mode.get("description", "No description yet."))
+	if subtitle.is_empty():
+		game_mode_description_label.text = mode_desc
+	else:
+		game_mode_description_label.text = "%s\n%s" % [subtitle, mode_desc]
+	_refresh_fireteam_status()
+	game_mode_selector.disabled = not SteamManager.is_host
+
 func _refresh_player_list(_peer_id: int) -> void:
 	# Clear existing entries
 	for child in player_list.get_children():
@@ -126,7 +190,8 @@ func _refresh_player_list(_peer_id: int) -> void:
 		row.add_child(label)
 
 	var ready_counts: Dictionary = SteamManager.get_ready_counts()
-	lobby_status_label.text = "Lobby Members: %d/%d | Ready: %d/%d" % [member_count, GameConstants.MAX_PLAYERS, int(ready_counts.get("ready", 0)), int(ready_counts.get("total", 0))]
+	_refresh_fireteam_status()
+	lobby_status_label.text = "Crew: %d/%d | Ready: %d/%d" % [member_count, GameConstants.MAX_PLAYERS, int(ready_counts.get("ready", 0)), int(ready_counts.get("total", 0))]
 	ready_button.text = "Unready" if SteamManager.local_ready else "Ready"
 
 	# Host can only start when all currently joined lobby members are ready.
@@ -145,9 +210,9 @@ func _refresh_online_friends() -> void:
 
 	var app_id: int = SteamManager.get_current_app_id()
 	if app_id == 480:
-		invite_note_label.text = "Invites currently appear as Spacewar (App ID 480). Set your BurnBridgers Steam App ID in steam_appid.txt."
+		invite_note_label.text = "Invites currently appear as Spacewar (App ID 480). Set your FireTeam MNG Steam App ID in steam_appid.txt."
 	else:
-		invite_note_label.text = "Invites should appear as BurnBridgers (App ID %d)." % app_id
+		invite_note_label.text = "Invites should appear as FireTeam MNG (App ID %d)." % app_id
 
 	var online_friends: Array[Dictionary] = SteamManager.get_online_friends()
 	var in_game_friends: Array[Dictionary] = []
@@ -158,7 +223,7 @@ func _refresh_online_friends() -> void:
 
 	if in_game_friends.is_empty():
 		var empty_label := Label.new()
-		empty_label.text = "No friends currently in BurnBridgers."
+		empty_label.text = "No friends currently in FireTeam MNG."
 		UiStyleScript.style_body(empty_label, true)
 		friends_list.add_child(empty_label)
 		return
@@ -269,3 +334,11 @@ func _create_avatar_rect(steam_id: int, avatar_size: int) -> TextureRect:
 	else:
 		avatar.modulate = Color(1, 1, 1, 0.35)
 	return avatar
+
+func _refresh_fireteam_status() -> void:
+	if lobby_id_label == null:
+		return
+	var role_text: String = "Command Lead" if SteamManager.is_host else "Operative"
+	var mode: Dictionary = GameManager.get_selected_game_mode()
+	var mode_label: String = str(mode.get("label", "Unknown Mission"))
+	lobby_id_label.text = "Fireteam Status: %s | %s" % [role_text, mode_label]

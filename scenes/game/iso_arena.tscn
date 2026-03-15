@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://drqq7exddiirw"]
 
-[ext_resource type="Script" uid="uid://dljaydhlw717l" path="res://scripts/iso_arena.gd" id="1_iso"]
+[ext_resource type="Script" uid="uid://dgmg47nstw2gb" path="res://scripts/iso_arena.gd" id="1_iso"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pause_panel"]
 bg_color = Color(0.14, 0.11, 0.09, 0.95)

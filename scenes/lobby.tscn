@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/lobby.gd" id="1_lobby"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_lobby_card"]
-bg_color = Color(0.14, 0.11, 0.09, 0.94)
+bg_color = Color(0.08, 0.11, 0.18, 0.95)
 corner_radius_top_left = 16
 corner_radius_top_right = 16
 corner_radius_bottom_right = 16
@@ -12,7 +12,7 @@ border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.48, 0.35, 0.22, 0.84)
+border_color = Color(0.28, 0.50, 0.82, 0.74)
 shadow_size = 16
 shadow_color = Color(0, 0, 0, 0.4)
 content_margin_left = 18.0
@@ -34,7 +34,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.08, 0.06, 0.05, 0.56)
+color = Color(0.03, 0.04, 0.08, 0.64)
 mouse_filter = 2
 
 [node name="LobbyCard" type="PanelContainer" parent="."]
@@ -58,18 +58,32 @@ alignment = 1
 theme_override_constants/separation = 12
 
 [node name="LobbyIdLabel" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Lobby ID: ..."
+text = "Fireteam Status: Standby"
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 20
-theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
+theme_override_colors/font_color = Color(0.90, 0.97, 1.0, 1.0)
 
 [node name="LobbyStatusLabel" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Lobby Members: 0/4"
+text = "Crew: 0/4"
 horizontal_alignment = 1
 theme_override_colors/font_color = Color(0.79, 0.7, 0.6, 0.95)
 
+[node name="GameModeTitle" type="Label" parent="LobbyCard/VBoxContainer"]
+text = "Mission Profile:"
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
+
+[node name="GameModeSelector" type="OptionButton" parent="LobbyCard/VBoxContainer"]
+size_flags_horizontal = 3
+
+[node name="GameModeDescriptionLabel" type="Label" parent="LobbyCard/VBoxContainer"]
+text = "Select a game mode before starting the match."
+horizontal_alignment = 1
+autowrap_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
+
 [node name="PlayersTitle" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Players:"
+text = "Crew Roster:"
 theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
 
@@ -77,12 +91,12 @@ theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
 theme_override_constants/separation = 4
 
 [node name="HandshakeStatusLabel" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Join test handshake: Idle"
+text = "Signal handshake: Idle"
 autowrap_mode = 2
 theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
 
 [node name="FriendsTitle" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Invite Online Friends:"
+text = "Invite Operatives:"
 theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
 
@@ -102,11 +116,11 @@ theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
 text = "Ready"
 
 [node name="StartButton" type="Button" parent="LobbyCard/VBoxContainer"]
-text = "Start Match"
+text = "Launch Mission"
 visible = false
 
 [node name="BackButton" type="Button" parent="LobbyCard/VBoxContainer"]
-text = "Back to Main Menu"
+text = "Return to Command Hub"
 
 [node name="RefreshTimer" type="Timer" parent="."]
 wait_time = 2.0

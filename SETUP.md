@@ -1,4 +1,4 @@
-# BurnBridgers — Developer Setup
+# FireTeam MNG — Developer Setup
 
 ## Prerequisites
 - [Godot Engine 4.x](https://godotengine.org/download) installed
