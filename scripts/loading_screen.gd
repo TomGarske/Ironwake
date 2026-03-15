@@ -8,7 +8,8 @@ extends Control
 const _LOAD_DURATION: float = 2.2
 const _SPINNER_FRAMES: Array[String] = ["|", "/", "-", "\\"]
 
-var _elapsed: float = 0.0
+var _elapsed:     float = 0.0
+var _transitioning: bool = false
 
 func _ready() -> void:
 	progress_bar.min_value = 0.0
@@ -43,5 +44,8 @@ func _update_glow() -> void:
 	glow_top.color = Color(0.52, 0.36, 0.18, glow_pulse)
 
 func _go_to_main_menu() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	set_process(false)
 	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
