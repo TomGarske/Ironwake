@@ -13,7 +13,7 @@ config_version=5
 config/name="FireTeam MNG"
 config/description="Multiplayer 2D — proof of concept"
 config/version="0.1.0 (c52c133)"
-run/main_scene="res://scenes/main_menu.tscn"
+run/main_scene="res://scenes/screens/main_menu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 

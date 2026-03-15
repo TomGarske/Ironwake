@@ -59,9 +59,10 @@ Short version:
 
 ## Repo Notes
 
-- Main scene: `res://scenes/main_menu.tscn`
-- Lobby scene: `res://scenes/lobby.tscn`
-- Primary current match scene: `res://scenes/game/iso_arena.tscn`
+- Main scene: `res://scenes/screens/main_menu.tscn`
+- Lobby scene: `res://scenes/screens/lobby.tscn`
+- Blacksite Containment scene: `res://scenes/game/blacksite/blacksite_containment_arena.tscn`
+- Legacy arena scene (untouched): `res://scenes/game/iso_arena.tscn`
 - Mode metadata and routing: `scripts/autoload/game_manager.gd`
 
 ---

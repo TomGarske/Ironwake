@@ -10,9 +10,9 @@ const MATCH_SCENE_PATH: String = "res://scenes/game/iso_arena.tscn"
 const CHIMERA_SCENE_PATH: String = "res://scenes/game/chrimera/chrimera_landing.tscn"
 const REPLICANTS_SCENE_PATH: String = "res://scenes/game/replicants/replicants_landing.tscn"
 const BLACKSITE_BREAKOUT_SCENE_PATH: String = "res://scenes/game/area51/blacksite_breakout_landing.tscn"
-const MAIN_MENU_SCENE_PATH: String = "res://scenes/main_menu.tscn"
-const LOBBY_SCENE_PATH: String = "res://scenes/lobby.tscn"
-const DEFAULT_GAME_MODE_ID: String = "pirates"
+const MAIN_MENU_SCENE_PATH: String = "res://scenes/screens/main_menu.tscn"
+const LOBBY_SCENE_PATH: String = "res://scenes/screens/lobby.tscn"
+const DEFAULT_GAME_MODE_ID: String = "blacksite_containment"
 const DEFAULT_MUSIC_PROFILE: Dictionary = {
 	"intensity": 1.0,
 	"speed": 1.0,
@@ -131,14 +131,14 @@ func _is_valid_game_mode_id(mode_id: String) -> bool:
 			return true
 	return false
 
-func _apply_music_profile_for_mode(mode_id: String, emit_signal: bool = true) -> void:
+func _apply_music_profile_for_mode(mode_id: String, should_emit: bool = true) -> void:
 	var profile: Dictionary = DEFAULT_MUSIC_PROFILE
 	if MODE_MUSIC_PROFILES.has(mode_id):
 		profile = MODE_MUSIC_PROFILES[mode_id]
 	music_intensity = clampf(float(profile.get("intensity", 1.0)), 0.2, 2.0)
 	music_speed = clampf(float(profile.get("speed", 1.0)), 0.5, 1.8)
 	music_tone = clampf(float(profile.get("tone", 1.0)), 0.7, 1.4)
-	if emit_signal:
+	if should_emit:
 		music_profile_changed.emit(music_intensity, music_speed, music_tone)
 
 func _ensure_controller_ui_actions() -> void:

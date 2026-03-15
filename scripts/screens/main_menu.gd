@@ -57,7 +57,7 @@ func _ready() -> void:
 		if SteamManager.lobby_id > 0:
 			DebugOverlay.log_message("[MainMenu] Existing lobby detected (%d). Entering lobby..." % SteamManager.lobby_id)
 			call_deferred("_on_lobby_ready", SteamManager.lobby_id)
-	
+
 	refresh_lobbies_button.pressed.connect(_on_refresh_lobbies_pressed)
 	if not quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
 		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
@@ -310,7 +310,9 @@ func _on_test_button_pressed() -> void:
 		multiplayer.multiplayer_peer.close()
 		multiplayer.multiplayer_peer = null
 	GameManager.setup_offline_test()
-	get_tree().change_scene_to_file(GameManager.MATCH_SCENE_PATH)
+	var mode: Dictionary = GameManager.get_selected_game_mode()
+	var test_scene_path: String = str(mode.get("scene_path", GameManager.MATCH_SCENE_PATH))
+	get_tree().change_scene_to_file(test_scene_path)
 
 func _on_globe_button_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/globe/globe_arena.tscn")

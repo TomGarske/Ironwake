@@ -312,14 +312,14 @@ func _on_back_button_pressed() -> void:
 
 func _leave_lobby_and_return_to_menu() -> void:
 	DebugOverlay.log_message("[Lobby] Leaving lobby and returning to main menu...")
-	
+
 	# Clean up Steam lobby (this also closes multiplayer peer)
 	if SteamManager != null:
 		SteamManager.leave_lobby()
-	
+
 	# Reset game manager state
 	GameManager.reset()
-	
+
 	# Return to main menu
 	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
 
