@@ -50,7 +50,7 @@ func _ensure_controller_ui_actions() -> void:
 	_ensure_joy_motion_for_action("ui_up", JOY_AXIS_LEFT_Y, -1.0)
 	_ensure_joy_motion_for_action("ui_down", JOY_AXIS_LEFT_Y, 1.0)
 
-func _ensure_joy_button_for_action(action: String, button_index: int) -> void:
+func _ensure_joy_button_for_action(action: String, button_index: JoyButton) -> void:
 	if not InputMap.has_action(action):
 		InputMap.add_action(action)
 	for event in InputMap.action_get_events(action):

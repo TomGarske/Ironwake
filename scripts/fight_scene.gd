@@ -112,7 +112,7 @@ func _ensure_key_for_action(action: String, keycode: Key) -> void:
 	key_event.keycode = keycode
 	InputMap.action_add_event(action, key_event)
 
-func _ensure_joy_button_for_action(action: String, button_index: int) -> void:
+func _ensure_joy_button_for_action(action: String, button_index: JoyButton) -> void:
 	for event in InputMap.action_get_events(action):
 		if event is InputEventJoypadButton and event.button_index == button_index:
 			return

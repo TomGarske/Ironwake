@@ -104,9 +104,9 @@ func _ensure_chunk(cx: int, cy: int) -> void:
 		for j in range(chunk_size):
 			var e: float = float(raw[i + PAD][j + PAD])
 			var t: int
-			if e < -0.45:
+			if e < -0.15:
 				t = T_DEEP
-			elif e < 0.05:
+			elif e < 0.50:
 				t = T_WATER
 			else:
 				t = T_SAND
