@@ -24,6 +24,12 @@ var _music_playback: AudioStreamGeneratorPlayback = null
 var _music_phase: float = 0.0
 var _music_bass_phase: float = 0.0
 var _music_time: float = 0.0
+var _menu_index: int = 0
+var _menu_up_prev: bool = false
+var _menu_down_prev: bool = false
+var _menu_accept_prev: bool = false
+var _menu_cancel_prev: bool = false
+var _controller_debug_label: Label = null
 
 const _MUSIC_SAMPLE_RATE: float = 44100.0
 const _MUSIC_STEP_SECONDS: float = 0.34
@@ -49,6 +55,7 @@ func _ready() -> void:
 	_update_version_label()
 	_apply_warm_tactical_theme()
 	_setup_menu_navigation()
+	_setup_controller_debug_line()
 	_setup_menu_music()
 	_sync_music_toggle()
 	_apply_music_enabled_state()
@@ -74,14 +81,16 @@ func _ready() -> void:
 		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
 	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
-	host_button.grab_focus()
+	_refresh_menu_selection()
 
-	DebugOverlay.log_message
+	DebugOverlay.log_message("[MainMenu] Ready.")
 	if SteamManager != null:
 		_refresh_lobby_browser()
 
 func _process(_delta: float) -> void:
 	_stream_menu_music()
+	_handle_simple_controller_menu_input()
+	_update_controller_debug_line()
 
 func _apply_warm_tactical_theme() -> void:
 	UiStyleScript.style_button(host_button)
@@ -108,20 +117,12 @@ func _apply_dialog_theme() -> void:
 func _update_version_label() -> void:
 	if version_label == null:
 		return
-	var configured_version: String = str(ProjectSettings.get_setting("application/config/version", "dev"))
-	version_label.text = _build_runtime_version_label(configured_version)
+	var base_version: String = str(ProjectSettings.get_setting("application/config/version", "dev"))
+	var commit_hash: String = _get_runtime_commit_hash()
+	version_label.text = "%s (%s)" % [base_version, commit_hash] if not commit_hash.is_empty() else base_version
 
-func _build_runtime_version_label(configured_version: String) -> String:
-	var base_version: String = configured_version
-	var marker_idx: int = configured_version.find(" (")
-	if marker_idx > 0:
-		base_version = configured_version.substr(0, marker_idx)
-	var git_short_sha: String = _get_git_short_sha()
-	if git_short_sha.is_empty():
-		return base_version
-	return "%s (%s)" % [base_version, git_short_sha]
-
-func _get_git_short_sha() -> String:
+func _get_runtime_commit_hash() -> String:
+	# Runtime lookup avoids repo-writing version churn from CI commits.
 	var output: Array = []
 	var exit_code: int = OS.execute("git", PackedStringArray(["rev-parse", "--short", "HEAD"]), output, true)
 	if exit_code != 0 or output.is_empty():
@@ -144,9 +145,136 @@ func _setup_menu_navigation() -> void:
 	settings_button.focus_neighbor_bottom = settings_button.get_path_to(exit_button)
 	exit_button.focus_neighbor_top = exit_button.get_path_to(settings_button)
 	exit_button.focus_neighbor_bottom = exit_button.get_path_to(host_button)
-	host_button.grab_focus()
+	_refresh_menu_selection()
 
-func _setup_menu_music
+func _get_enabled_menu_buttons() -> Array[Button]:
+	var ordered: Array[Button] = [host_button, test_button, settings_button, exit_button]
+	var enabled: Array[Button] = []
+	for button in ordered:
+		if button != null and button.visible and not button.disabled:
+			enabled.append(button)
+	return enabled
+
+func _cycle_menu_focus(direction: int) -> void:
+	var buttons: Array[Button] = _get_enabled_menu_buttons()
+	if buttons.is_empty():
+		return
+	_menu_index = posmod(_menu_index + direction, buttons.size())
+	buttons[_menu_index].grab_focus()
+
+func _activate_selected_menu_button() -> void:
+	var buttons: Array[Button] = _get_enabled_menu_buttons()
+	if buttons.is_empty():
+		return
+	_menu_index = clampi(_menu_index, 0, buttons.size() - 1)
+	buttons[_menu_index].pressed.emit()
+
+func _handle_simple_controller_menu_input() -> void:
+	var pad_id: int = _get_primary_pad_id()
+	if pad_id < 0:
+		_menu_up_prev = false
+		_menu_down_prev = false
+		_menu_accept_prev = false
+		_menu_cancel_prev = false
+		return
+
+	var stick_y: float = Input.get_joy_axis(pad_id, JOY_AXIS_LEFT_Y)
+	var down_now: bool = _is_pad_pressed_any(pad_id, [JOY_BUTTON_DPAD_DOWN]) or stick_y > 0.60
+	var up_now: bool = _is_pad_pressed_any(pad_id, [JOY_BUTTON_DPAD_UP]) or stick_y < -0.60
+	if down_now and not _menu_down_prev:
+		_cycle_menu_focus(1)
+	if up_now and not _menu_up_prev:
+		_cycle_menu_focus(-1)
+	_menu_down_prev = down_now
+	_menu_up_prev = up_now
+
+	var accept_down: bool = _is_pad_pressed_any(pad_id, [
+		JOY_BUTTON_A, JOY_BUTTON_X, JOY_BUTTON_START
+	])
+	if accept_down and not _menu_accept_prev:
+		_activate_selected_menu_button()
+	_menu_accept_prev = accept_down
+
+	var cancel_down: bool = _is_pad_pressed_any(pad_id, [
+		JOY_BUTTON_B, JOY_BUTTON_Y, JOY_BUTTON_BACK
+	])
+	if cancel_down and not _menu_cancel_prev:
+		_on_exit_button_pressed()
+	_menu_cancel_prev = cancel_down
+
+func _is_pad_pressed_any(pad_id: int, buttons: Array[int]) -> bool:
+	for button in buttons:
+		if Input.is_joy_button_pressed(pad_id, button):
+			return true
+	return false
+
+func _refresh_menu_selection() -> void:
+	var buttons: Array[Button] = _get_enabled_menu_buttons()
+	if buttons.is_empty():
+		return
+	_menu_index = clampi(_menu_index, 0, buttons.size() - 1)
+	buttons[_menu_index].grab_focus()
+
+func _get_primary_pad_id() -> int:
+	var pads: PackedInt32Array = Input.get_connected_joypads()
+	if pads.is_empty():
+		return -1
+	return int(pads[0])
+
+func _setup_controller_debug_line() -> void:
+	_controller_debug_label = Label.new()
+	_controller_debug_label.name = "ControllerDebugLine"
+	_controller_debug_label.layout_mode = 1
+	_controller_debug_label.anchors_preset = 0
+	_controller_debug_label.offset_left = 12.0
+	_controller_debug_label.offset_top = 12.0
+	_controller_debug_label.offset_right = 900.0
+	_controller_debug_label.offset_bottom = 34.0
+	_controller_debug_label.add_theme_font_size_override("font_size", 12)
+	_controller_debug_label.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95, 0.95))
+	_controller_debug_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_controller_debug_label.visible = false
+	_controller_debug_label.text = "Controller debug initializing..."
+	add_child(_controller_debug_label)
+
+func _update_controller_debug_line() -> void:
+	if _controller_debug_label == null:
+		return
+	var pad_ids: PackedInt32Array = Input.get_connected_joypads()
+	var id_text: String = "none"
+	if not pad_ids.is_empty():
+		var parts: Array[String] = []
+		for id in pad_ids:
+			parts.append(str(id))
+		id_text = ",".join(parts)
+
+	var pad_id: int = _get_primary_pad_id()
+	if pad_id < 0:
+		_controller_debug_label.text = "Pads: [%s] | no active pad" % id_text
+		return
+
+	var a: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_A) else 0
+	var b: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_B) else 0
+	var x: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_X) else 0
+	var y: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_Y) else 0
+	var up: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_UP) else 0
+	var down: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_DOWN) else 0
+	var left: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_LEFT) else 0
+	var right: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_DPAD_RIGHT) else 0
+	var start: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_START) else 0
+	var back: int = 1 if Input.is_joy_button_pressed(pad_id, JOY_BUTTON_BACK) else 0
+	var lx: float = Input.get_joy_axis(pad_id, JOY_AXIS_LEFT_X)
+	var ly: float = Input.get_joy_axis(pad_id, JOY_AXIS_LEFT_Y)
+	var ui_up: int = 1 if Input.is_action_pressed("ui_up") else 0
+	var ui_down: int = 1 if Input.is_action_pressed("ui_down") else 0
+	var ui_accept: int = 1 if Input.is_action_pressed("ui_accept") else 0
+	var ui_cancel: int = 1 if Input.is_action_pressed("ui_cancel") else 0
+
+	_controller_debug_label.text = "Pads:[%s] Active:%d | A:%d B:%d X:%d Y:%d U:%d D:%d L:%d R:%d Start:%d Back:%d | LX:%.2f LY:%.2f | ui U:%d D:%d A:%d C:%d" % [
+		id_text, pad_id, a, b, x, y, up, down, left, right, start, back, lx, ly, ui_up, ui_down, ui_accept, ui_cancel
+	]
+
+func _setup_menu_music() -> void:
 	if menu_music_player == null:
 		return
 	var stream := AudioStreamGenerator.new()

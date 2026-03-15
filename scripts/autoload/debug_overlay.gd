@@ -139,6 +139,7 @@ func _sync_version_label_visibility() -> void:
 		return
 	var linked_nodes: Array[String] = [
 		"VersionLabel",
+		"ControllerDebugLine"
 	]
 	for node_name in linked_nodes:
 		var ui_node: Node = scene_root.get_node_or_null(node_name)

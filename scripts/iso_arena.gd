@@ -185,8 +185,18 @@ func _register_inputs() -> void:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action)
 		_ensure_key_for_action(action, pairs[action])
+	_ensure_joy_motion_for_action(_ACTIONS.left, JOY_AXIS_LEFT_X, -1.0)
+	_ensure_joy_motion_for_action(_ACTIONS.right, JOY_AXIS_LEFT_X, 1.0)
+	_ensure_joy_motion_for_action(_ACTIONS.up, JOY_AXIS_LEFT_Y, -1.0)
+	_ensure_joy_motion_for_action(_ACTIONS.down, JOY_AXIS_LEFT_Y, 1.0)
+	_ensure_joy_button_for_action(_ACTIONS.left, JOY_BUTTON_DPAD_LEFT)
+	_ensure_joy_button_for_action(_ACTIONS.right, JOY_BUTTON_DPAD_RIGHT)
+	_ensure_joy_button_for_action(_ACTIONS.up, JOY_BUTTON_DPAD_UP)
+	_ensure_joy_button_for_action(_ACTIONS.down, JOY_BUTTON_DPAD_DOWN)
+	_ensure_joy_button_for_action(_ACTIONS.atk, JOY_BUTTON_A)
+	_ensure_joy_button_for_action(_ACTIONS.atk, JOY_BUTTON_X)
 
-func _ensure_key_for_action
+func _ensure_key_for_action(action: String, keycode: Key) -> void:
 	for event in InputMap.action_get_events(action):
 		if event is InputEventKey and event.keycode == keycode:
 			return
@@ -194,7 +204,26 @@ func _ensure_key_for_action
 	key_event.keycode = keycode
 	InputMap.action_add_event(action, key_event)
 
-func _setup_game_music
+func _ensure_joy_button_for_action(action: String, button_index: int, device: int = -1) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadButton and event.button_index == button_index and event.device == device:
+			return
+	var button_event := InputEventJoypadButton.new()
+	button_event.button_index = button_index
+	button_event.device = device
+	InputMap.action_add_event(action, button_event)
+
+func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: float, device: int = -1) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventJoypadMotion and event.axis == axis and is_equal_approx(event.axis_value, axis_value) and event.device == device:
+			return
+	var motion_event := InputEventJoypadMotion.new()
+	motion_event.axis = axis
+	motion_event.axis_value = axis_value
+	motion_event.device = device
+	InputMap.action_add_event(action, motion_event)
+
+func _setup_game_music() -> void:
 	if game_music_player == null:
 		return
 	var stream := AudioStreamGenerator.new()
@@ -787,3 +816,8 @@ func _draw_offscreen_indicators(vp: Vector2) -> void:
 		draw_string(font, label_pos, p.label,
 				HORIZONTAL_ALIGNMENT_CENTER, -1, 8, Color(pa.r, pa.g, pa.b, 0.90))
 
+func _get_primary_pad_id() -> int:
+	var pads: PackedInt32Array = Input.get_connected_joypads()
+	if pads.is_empty():
+		return -1
+	return int(pads[0])
