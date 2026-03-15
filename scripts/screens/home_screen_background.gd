@@ -14,7 +14,7 @@ func _ready() -> void:
 	layer = -1
 	_map_drawer = Node2D.new()
 	_map_drawer.name = "MapDrawer"
-	_map_drawer.set_script(preload("res://scripts/screens/main_menu_bg_drawer.gd"))
+	_map_drawer.set_script(preload("res://scripts/screens/home_screen_background_drawer.gd"))
 	add_child(_map_drawer)
 
 func _process(delta: float) -> void:

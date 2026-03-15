@@ -336,7 +336,7 @@ func _close_pause_menu() -> void:
 func _request_quit_to_menu() -> void:
 	_close_pause_menu()
 	if quit_confirm_dialog == null:
-		get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
+		get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
 		return
 	_apply_quit_dialog_theme()
 	quit_confirm_dialog.dialog_text = "Are you sure you want to leave this match and return to the main menu?"
@@ -352,7 +352,7 @@ func _apply_quit_dialog_theme() -> void:
 	UiStyleScript.style_button(quit_confirm_dialog.get_cancel_button())
 
 func _on_quit_confirmed() -> void:
-	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
+	get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
 
 func _on_peer_connected(peer_id: int) -> void:
 	if multiplayer.is_server():
@@ -390,7 +390,7 @@ func _process(delta: float) -> void:
 	if _winner != -2:
 		_end_timer += delta
 		if _end_timer >= END_DELAY:
-			get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
+			get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
 		queue_redraw()
 		return
 

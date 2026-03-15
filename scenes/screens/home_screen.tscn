@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c3tanyp60wrif"]
 
-[ext_resource type="Script" path="res://scripts/screens/main_menu.gd" id="1_main_menu"]
-[ext_resource type="Script" path="res://scripts/screens/burning_bridge.gd" id="2_burning_bridge"]
+[ext_resource type="Script" path="res://scripts/screens/home_screen.gd" id="1_home_screen"]
+[ext_resource type="Script" path="res://scripts/screens/home_screen_background.gd" id="2_home_screen_background"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu_panel"]
 content_margin_left = 16.0
@@ -71,17 +71,17 @@ corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
-[node name="MainMenu" type="Control" unique_id=391934863]
+[node name="HomeScreen" type="Control" unique_id=391934863]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1_main_menu")
+script = ExtResource("1_home_screen")
 
-[node name="BurningBridge" type="CanvasLayer" parent="." unique_id=1677095546]
-script = ExtResource("2_burning_bridge")
+[node name="HomeScreenBackground" type="CanvasLayer" parent="." unique_id=1677095546]
+script = ExtResource("2_home_screen_background")
 
 [node name="BackdropTint" type="ColorRect" parent="." unique_id=85751224]
 layout_mode = 1

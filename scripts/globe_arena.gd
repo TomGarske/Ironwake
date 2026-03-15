@@ -24,11 +24,10 @@ func _ready() -> void:
 
 # ── Texture loading (mirrors iso_terrain_renderer.gd pattern) ─────────────────
 func _apply_globe_texture() -> void:
-	var img := Image.load_from_file("res://assets/maps/globe.png")
-	if img == null:
-		push_error("globe_arena: cannot load res://assets/maps/globe.png")
+	var tex := load("res://assets/maps/globe.png") as Texture2D
+	if tex == null:
+		push_error("globe_arena: cannot load texture resource res://assets/maps/globe.png")
 		return
-	var tex := ImageTexture.create_from_image(img)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = tex
 	mat.roughness = 0.85

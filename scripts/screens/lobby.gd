@@ -321,7 +321,7 @@ func _leave_lobby_and_return_to_menu() -> void:
 	GameManager.reset()
 
 	# Return to main menu
-	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
+	get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
 
 func _create_avatar_rect(steam_id: int, avatar_size: int) -> TextureRect:
 	var avatar := TextureRect.new()

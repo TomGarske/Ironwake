@@ -39,7 +39,7 @@ Short version:
 
 ## Play Flow
 
-- **Open Operations** in main menu to host a Steam lobby.
+- **Open Operations** on the home screen to host a Steam lobby.
 - In lobby, choose a **Mission Profile** (game mode).
 - All players ready up, then host launches mission.
 - **Solo Sim (Offline)** starts local testing without Steam.
@@ -59,7 +59,7 @@ Short version:
 
 ## Repo Notes
 
-- Main scene: `res://scenes/screens/main_menu.tscn`
+- Main scene: `res://scenes/screens/home_screen.tscn`
 - Lobby scene: `res://scenes/screens/lobby.tscn`
 - Blacksite Containment scene: `res://scenes/game/blacksite/blacksite_containment_arena.tscn`
 - Legacy arena scene (untouched): `res://scenes/game/iso_arena.tscn`

@@ -44,7 +44,7 @@ func _ready() -> void:
 	_apply_dialog_theme()
 
 	if SteamManager == null:
-		push_error("[MainMenu] SteamManager autoload missing.")
+		push_error("[HomeScreen] SteamManager autoload missing.")
 	else:
 		SteamManager.lobby_created.connect(_on_lobby_ready)
 		SteamManager.lobby_joined.connect(_on_lobby_ready)
@@ -55,7 +55,7 @@ func _ready() -> void:
 			host_button.tooltip_text = "Steam is not initialized. Check debug console output."
 		# If app was launched from a Steam invite and joined before menu connected, continue to lobby.
 		if SteamManager.lobby_id > 0:
-			DebugOverlay.log_message("[MainMenu] Existing lobby detected (%d). Entering lobby..." % SteamManager.lobby_id)
+			DebugOverlay.log_message("[HomeScreen] Existing lobby detected (%d). Entering lobby..." % SteamManager.lobby_id)
 			call_deferred("_on_lobby_ready", SteamManager.lobby_id)
 
 	refresh_lobbies_button.pressed.connect(_on_refresh_lobbies_pressed)
@@ -65,7 +65,7 @@ func _ready() -> void:
 		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
 	_refresh_menu_selection()
 
-	DebugOverlay.log_message("[MainMenu] Ready.")
+	DebugOverlay.log_message("[HomeScreen] Ready.")
 	if SteamManager != null:
 		_refresh_lobby_browser()
 
@@ -290,18 +290,18 @@ func _exit_tree() -> void:
 # Button handlers
 # ---------------------------------------------------------------------------
 func _on_host_button_pressed() -> void:
-	DebugOverlay.log_message("[MainMenu] Host button pressed.")
+	DebugOverlay.log_message("[HomeScreen] Host button pressed.")
 	if SteamManager != null:
 		SteamManager.host_lobby()
 
 func _on_confirm_join_button_pressed() -> void:
 	var lobby_id: int = int(join_input.text.strip_edges())
 	if lobby_id > 0:
-		DebugOverlay.log_message("[MainMenu] Attempting join for lobby %d." % lobby_id)
+		DebugOverlay.log_message("[HomeScreen] Attempting join for lobby %d." % lobby_id)
 		if SteamManager != null:
 			SteamManager.join_lobby(lobby_id)
 	else:
-		DebugOverlay.log_message("[MainMenu] Invalid lobby ID entered.", true)
+		DebugOverlay.log_message("[HomeScreen] Invalid lobby ID entered.", true)
 
 func _on_test_button_pressed() -> void:
 	if SteamManager != null and SteamManager.lobby_id != 0:
@@ -358,7 +358,7 @@ func _do_scene_change_lobby() -> void:
 	get_tree().change_scene_to_file(GameManager.LOBBY_SCENE_PATH)
 
 func _on_invite_join_requested(target_lobby_id: int) -> void:
-	DebugOverlay.log_message("[MainMenu] Processing invite join request for lobby %d." % target_lobby_id)
+	DebugOverlay.log_message("[HomeScreen] Processing invite join request for lobby %d." % target_lobby_id)
 
 func _on_refresh_lobbies_pressed() -> void:
 	_refresh_lobby_browser()
@@ -378,7 +378,7 @@ func _refresh_lobby_browser() -> void:
 	_rebuild_lobby_list(SteamManager.get_cached_public_lobbies())
 
 func _on_join_lobby_from_list(target_lobby_id: int) -> void:
-	DebugOverlay.log_message("[MainMenu] Joining listed lobby %d." % target_lobby_id)
+	DebugOverlay.log_message("[HomeScreen] Joining listed lobby %d." % target_lobby_id)
 	join_input.text = str(target_lobby_id)
 	if SteamManager != null:
 		SteamManager.join_lobby(target_lobby_id)

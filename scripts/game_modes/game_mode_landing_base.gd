@@ -31,4 +31,4 @@ func _on_back_button_pressed() -> void:
 		SteamManager.leave_lobby()
 	if GameManager != null:
 		GameManager.reset()
-	get_tree().change_scene_to_file(GameManager.MAIN_MENU_SCENE_PATH)
+	get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
