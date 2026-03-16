@@ -5,14 +5,41 @@ set -euo pipefail
 # Downloads and installs GDExtension plugins (GodotSteam, LimboAI).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG="$SCRIPT_DIR/addons/addons.cfg"
 
-if [[ ! -f "$CONFIG" ]]; then
-    echo "ERROR: addons/addons.cfg not found at $CONFIG"
+# ── Addon versions ────────────────────────────────────────────────────
+# GodotSteam GDExtension plugin
+GODOTSTEAM_VERSION="4.17.1"
+GODOTSTEAM_GDE_TAG="v4.17.1-gde"
+GODOTSTEAM_ARCHIVE="godotsteam-4.17-gdextension-plugin-4.4.tar.xz"
+GODOTSTEAM_BASE_URL="https://codeberg.org/godotsteam/godotsteam/releases/download"
+
+# LimboAI GDExtension plugin (Behavior Trees & State Machines)
+LIMBOAI_VERSION="1.7.0"
+LIMBOAI_TAG="v1.7.0"
+LIMBOAI_ARCHIVE="limboai+v1.7.0.gdextension-4.6.zip"
+LIMBOAI_BASE_URL="https://github.com/limbonaut/limboai/releases/download"
+
+# Steam app ID — Fireteam MNG Playtest (App ID 4530870)
+STEAM_APP_ID="4530870"
+
+# ── Godot extension registry ──────────────────────────────────────────
+# .godot/extension_list.cfg is Godot's authoritative list of GDExtensions.
+# Addon install paths are derived from it rather than hardcoded.
+EXTENSION_LIST="$SCRIPT_DIR/.godot/extension_list.cfg"
+if [[ ! -f "$EXTENSION_LIST" ]]; then
+    echo "ERROR: .godot/extension_list.cfg not found. Open the project in Godot at least once to generate it."
     exit 1
 fi
 
-source "$CONFIG"
+# Returns the top-level addon directory for a given extension name pattern.
+# e.g. addon_dir "godotsteam" -> "$SCRIPT_DIR/addons/godotsteam"
+addon_dir() {
+    local pattern="$1"
+    local entry
+    entry=$(grep -i "$pattern" "$EXTENSION_LIST" | head -1 | sed 's|^res://||')
+    [[ -z "$entry" ]] && { echo ""; return; }
+    echo "$SCRIPT_DIR/$(echo "$entry" | cut -d'/' -f1-2)"
+}
 
 # Warn if Godot is running (locked files will cause errors on reinstall)
 if pgrep -xi "godot" &>/dev/null; then
@@ -25,7 +52,11 @@ if pgrep -xi "godot" &>/dev/null; then
 fi
 
 DOWNLOAD_URL="${GODOTSTEAM_BASE_URL}/${GODOTSTEAM_GDE_TAG}/${GODOTSTEAM_ARCHIVE}"
-ADDON_DIR="$SCRIPT_DIR/addons/godotsteam"
+ADDON_DIR="$(addon_dir "godotsteam")"
+if [[ -z "$ADDON_DIR" ]]; then
+    echo "ERROR: godotsteam not found in .godot/extension_list.cfg. Enable the extension in Godot first."
+    exit 1
+fi
 
 # Ensure required tools are available
 for cmd in curl tar xz unzip; do
@@ -65,7 +96,11 @@ echo "GodotSteam v${GODOTSTEAM_VERSION} installed successfully."
 
 # ── LimboAI GDExtension ──────────────────────────────────────────────
 LIMBOAI_URL="${LIMBOAI_BASE_URL}/${LIMBOAI_TAG}/${LIMBOAI_ARCHIVE}"
-LIMBOAI_DIR="$SCRIPT_DIR/addons/limboai"
+LIMBOAI_DIR="$(addon_dir "limboai")"
+if [[ -z "$LIMBOAI_DIR" ]]; then
+    echo "ERROR: limboai not found in .godot/extension_list.cfg. Enable the extension in Godot first."
+    exit 1
+fi
 
 if [[ -d "$LIMBOAI_DIR" ]]; then
     echo "LimboAI already installed at $LIMBOAI_DIR"
