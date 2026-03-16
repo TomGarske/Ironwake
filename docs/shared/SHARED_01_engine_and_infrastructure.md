@@ -733,14 +733,14 @@ Run once after cloning the repository:
 
 ### 8.3 Steam App ID
 
-**File:** `steam_appid.txt` (root of project)
-**Content:** `480` (Steamworks test environment) or your registered App ID
+**File:** `steam_appid.txt` (root of project, git-ignored)
 
-```
-480
-```
+| Context | App ID | Notes |
+|---|---|---|
+| Playtest | `4530870` | **Fireteam MNG Playtest** — use during development & playtesting |
+| Main app | *(TBD)* | Update when main app is live on Steam |
 
-**Note:** For production, register your game with Steamworks and update to your official App ID.
+The setup scripts write this file automatically. Replace manually if you need a different context.
 
 ---
 

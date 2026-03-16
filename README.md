@@ -31,7 +31,7 @@ See **[SETUP.md](SETUP.md)** for full setup instructions.
 Short version:
 1. Install [Godot 4.x](https://godotengine.org/download)
 2. Download the GodotSteam GDExtension and extract it into `addons/godotsteam/`
-3. Create `steam_appid.txt` at the project root containing `480` (Valve's SpaceWar test app ID)
+3. Create `steam_appid.txt` at the project root containing `4530870` (Fireteam MNG Playtest app ID) — the setup scripts do this automatically
 4. Open the project in Godot (Steam running)
 5. Press **F5** to run
 
