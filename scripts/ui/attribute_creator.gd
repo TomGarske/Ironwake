@@ -180,12 +180,12 @@ func _on_create_update() -> void:
 			_status_label.text = "Category name is required."
 			return
 		# Add to option button if new
-		var found := false
+		var cat_exists := false
 		for i in _category_option.item_count:
 			if _category_option.get_item_text(i) == category:
-				found = true
+				cat_exists = true
 				break
-		if not found:
+		if not cat_exists:
 			_category_option.add_item(category)
 			# Move "New Category..." to end
 			var last := _category_option.item_count - 1
