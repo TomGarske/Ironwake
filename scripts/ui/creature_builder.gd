@@ -139,6 +139,8 @@ func _get_selected_movement_types() -> Array[String]:
 
 
 func _calculate_cost() -> int:
+	if not _health_spin or not _attack_spin or not _defense_spin or not _vision_spin:
+		return 0
 	var cost := 0
 	var phys_size := _get_selected_size()
 	cost += PointCostConstants.PHYSICAL_SIZE_COSTS.get(phys_size, 0)
