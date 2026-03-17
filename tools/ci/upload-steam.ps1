@@ -28,7 +28,7 @@ $steamAppId = Require-Env "STEAM_APP_ID"
 $steamDepotIdWindows = Require-Env "STEAM_DEPOT_ID_WINDOWS"
 $steamUser = Require-Env "STEAM_USERNAME"
 $steamPassword = Require-Env "STEAM_PASSWORD"
-$steamConfigVdf = [Environment]::GetEnvironmentVariable("STEAM_CONFIG_VDF")
+$steamTotpSecret = Require-Env "STEAM_TOTP_SECRET"
 
 $steamDir = Join-Path $env:RUNNER_TEMP "steamcmd"
 New-Item -ItemType Directory -Path $steamDir -Force | Out-Null
@@ -41,20 +41,45 @@ if (-not (Test-Path $steamExe)) {
     Expand-Archive -Path $steamZip -DestinationPath $steamDir -Force
 }
 
-# Run SteamCMD once to let it self-update before writing config.
+# Generate a Steam Guard TOTP code from the shared secret.
+# Steam uses a non-standard TOTP: HMAC-SHA1, 30s period, custom charset, 5-char codes.
+function Get-SteamGuardCode {
+    param([string]$SharedSecret)
+
+    $secretBytes = [Convert]::FromBase64String($SharedSecret)
+    $time = [long][Math]::Floor(([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) / 30)
+    $timeBytes = [byte[]]::new(8)
+    for ($i = 7; $i -ge 0; $i--) {
+        $timeBytes[$i] = [byte]($time -band 0xFF)
+        $time = $time -shr 8
+    }
+
+    $hmac = New-Object System.Security.Cryptography.HMACSHA1
+    $hmac.Key = $secretBytes
+    $hash = $hmac.ComputeHash($timeBytes)
+
+    $offset = $hash[19] -band 0x0F
+    $code = (($hash[$offset] -band 0x7F) -shl 24) -bor
+            (($hash[$offset + 1] -band 0xFF) -shl 16) -bor
+            (($hash[$offset + 2] -band 0xFF) -shl 8) -bor
+             ($hash[$offset + 3] -band 0xFF)
+
+    $chars = "23456789BCDFGHJKMNPQRTVWXY"
+    $guardCode = ""
+    for ($i = 0; $i -lt 5; $i++) {
+        $guardCode += $chars[$code % $chars.Length]
+        $code = [Math]::Floor($code / $chars.Length)
+    }
+
+    return $guardCode
+}
+
+# Run SteamCMD once to let it self-update.
 Write-Host "Running SteamCMD self-update..."
 & $steamExe +quit
 
-# Restore cached Steam session so no interactive Steam Guard prompt is needed.
-if (-not [string]::IsNullOrWhiteSpace($steamConfigVdf)) {
-    $steamConfigDir = Join-Path $steamDir "config"
-    New-Item -ItemType Directory -Path $steamConfigDir -Force | Out-Null
-    $configBytes = [Convert]::FromBase64String($steamConfigVdf)
-    [System.IO.File]::WriteAllBytes((Join-Path $steamConfigDir "config.vdf"), $configBytes)
-    Write-Host "Steam session restored from STEAM_CONFIG_VDF."
-} else {
-    Write-Warning "STEAM_CONFIG_VDF is not set. Login may require an interactive Steam Guard code."
-}
+$guardCode = Get-SteamGuardCode -SharedSecret $steamTotpSecret
+Write-Host "Generated Steam Guard TOTP code."
 
 $templateAppBuild = Join-Path $projectRootResolved "tools/steam/app_build_template.vdf"
 $templateDepotBuild = Join-Path $projectRootResolved "tools/steam/depot_build_windows_template.vdf"
@@ -81,7 +106,7 @@ $depotBuildText = $depotBuildText.Replace("__DEPOT_ID_WINDOWS__", $steamDepotIdW
 Set-Content -Path $generatedDepotBuild -Value $depotBuildText -NoNewline
 
 Write-Host "Uploading build to Steam app $steamAppId (branch: $SteamBranch)..."
-& $steamExe +login $steamUser $steamPassword +run_app_build $generatedAppBuild +quit
+& $steamExe +set_steam_guard_code $guardCode +login $steamUser $steamPassword +run_app_build $generatedAppBuild +quit
 
 if ($LASTEXITCODE -ne 0) {
     throw "SteamCMD upload failed with exit code $LASTEXITCODE"
