@@ -7,13 +7,16 @@ const TOKEN_RADIUS := 20.0
 
 func _draw() -> void:
 	var occupied := HexOccupancyValidator.get_all_occupied_hexes()
+	var sg := get_parent() as StrategyGame
+	if not sg:
+		return
 	for hex: Vector2i in occupied:
 		var wedges := HexOccupancyValidator.get_wedge_layout(hex)
 		if wedges.is_empty():
 			continue
-		var world_center := get_parent().hex_to_world(hex)
+		var world_center: Vector2 = sg.hex_to_world(hex)
 		# Convert from parent (StrategyGame Node2D) local space to this node's local space
-		var local_center := to_local(get_parent().to_global(world_center))
+		var local_center := to_local(sg.to_global(world_center))
 		for w: Dictionary in wedges:
 			var cid: String = w.get("creature_id", "")
 			var pdata: Dictionary = GameState.placed_creatures.get(cid, {})
@@ -36,7 +39,7 @@ func _draw_wedge(center: Vector2, radius: float, start_deg: float, end_deg: floa
 	# Build polygon for the pie slice
 	var points: PackedVector2Array = PackedVector2Array()
 	points.append(center)
-	var steps := max(6, int(span_rad / deg_to_rad(10.0)) + 1)
+	var steps: int = maxi(6, int(span_rad / deg_to_rad(10.0)) + 1)
 	for i in range(steps + 1):
 		var angle := start_rad + span_rad * (float(i) / float(steps))
 		points.append(center + Vector2(cos(angle), sin(angle)) * radius)

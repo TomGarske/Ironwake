@@ -148,7 +148,7 @@ func _calculate_cost() -> int:
 	cost += int(_attack_spin.value) * PointCostConstants.ATTACK_COST
 	cost += int(_defense_spin.value) * PointCostConstants.DEFENSE_COST
 	# Vision above base of 3
-	var extra_vision := max(0, int(_vision_spin.value) - 3)
+	var extra_vision: int = maxi(0, int(_vision_spin.value) - 3)
 	cost += extra_vision * PointCostConstants.VISION_COST_PER_HEX
 	return cost
 

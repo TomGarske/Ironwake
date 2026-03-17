@@ -45,9 +45,13 @@ func can_move(creature_id: String, from_hex: Vector2i, to_hex: Vector2i,
 		movement_types: Array[String]) -> bool:
 	# Must be able to enter terrain at destination
 	var to_terrain := ""
-	var strategy_nodes := Engine.get_main_loop().get_nodes_in_group("strategy_game")
-	if strategy_nodes.size() > 0:
-		to_terrain = strategy_nodes[0].get_terrain_at(to_hex)
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree:
+		for sn: Node in tree.get_nodes_in_group("strategy_game"):
+			var sg := sn as StrategyGame
+			if sg:
+				to_terrain = sg.get_terrain_at(to_hex)
+			break
 	if to_terrain.is_empty():
 		return false
 	if not TerrainMovementRules.can_enter(movement_types, to_terrain):

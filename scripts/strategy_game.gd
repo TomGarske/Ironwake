@@ -1,4 +1,5 @@
 extends Node2D
+class_name StrategyGame
 
 signal hex_clicked(coords: Vector2i)
 

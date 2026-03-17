@@ -18,7 +18,7 @@ const _COLOR_PALETTE: Array[Color] = [
 	Color("#95D5B2"),  # mint
 ]
 
-var _strategy_game: Node = null
+var _strategy_game: StrategyGame = null
 var _selected_creature_id: String = ""
 var _movement_queues: Dictionary = {}  # creature_id → Array[Vector2i]
 var _explore_active: Dictionary = {}   # creature_id → bool
@@ -26,7 +26,7 @@ var _seen_hexes: Dictionary = {}       # Vector2i → true
 var _color_index: int = 0
 
 
-func set_strategy_game(node: Node) -> void:
+func set_strategy_game(node: StrategyGame) -> void:
 	_strategy_game = node
 
 
@@ -203,7 +203,7 @@ func _a_star_path(from: Vector2i, to: Vector2i,
 			return _reconstruct_path(came_from, current)
 
 		open_set.erase(current)
-		var neighbors := _strategy_game.get_hex_neighbors(current)
+		var neighbors: Array[Vector2i] = _strategy_game.get_hex_neighbors(current)
 		for neighbor: Vector2i in neighbors:
 			var terrain: String = _strategy_game.get_terrain_at(neighbor)
 			if terrain.is_empty():
