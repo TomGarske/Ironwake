@@ -1,6 +1,6 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" uid="uid://ckvlqm86ytl84" path="res://scripts/game_modes/blacksite_containment_arena.gd" id="1_blacksite_iso"]
+[ext_resource type="Script" path="res://scripts/game_modes/blacksite_containment_arena.gd" id="1_blacksite_iso"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pause_panel"]
 bg_color = Color(0.14, 0.11, 0.09, 0.95)
