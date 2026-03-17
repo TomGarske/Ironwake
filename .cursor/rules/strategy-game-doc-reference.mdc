@@ -1,0 +1,20 @@
+---
+description: Use strategy-game docs as source of truth for strategy mode updates
+alwaysApply: true
+---
+
+# Strategy Mode Doc Reference
+
+When making changes to strategy mode systems (including `strategy_game`, strategy scene files, terrain editing, or strategy mode routing), use `docs/strategy-game` as the primary reference set.
+
+## Required References
+
+- `docs/strategy-game/REQ_00_reference_index.md`
+- `docs/strategy-game/REQ_01_vision_and_architecture.md`
+- `docs/strategy-game/REQ_02_systems_and_data_contracts.md`
+
+## Update Expectations
+
+1. Keep implementation aligned with these strategy docs.
+2. If behavior/contracts change, update the corresponding strategy doc in the same PR.
+3. Preserve host-authoritative assumptions for multiplayer state mutation unless explicitly changed.
