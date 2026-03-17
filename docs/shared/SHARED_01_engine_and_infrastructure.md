@@ -613,7 +613,8 @@ All menus navigate via:
 - Loads game mode scene
 
 **Version Label:**
-- Bottom right: "v1.0.1a (a3f2e1c)" — git commit hash auto-populated at build
+- Bottom right: displays `application/config/version` plus optional runtime git hash when available.
+- Version value should remain stable in `project.godot` (no commit-time file rewrite).
 
 ---
 
