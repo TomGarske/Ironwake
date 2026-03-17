@@ -33,3 +33,11 @@ desktop.ini
 *.swp
 /demo
 /addons
+
+# Local Windows export artifacts at repo root
+/FireTeam MNG.exe
+/FireTeam MNG.console.exe
+/FireTeam MNG.pck
+/steam_api64.dll
+/libgodotsteam.windows.*.dll
+/liblimboai.windows.*.dll
