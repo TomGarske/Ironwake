@@ -108,7 +108,7 @@ size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
 [node name="InviteNoteLabel" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Note: Invites appear as Spacewar while using Steam App ID 480."
+text = "Note: Invites appear as FireTeam MNG."
 autowrap_mode = 2
 theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
 

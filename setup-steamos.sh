@@ -2,9 +2,24 @@
 set -euo pipefail
 
 # BurnBridgers — SteamOS / Linux addon setup
-# Downloads and installs GDExtension plugins (GodotSteam, LimboAI).
+# Downloads and installs GDExtension plugins (GodotSteam, LimboAI, Ziva).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FORCE=0
+NON_INTERACTIVE=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -f|--force) FORCE=1 ;;
+        --non-interactive) NON_INTERACTIVE=1 ;;
+        *)
+            echo "Unknown argument: $1"
+            echo "Usage: $0 [--force|-f] [--non-interactive]"
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 # ── Addon versions ────────────────────────────────────────────────────
 # GodotSteam GDExtension plugin
@@ -41,21 +56,45 @@ addon_dir() {
     echo "$SCRIPT_DIR/$(echo "$entry" | cut -d'/' -f1-2)"
 }
 
+ensure_extension_entry() {
+    local entry="$1"
+    if ! grep -Fxq "$entry" "$EXTENSION_LIST"; then
+        printf '%s\n' "$entry" >> "$EXTENSION_LIST"
+    fi
+}
+
+should_reinstall() {
+    local name="$1"
+    if [[ "$FORCE" -eq 1 ]]; then
+        return 0
+    fi
+    echo "$name already installed; keeping existing install (use --force to reinstall)."
+    return 1
+}
+
 # Warn if Godot is running (locked files will cause errors on reinstall)
 if pgrep -xi "godot" &>/dev/null; then
     echo "WARNING: Godot appears to be running. Please close it before continuing."
-    read -rp "Continue anyway? (y/N): " confirm
-    if [[ "$confirm" != [yY] ]]; then
-        echo "Aborted."
+    if [[ "$FORCE" -ne 1 && ( "$NON_INTERACTIVE" -eq 1 || ! -t 0 ) ]]; then
+        echo "ERROR: Godot is running. Re-run with --force after closing Godot if you want to reinstall addons."
         exit 1
+    fi
+    if [[ "$FORCE" -eq 1 && ( "$NON_INTERACTIVE" -eq 1 || ! -t 0 ) ]]; then
+        echo "Continuing because --force was specified."
+    else
+        read -rp "Continue anyway? (y/N): " confirm
+        if [[ "$confirm" != [yY] ]]; then
+            echo "Aborted."
+            exit 1
+        fi
     fi
 fi
 
 DOWNLOAD_URL="${GODOTSTEAM_BASE_URL}/${GODOTSTEAM_GDE_TAG}/${GODOTSTEAM_ARCHIVE}"
 ADDON_DIR="$(addon_dir "godotsteam")"
 if [[ -z "$ADDON_DIR" ]]; then
-    echo "ERROR: godotsteam not found in .godot/extension_list.cfg. Enable the extension in Godot first."
-    exit 1
+    ADDON_DIR="$SCRIPT_DIR/addons/godotsteam"
+    echo "godotsteam was not pre-registered; using default path: $ADDON_DIR"
 fi
 
 # Ensure required tools are available
@@ -68,22 +107,29 @@ done
 
 if [[ -d "$ADDON_DIR" ]]; then
     echo "GodotSteam already installed at $ADDON_DIR"
-    read -rp "Reinstall? (y/N): " confirm
-    if [[ "$confirm" != [yY] ]]; then
-        echo "Skipped."
-        exit 0
+    if should_reinstall "GodotSteam"; then
+        rm -rf "$ADDON_DIR"
+        install_godotsteam=1
+    else
+        install_godotsteam=0
     fi
-    rm -rf "$ADDON_DIR"
+else
+    install_godotsteam=1
 fi
 
-echo "Downloading GodotSteam GDExtension v${GODOTSTEAM_VERSION}..."
-TMPFILE=$(mktemp /tmp/godotsteam-XXXXXX.tar.xz)
-trap 'rm -f "$TMPFILE"' EXIT
+if [[ "$install_godotsteam" -eq 1 ]]; then
+    echo "Downloading GodotSteam GDExtension v${GODOTSTEAM_VERSION}..."
+    TMPFILE=$(mktemp /tmp/godotsteam-XXXXXX.tar.xz)
+    trap 'rm -f "$TMPFILE"' EXIT
 
-curl -fSL --progress-bar -o "$TMPFILE" "$DOWNLOAD_URL"
+    curl -fSL --progress-bar -o "$TMPFILE" "$DOWNLOAD_URL"
 
-echo "Extracting to addons/godotsteam/..."
-tar -xJf "$TMPFILE" -C "$SCRIPT_DIR"
+    echo "Extracting to addons/godotsteam/..."
+    tar -xJf "$TMPFILE" -C "$SCRIPT_DIR"
+    echo "GodotSteam v${GODOTSTEAM_VERSION} installed successfully."
+else
+    echo "Skipped GodotSteam."
+fi
 
 # Create steam_appid.txt if it doesn't exist
 STEAM_APPID_FILE="$SCRIPT_DIR/steam_appid.txt"
@@ -92,20 +138,17 @@ if [[ ! -f "$STEAM_APPID_FILE" ]]; then
     echo "Created steam_appid.txt (app ID: $STEAM_APP_ID)"
 fi
 
-echo "GodotSteam v${GODOTSTEAM_VERSION} installed successfully."
-
 # ── LimboAI GDExtension ──────────────────────────────────────────────
 LIMBOAI_URL="${LIMBOAI_BASE_URL}/${LIMBOAI_TAG}/${LIMBOAI_ARCHIVE}"
 LIMBOAI_DIR="$(addon_dir "limboai")"
 if [[ -z "$LIMBOAI_DIR" ]]; then
-    echo "ERROR: limboai not found in .godot/extension_list.cfg. Enable the extension in Godot first."
-    exit 1
+    LIMBOAI_DIR="$SCRIPT_DIR/addons/limboai"
+    echo "limboai was not pre-registered; using default path: $LIMBOAI_DIR"
 fi
 
 if [[ -d "$LIMBOAI_DIR" ]]; then
     echo "LimboAI already installed at $LIMBOAI_DIR"
-    read -rp "Reinstall? (y/N): " confirm
-    if [[ "$confirm" != [yY] ]]; then
+    if ! should_reinstall "LimboAI"; then
         echo "Skipped LimboAI."
     else
         rm -rf "$LIMBOAI_DIR"
@@ -124,6 +167,43 @@ if [[ ! -d "$LIMBOAI_DIR" ]]; then
 
     echo "LimboAI v${LIMBOAI_VERSION} installed successfully."
 fi
+
+# ── Ziva Agent GDExtension ───────────────────────────────────────────
+ZIVA_DIR="$(addon_dir "ziva_agent")"
+if [[ -z "$ZIVA_DIR" ]]; then
+    ZIVA_DIR="$SCRIPT_DIR/addons/ziva_agent"
+    echo "ziva_agent was not pre-registered; using default path: $ZIVA_DIR"
+fi
+
+ZIVA_ARCH="$(uname -m)"
+if [[ "$ZIVA_ARCH" == "aarch64" || "$ZIVA_ARCH" == "arm64" ]]; then
+    ZIVA_BINARY="$ZIVA_DIR/bin/linux_arm64/libziva_agent.linux.release.arm64.so"
+else
+    ZIVA_BINARY="$ZIVA_DIR/bin/linux_x86_64/libziva_agent.linux.release.x86_64.so"
+fi
+
+if [[ -f "$ZIVA_BINARY" ]]; then
+    echo "Ziva Agent already installed at $ZIVA_DIR"
+    if ! should_reinstall "Ziva Agent"; then
+        echo "Skipped Ziva Agent."
+    else
+        rm -rf "$ZIVA_DIR"
+    fi
+fi
+
+if [[ ! -f "$ZIVA_BINARY" ]]; then
+    echo "Installing Ziva Agent via official installer..."
+    (
+        cd "$SCRIPT_DIR"
+        curl -fsSL https://ziva.sh/install.sh | bash
+    )
+    if [[ ! -f "$ZIVA_BINARY" ]]; then
+        echo "ERROR: Ziva install completed, but Linux library was not found under $ZIVA_DIR/bin."
+        exit 1
+    fi
+    echo "Ziva Agent installed successfully."
+fi
+ensure_extension_entry "res://addons/ziva_agent/ziva_agent.gdextension"
 
 echo ""
 echo "Setup complete. Open the project in Godot to verify."

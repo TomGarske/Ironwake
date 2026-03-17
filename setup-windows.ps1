@@ -1,6 +1,11 @@
 # BurnBridgers — Windows addon setup
-# Downloads and installs GDExtension plugins (GodotSteam, LimboAI).
+# Downloads and installs GDExtension plugins (GodotSteam, LimboAI, Ziva).
 # Requires: PowerShell 5.1+, 7-Zip or Windows tar with xz support (for GodotSteam)
+
+param(
+    [switch]$Force,
+    [switch]$NonInteractive
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -40,14 +45,38 @@ function Get-AddonDir {
     return Join-Path $ScriptDir ($parts[0] + '\' + $parts[1])
 }
 
+function Ensure-ExtensionEntry {
+    param([string]$Entry)
+    $existing = Get-Content $ExtensionList | Where-Object { $_ -eq $Entry } | Select-Object -First 1
+    if (-not $existing) {
+        Add-Content -Path $ExtensionList -Value $Entry
+    }
+}
+
+function Should-Reinstall {
+    param([string]$ComponentName)
+
+    if ($Force) { return $true }
+    Write-Host "$ComponentName already installed; keeping existing install (use -Force to reinstall)."
+    return $false
+}
+
 # Warn if Godot is running (locked DLLs will cause errors on reinstall)
 $GodotProc = Get-Process -Name "Godot*" -ErrorAction SilentlyContinue
 if ($GodotProc) {
     Write-Host "WARNING: Godot appears to be running. Please close it before continuing."
-    $confirm = Read-Host "Continue anyway? (y/N)"
-    if ($confirm -ne "y" -and $confirm -ne "Y") {
-        Write-Host "Aborted."
+    if (-not $Force -and ($NonInteractive -or -not [Environment]::UserInteractive)) {
+        Write-Error "Godot is running. Re-run with -Force after closing Godot if you want to reinstall addons."
         exit 1
+    }
+    if ($Force -and ($NonInteractive -or -not [Environment]::UserInteractive)) {
+        Write-Host "Continuing because -Force was specified."
+    } else {
+        $confirm = Read-Host "Continue anyway? (y/N)"
+        if ($confirm -ne "y" -and $confirm -ne "Y") {
+            Write-Host "Aborted by user."
+            exit 1
+        }
     }
 }
 
@@ -58,18 +87,24 @@ $BaseUrl     = $GodotSteamBaseUrl
 $DownloadUrl = "$BaseUrl/$GdeTag/$Archive"
 $AddonDir    = Get-AddonDir "godotsteam"
 if (-not $AddonDir) {
-    Write-Error "godotsteam not found in .godot\extension_list.cfg. Enable the extension in Godot first."
-    exit 1
+    $AddonDir = Join-Path $ScriptDir "addons\godotsteam"
+    Write-Host "godotsteam was not pre-registered; using default path: $AddonDir"
 }
+$GodotSteamRequiredLib = Join-Path $AddonDir "win64\libgodotsteam.windows.template_release.x86_64.dll"
 
 if (Test-Path $AddonDir) {
     Write-Host "GodotSteam already installed at $AddonDir"
-    $confirm = Read-Host "Reinstall? (y/N)"
-    if ($confirm -ne "y" -and $confirm -ne "Y") {
-        Write-Host "Skipped."
-        exit 0
+    if (-not (Test-Path $GodotSteamRequiredLib)) {
+        Write-Host "GodotSteam install appears incomplete (missing Windows runtime DLL); repairing install."
+        $installGodotSteam = $true
+    } else {
+        $installGodotSteam = Should-Reinstall "GodotSteam"
     }
-    Remove-Item -Recurse -Force $AddonDir
+    if ($installGodotSteam -and $Force) {
+        Remove-Item -Recurse -Force $AddonDir
+    }
+} else {
+    $installGodotSteam = $true
 }
 
 # Locate an extraction tool that supports .tar.xz
@@ -95,65 +130,67 @@ if (-not $7zExe -and -not $HasTar) {
 $TmpFile = Join-Path $env:TEMP "godotsteam-$Version.tar.xz"
 $TmpTar  = Join-Path $env:TEMP "godotsteam-$Version.tar"
 
-try {
-    Write-Host "Downloading GodotSteam GDExtension v$Version..."
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $TmpFile -UseBasicParsing
+if ($installGodotSteam) {
+    try {
+        Write-Host "Downloading GodotSteam GDExtension v$Version..."
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $TmpFile -UseBasicParsing
 
-    Write-Host "Extracting to addons\godotsteam\..."
+        Write-Host "Extracting to addons\godotsteam\..."
 
-    $extracted = $false
+        $extracted = $false
 
-    # Try 7-Zip first (most reliable for .tar.xz on Windows)
-    if ($7zExe) {
         # 7z requires two steps: .tar.xz -> .tar -> files
-        & $7zExe x $TmpFile "-o$env:TEMP" -y | Out-Null
-        if (Test-Path $TmpTar) {
-            & $7zExe x $TmpTar "-o$ScriptDir" -y | Out-Null
-            $extracted = $true
+        if ($7zExe) {
+            & $7zExe x $TmpFile "-o$env:TEMP" -y | Out-Null
+            if (Test-Path $TmpTar) {
+                & $7zExe x $TmpTar "-o$ScriptDir" -y | Out-Null
+                $extracted = $true
+            }
         }
-    }
 
-    # Fall back to built-in tar
-    if (-not $extracted -and $HasTar) {
-        tar -xf $TmpFile -C $ScriptDir 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            $extracted = $true
+        # Fall back to built-in tar
+        if (-not $extracted -and $HasTar) {
+            tar -xf $TmpFile -C $ScriptDir 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $extracted = $true
+            }
         }
-    }
 
-    if (-not $extracted) {
-        Write-Error "Extraction failed. Install 7-Zip (https://7-zip.org) and try again."
-        exit 1
-    }
+        if (-not $extracted) {
+            Write-Error "Extraction failed. Install 7-Zip (https://7-zip.org) and try again."
+            exit 1
+        }
 
-    # Create steam_appid.txt if it doesn't exist
-    $AppIdFile = Join-Path $ScriptDir "steam_appid.txt"
-    if (-not (Test-Path $AppIdFile)) {
-        $SteamAppId | Out-File -FilePath $AppIdFile -Encoding ascii -NoNewline
-        Write-Host "Created steam_appid.txt (app ID: $($Config['STEAM_APP_ID']))"
+        Write-Host "GodotSteam v$Version installed successfully."
     }
-
-    Write-Host "GodotSteam v$Version installed successfully."
+    finally {
+        if (Test-Path $TmpFile) { Remove-Item $TmpFile -Force }
+        if (Test-Path $TmpTar)  { Remove-Item $TmpTar  -Force }
+    }
+} else {
+    Write-Host "Skipped GodotSteam."
 }
-finally {
-    if (Test-Path $TmpFile) { Remove-Item $TmpFile -Force }
-    if (Test-Path $TmpTar)  { Remove-Item $TmpTar  -Force }
+
+# Create steam_appid.txt if it doesn't exist
+$AppIdFile = Join-Path $ScriptDir "steam_appid.txt"
+if (-not (Test-Path $AppIdFile)) {
+    $SteamAppId | Out-File -FilePath $AppIdFile -Encoding ascii -NoNewline
+    Write-Host "Created steam_appid.txt (app ID: $SteamAppId)"
 }
 
 # ── LimboAI GDExtension ──────────────────────────────────────────────
 $LimboUrl  = "$LimboBaseUrl/$LimboTag/$LimboArchive"
 $LimboDir  = Get-AddonDir "limboai"
 if (-not $LimboDir) {
-    Write-Error "limboai not found in .godot\extension_list.cfg. Enable the extension in Godot first."
-    exit 1
+    $LimboDir = Join-Path $ScriptDir "addons\limboai"
+    Write-Host "limboai was not pre-registered; using default path: $LimboDir"
 }
 
 $installLimbo = $true
 if (Test-Path $LimboDir) {
     Write-Host "LimboAI already installed at $LimboDir"
-    $confirm = Read-Host "Reinstall? (y/N)"
-    if ($confirm -ne "y" -and $confirm -ne "Y") {
+    if (-not (Should-Reinstall "LimboAI")) {
         Write-Host "Skipped LimboAI."
         $installLimbo = $false
     } else {
@@ -178,6 +215,41 @@ if ($installLimbo) {
         if (Test-Path $LimboTmp) { Remove-Item $LimboTmp -Force }
     }
 }
+
+# ── Ziva Agent GDExtension ───────────────────────────────────────────
+$ZivaDir = Get-AddonDir "ziva_agent"
+if (-not $ZivaDir) {
+    $ZivaDir = Join-Path $ScriptDir "addons\ziva_agent"
+    Write-Host "ziva_agent was not pre-registered; using default path: $ZivaDir"
+}
+
+$ZivaLibX64 = Join-Path $ZivaDir "bin\windows_x86_64\libziva_agent.windows.release.x86_64.dll"
+$ZivaLibArm64 = Join-Path $ZivaDir "bin\windows_arm64\libziva_agent.windows.release.arm64.dll"
+$hasZivaBinary = (Test-Path $ZivaLibX64) -or (Test-Path $ZivaLibArm64)
+$installZiva = $true
+
+if ($hasZivaBinary) {
+    Write-Host "Ziva Agent already installed at $ZivaDir"
+    if (-not (Should-Reinstall "Ziva Agent")) {
+        Write-Host "Skipped Ziva Agent."
+        $installZiva = $false
+    }
+} elseif (Test-Path $ZivaDir -PathType Container -and $Force) {
+    Remove-Item -Recurse -Force $ZivaDir
+}
+
+if ($installZiva) {
+    Write-Host "Installing Ziva Agent via official installer..."
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-Expression ((Invoke-WebRequest -UseBasicParsing -Uri "https://ziva.sh/install.ps1").Content)
+    $hasZivaBinary = (Test-Path $ZivaLibX64) -or (Test-Path $ZivaLibArm64)
+    if (-not $hasZivaBinary) {
+        Write-Error "Ziva install completed, but Windows binary was not found under $ZivaDir\bin."
+        exit 1
+    }
+    Write-Host "Ziva Agent installed successfully."
+}
+Ensure-ExtensionEntry "res://addons/ziva_agent/ziva_agent.gdextension"
 
 Write-Host ""
 Write-Host "Setup complete. Open the project in Godot to verify."

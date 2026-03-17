@@ -209,10 +209,10 @@ func _refresh_online_friends() -> void:
 		return
 
 	var app_id: int = SteamManager.get_current_app_id()
-	if app_id == 480:
-		invite_note_label.text = "Invites currently appear as Spacewar (App ID 480). Set your FireTeam MNG Steam App ID in steam_appid.txt."
+	if app_id > 0:
+		invite_note_label.text = "Invites appear as FireTeam MNG (App ID %d)." % app_id
 	else:
-		invite_note_label.text = "Invites should appear as FireTeam MNG (App ID %d)." % app_id
+		invite_note_label.text = "Invites appear as FireTeam MNG."
 
 	var online_friends: Array[Dictionary] = SteamManager.get_online_friends()
 	var in_game_friends: Array[Dictionary] = []
