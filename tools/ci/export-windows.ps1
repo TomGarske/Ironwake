@@ -42,10 +42,28 @@ $godotCommand = Resolve-GodotCommand
 
 Write-Host "Exporting with preset '$ExportPresetName' to '$gameExePath'..."
 Write-Host "Using Godot CLI: $godotCommand"
-& $godotCommand --headless --path $projectRootResolved --export-release $ExportPresetName $gameExePath
+$exportOutput = @()
+$exitCode = $null
+try {
+    $exportOutput = & $godotCommand --headless --verbose --path $projectRootResolved --export-release $ExportPresetName $gameExePath 2>&1
+    $exitCode = $LASTEXITCODE
+} catch {
+    $exportOutput += $_.Exception.Message
+    $exitCode = $LASTEXITCODE
+}
 
-if ($LASTEXITCODE -ne 0) {
-    throw "Godot export command failed with exit code $LASTEXITCODE."
+if ($exportOutput.Count -gt 0) {
+    Write-Host "Godot export output:"
+    $exportOutput | ForEach-Object { Write-Host $_ }
+}
+
+if ($null -eq $exitCode) {
+    # Some command invocation failures do not populate LASTEXITCODE.
+    $exitCode = if ($?) { 0 } else { 1 }
+}
+
+if ($exitCode -ne 0) {
+    throw "Godot export command failed with exit code $exitCode."
 }
 
 if (-not (Test-Path $gameExePath)) {
