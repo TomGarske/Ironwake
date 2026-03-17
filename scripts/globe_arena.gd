@@ -83,8 +83,15 @@ var   _cam_dir: Vector3 = Vector3.ZERO  # smoothed world-space look direction
 var   _cam_up:  Vector3 = Vector3.UP    # smoothed up vector — always tracks pole
 
 # ── HUD ───────────────────────────────────────────────────────────────────────
-var _focus_label:      Label = null
-var _time_scale_label: Label = null
+var _time_scale_label: Label  = null
+var _focus_btns:       Array  = []
+var _grid_btn:         Button = null
+var _zoom_label:       Label  = null
+
+const EARTH_ZOOM_STEPS:  Array = [1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0]
+const MOON_ZOOM_STEPS:   Array = [0.4, 0.45, 0.5, 0.55, 0.6]
+const SYSTEM_ZOOM_STEPS: Array = [6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+const SOLAR_ZOOM_STEPS:  Array = [15000.0, 20000.0, 30000.0, 40000.0, 50000.0, 75000.0, 100000.0]
 
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -131,6 +138,7 @@ func _process(delta: float) -> void:
 
 	_update_globe()
 	_update_camera(delta)
+	_update_zoom_label()
 
 
 func _calc_earth_pos() -> Vector3:
@@ -148,17 +156,21 @@ func _reset_view() -> void:
 	_update_timescale_label()
 
 
+func _set_focus(f: int) -> void:
+	_focus = f as Focus
+	if _focus == Focus.EARTH or _focus == Focus.MOON:
+		_cam_dir = Vector3.ZERO
+	_time_scale = minf(_time_scale, _max_time_scale())
+	_update_focus_label()
+	_update_timescale_label()
+
 func _toggle_hex_grid() -> void:
 	_hex_grid_visible = not _hex_grid_visible
-	if _goldberg_overlay: _goldberg_overlay.visible  = _hex_grid_visible
-	if _hex_highlight:    _hex_highlight.visible     = _hex_grid_visible
+	if _goldberg_overlay: _goldberg_overlay.visible = _hex_grid_visible
+	if _hex_highlight:    _hex_highlight.visible    = _hex_grid_visible
 	_moon.set_hex_grid_visible(_hex_grid_visible)
-	# Sync button label — find it by iterating the canvas children
-	for canvas in get_children():
-		if canvas is CanvasLayer:
-			for child in canvas.get_children():
-				if child is Button and child.text.begins_with("Grid"):
-					child.text = "Grid: ON" if _hex_grid_visible else "Grid: OFF"
+	if _grid_btn:
+		_grid_btn.text = "Grid: ON" if _hex_grid_visible else "Grid: OFF"
 
 # ── Input ─────────────────────────────────────────────────────────────────────
 func _unhandled_input(event: InputEvent) -> void:
@@ -213,31 +225,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				KEY_MINUS:
 					_step_time_scale(-1)
 				KEY_1:
-					if not key.echo:
-						_focus = Focus.EARTH
-						_cam_dir = Vector3.ZERO
-						_time_scale = minf(_time_scale, _max_time_scale())
-						_update_focus_label()
-						_update_timescale_label()
+					if not key.echo: _set_focus(Focus.EARTH)
 				KEY_2:
-					if not key.echo:
-						_focus = Focus.MOON
-						_cam_dir = Vector3.ZERO
-						_time_scale = minf(_time_scale, _max_time_scale())
-						_update_focus_label()
-						_update_timescale_label()
+					if not key.echo: _set_focus(Focus.MOON)
 				KEY_3:
-					if not key.echo:
-						_focus = Focus.SYSTEM
-						_time_scale = minf(_time_scale, _max_time_scale())
-						_update_focus_label()
-						_update_timescale_label()
+					if not key.echo: _set_focus(Focus.SYSTEM)
 				KEY_4:
-					if not key.echo:
-						_focus = Focus.SOLAR
-						_time_scale = minf(_time_scale, _max_time_scale())
-						_update_focus_label()
-						_update_timescale_label()
+					if not key.echo: _set_focus(Focus.SOLAR)
 				KEY_R:
 					if not key.echo:
 						_reset_view()
@@ -489,74 +483,85 @@ func _add_focus_hud() -> void:
 	var canvas := CanvasLayer.new()
 	add_child(canvas)
 
-	# Focus label — bottom-left
-	_focus_label = Label.new()
-	_focus_label.anchor_left   = 0.0
-	_focus_label.anchor_right  = 0.0
-	_focus_label.anchor_top    = 1.0
-	_focus_label.anchor_bottom = 1.0
-	_focus_label.offset_left   = 12.0
-	_focus_label.offset_top    = -44.0
-	_focus_label.offset_right  = 300.0
-	_focus_label.offset_bottom = -12.0
-	_focus_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 0.8))
-	canvas.add_child(_focus_label)
-	_update_focus_label()
+	# Full-width top bar: [Earth][Moon][System][Solar]  <spacer>  [−] speed [+] | [Grid: ON]
+	var bar := HBoxContainer.new()
+	bar.anchor_left   = 0.0;  bar.anchor_right  = 1.0
+	bar.anchor_top    = 0.0;  bar.anchor_bottom = 0.0
+	bar.offset_left   = 8.0;  bar.offset_right  = -8.0
+	bar.offset_top    = 8.0;  bar.offset_bottom = 40.0
+	canvas.add_child(bar)
 
-	# Timescale row — bottom-right: [−]  label  [+]
-	var hbox := HBoxContainer.new()
-	hbox.anchor_left   = 1.0
-	hbox.anchor_right  = 1.0
-	hbox.anchor_top    = 1.0
-	hbox.anchor_bottom = 1.0
-	hbox.offset_left   = -200.0
-	hbox.offset_top    = -44.0
-	hbox.offset_right  = -12.0
-	hbox.offset_bottom = -12.0
-	hbox.alignment     = BoxContainer.ALIGNMENT_END
-	canvas.add_child(hbox)
+	var view_group := ButtonGroup.new()
+	var view_defs  := [
+		[int(Focus.EARTH),  "1: Earth"],
+		[int(Focus.MOON),   "2: Moon"],
+		[int(Focus.SYSTEM), "3: System"],
+		[int(Focus.SOLAR),  "4: Solar"],
+	]
+	for entry in view_defs:
+		var fi: int    = entry[0]
+		var btn        := Button.new()
+		btn.text        = entry[1]
+		btn.toggle_mode = true
+		btn.button_group = view_group
+		btn.pressed.connect(_set_focus.bind(fi))
+		bar.add_child(btn)
+		_focus_btns.append(btn)
+
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(spacer)
 
 	var btn_slow := Button.new()
 	btn_slow.text = "−"
 	btn_slow.pressed.connect(func(): _step_time_scale(-1))
-	hbox.add_child(btn_slow)
+	bar.add_child(btn_slow)
 
 	_time_scale_label = Label.new()
-	_time_scale_label.custom_minimum_size = Vector2(110, 0)
-	_time_scale_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_time_scale_label.custom_minimum_size       = Vector2(80, 0)
+	_time_scale_label.horizontal_alignment      = HORIZONTAL_ALIGNMENT_CENTER
 	_time_scale_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 0.8))
-	hbox.add_child(_time_scale_label)
+	bar.add_child(_time_scale_label)
 
 	var btn_fast := Button.new()
 	btn_fast.text = "+"
 	btn_fast.pressed.connect(func(): _step_time_scale(1))
-	hbox.add_child(btn_fast)
+	bar.add_child(btn_fast)
 
+	bar.add_child(VSeparator.new())
+
+	var zoom_slow := Button.new()
+	zoom_slow.text = "−"
+	zoom_slow.pressed.connect(func(): _step_zoom(-1))
+	bar.add_child(zoom_slow)
+
+	_zoom_label = Label.new()
+	_zoom_label.custom_minimum_size      = Vector2(60, 0)
+	_zoom_label.horizontal_alignment     = HORIZONTAL_ALIGNMENT_CENTER
+	_zoom_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 0.8))
+	bar.add_child(_zoom_label)
+
+	var zoom_fast := Button.new()
+	zoom_fast.text = "+"
+	zoom_fast.pressed.connect(func(): _step_zoom(1))
+	bar.add_child(zoom_fast)
+
+	bar.add_child(VSeparator.new())
+
+	_grid_btn = Button.new()
+	_grid_btn.text = "Grid: ON"
+	_grid_btn.pressed.connect(func(): _toggle_hex_grid())
+	bar.add_child(_grid_btn)
+
+	_update_focus_label()
 	_update_timescale_label()
-
-	# Grid toggle button — top-right
-	var grid_btn := Button.new()
-	grid_btn.text = "Grid: ON"
-	grid_btn.anchor_left   = 1.0
-	grid_btn.anchor_right  = 1.0
-	grid_btn.anchor_top    = 0.0
-	grid_btn.anchor_bottom = 0.0
-	grid_btn.offset_left   = -110.0
-	grid_btn.offset_top    = 12.0
-	grid_btn.offset_right  = -12.0
-	grid_btn.offset_bottom = 44.0
-	grid_btn.pressed.connect(func(): _toggle_hex_grid())
-	canvas.add_child(grid_btn)
+	_update_zoom_label()
 
 
 func _update_focus_label() -> void:
-	if _focus_label == null:
-		return
-	match _focus:
-		Focus.EARTH:  _focus_label.text = "[1] Earth  |  2: Moon  |  3: System  |  4: Solar"
-		Focus.MOON:   _focus_label.text = "1: Earth  |  [2] Moon  |  3: System  |  4: Solar"
-		Focus.SYSTEM: _focus_label.text = "1: Earth  |  2: Moon  |  [3] System  |  4: Solar"
-		Focus.SOLAR:  _focus_label.text = "1: Earth  |  2: Moon  |  3: System  |  [4] Solar"
+	var focuses := [Focus.EARTH, Focus.MOON, Focus.SYSTEM, Focus.SOLAR]
+	for i in range(_focus_btns.size()):
+		(_focus_btns[i] as Button).set_pressed_no_signal(_focus == focuses[i])
 
 
 func _add_sun() -> void:
@@ -616,3 +621,39 @@ func _update_timescale_label() -> void:
 		_time_scale_label.text = "PAUSED"
 	else:
 		_time_scale_label.text = "x%d" % int(_time_scale)
+
+func _step_zoom(direction: int) -> void:
+	var steps: Array
+	var current: float
+	match _focus:
+		Focus.EARTH:  steps = EARTH_ZOOM_STEPS;  current = _cam_dist_target
+		Focus.MOON:   steps = MOON_ZOOM_STEPS;   current = _moon_cam_dist_target
+		Focus.SYSTEM: steps = SYSTEM_ZOOM_STEPS; current = _system_cam_dist_target
+		Focus.SOLAR:  steps = SOLAR_ZOOM_STEPS;  current = _solar_cam_dist_target
+	var next := current
+	if direction > 0:
+		for v in steps:
+			if v > current + 0.001:
+				next = v
+				break
+	else:
+		for i in range(steps.size() - 1, -1, -1):
+			if steps[i] < current - 0.001:
+				next = steps[i]
+				break
+	match _focus:
+		Focus.EARTH:  _cam_dist_target        = clampf(next, CAM_DIST_MIN, CAM_DIST_MAX)
+		Focus.MOON:   _moon_cam_dist_target   = clampf(next, MOON_CAM_DIST_MIN, MOON_CAM_DIST_MAX)
+		Focus.SYSTEM: _system_cam_dist_target = clampf(next, SYSTEM_CAM_DIST_MIN, SYSTEM_CAM_DIST_MAX)
+		Focus.SOLAR:  _solar_cam_dist_target  = clampf(next, SOLAR_CAM_DIST_MIN, SOLAR_CAM_DIST_MAX)
+
+func _update_zoom_label() -> void:
+	if _zoom_label == null:
+		return
+	var v: float
+	match _focus:
+		Focus.EARTH:  v = _cam_dist
+		Focus.MOON:   v = _moon_cam_dist
+		Focus.SYSTEM: v = _system_cam_dist
+		Focus.SOLAR:  v = _solar_cam_dist
+	_zoom_label.text = "Z:%.2f" % v

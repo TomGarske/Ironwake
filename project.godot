@@ -24,6 +24,8 @@ DebugOverlay="*res://scripts/autoload/debug_overlay.gd"
 SteamManager="*res://scripts/autoload/steam_manager.gd"
 GameManager="*res://scripts/autoload/game_manager.gd"
 MusicManager="*res://addons/procedural_music/music_manager.gd"
+GameState="*res://scripts/autoload/game_state.gd"
+TerrainDefinitions="*res://scripts/autoload/terrain_definitions.gd"
 
 [display]
 

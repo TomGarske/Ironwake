@@ -1,0 +1,134 @@
+[gd_scene load_steps=2 format=3 uid="uid://terrain_creator_v1"]
+
+[ext_resource type="Script" path="res://scripts/ui/terrain_creator.gd" id="1_tcreat"]
+
+[node name="TerrainCreator" type="Panel"]
+script = ExtResource("1_tcreat")
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="HSplitContainer" type="HSplitContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+split_offset = 185
+
+[node name="TerrainListPanel" type="VBoxContainer" parent="HSplitContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ListTitle" type="Label" parent="HSplitContainer/TerrainListPanel"]
+layout_mode = 2
+text = "Terrain Types"
+
+[node name="TerrainScrollList" type="ScrollContainer" parent="HSplitContainer/TerrainListPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="TerrainVBox" type="VBoxContainer" parent="HSplitContainer/TerrainListPanel/TerrainScrollList"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="EditPanel" type="VBoxContainer" parent="HSplitContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="CellSection" type="VBoxContainer" parent="HSplitContainer/EditPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="CellSectionLabel" type="Label" parent="HSplitContainer/EditPanel/CellSection"]
+layout_mode = 2
+text = "Selected Hex"
+
+[node name="CellLabel" type="Label" parent="HSplitContainer/EditPanel/CellSection"]
+layout_mode = 2
+text = "No cell selected"
+
+[node name="CellOption" type="OptionButton" parent="HSplitContainer/EditPanel/CellSection"]
+layout_mode = 2
+size_flags_horizontal = 3
+disabled = true
+
+[node name="CellButtonRow" type="HBoxContainer" parent="HSplitContainer/EditPanel/CellSection"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="CellApplyButton" type="Button" parent="HSplitContainer/EditPanel/CellSection/CellButtonRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+disabled = true
+text = "Apply to Hex"
+
+[node name="CreateNewButton" type="Button" parent="HSplitContainer/EditPanel/CellSection/CellButtonRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Create New"
+
+[node name="CellSeparator" type="HSeparator" parent="HSplitContainer/EditPanel"]
+layout_mode = 2
+
+[node name="EditorTitle" type="Label" parent="HSplitContainer/EditPanel"]
+layout_mode = 2
+text = "Terrain Editor"
+
+[node name="LabelInput" type="LineEdit" parent="HSplitContainer/EditPanel"]
+layout_mode = 2
+placeholder_text = "Display Label"
+
+[node name="ColorPicker" type="ColorPickerButton" parent="HSplitContainer/EditPanel"]
+layout_mode = 2
+text = "Terrain Color"
+color = Color(0.5, 0.8, 0.3, 1)
+
+[node name="MovLabel" type="Label" parent="HSplitContainer/EditPanel"]
+layout_mode = 2
+text = "Movement Types"
+
+[node name="MovementToggles" type="HBoxContainer" parent="HSplitContainer/EditPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="LandToggle" type="CheckButton" parent="HSplitContainer/EditPanel/MovementToggles"]
+layout_mode = 2
+text = "Land"
+
+[node name="AirToggle" type="CheckButton" parent="HSplitContainer/EditPanel/MovementToggles"]
+layout_mode = 2
+text = "Air"
+
+[node name="WaterToggle" type="CheckButton" parent="HSplitContainer/EditPanel/MovementToggles"]
+layout_mode = 2
+text = "Water"
+
+[node name="DeepToggle" type="CheckButton" parent="HSplitContainer/EditPanel/MovementToggles"]
+layout_mode = 2
+text = "Underwater"
+
+[node name="ButtonRow" type="HBoxContainer" parent="HSplitContainer/EditPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="CreateButton" type="Button" parent="HSplitContainer/EditPanel/ButtonRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Create"
+
+[node name="CloseButton" type="Button" parent="HSplitContainer/EditPanel/ButtonRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Close"
+
+[node name="StatusLabel" type="Label" parent="HSplitContainer/EditPanel"]
+layout_mode = 2
+text = ""
+autowrap_mode = 3

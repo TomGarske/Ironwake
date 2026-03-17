@@ -65,6 +65,13 @@ const _ZOOM_MIN: float = 0.001
 const _ZOOM_MAX: float = 1.0
 const _ZOOM_STEP: float = 0.1
 
+const _SHIP_TEXTURES: Array[Texture2D] = [
+	preload("res://assets/generated/pirate_ship_nw_frame_0_1773704184.png"),
+	preload("res://assets/generated/pirate_ship_ne_frame_0_1773704192.png"),
+	preload("res://assets/generated/pirate_ship_se_frame_0_1773704181.png"),
+	preload("res://assets/generated/pirate_ship_sw_frame_0_1773704182.png")
+]
+
 # ── Spawn positions (world units) — populated by _load_geo_map() ──────────────
 var _SPAWNS: Array = []
 
@@ -596,58 +603,37 @@ func _draw_player(p: Dictionary) -> void:
 		draw_line(sp + Vector2( 12.0, -4.0), sp + Vector2(-12.0, 4.0), Color(0.38, 0.24, 0.10, 0.85), 4.0)
 		return
 
-	var ds   := _dir_screen(p.dir.x, p.dir.y)
-	var perp := Vector2(-ds.y, ds.x)
 	var bob  := sin(p.walk_time * 5.0) * 1.5 if p.moving else 0.0
 	var lift := Vector2(0.0, -6.0 + bob)
 
-	# Hull — diamond with pointed bow and stern
-	var bow    := sp + ds * 22.0  + lift
-	var stern  := sp - ds * 18.0  + lift
-	var port   := sp + perp * 9.0 + lift + Vector2(0.0, 2.0)
-	var stbd   := sp - perp * 9.0 + lift + Vector2(0.0, 2.0)
-	draw_polygon(PackedVector2Array([bow, port, stern, stbd]),
-				 PackedColorArray([hull_dark, pa, hull_dark, pa]))
-	# Gunwale outline
-	draw_polyline(PackedVector2Array([bow, port, stern, stbd, bow]),
-				  Color(0.0, 0.0, 0.0, 0.45), 1.5)
-
-	# Deck stripe
-	var deck_bow   := sp + ds * 8.0  + lift
-	var deck_stern := sp - ds * 8.0  + lift
-	draw_line(deck_bow + perp * 6.0, deck_bow - perp * 6.0,   pb, 2.0)
-	draw_line(deck_stern + perp * 5.0, deck_stern - perp * 5.0, pb, 2.0)
-
-	# Mast
-	var mast_base := sp + lift
-	var mast_top  := mast_base + Vector2(0.0, -32.0)
-	draw_line(mast_base, mast_top, wood, 3.0)
-
-	# Yard-arm (horizontal spar)
-	var yard := mast_base + Vector2(0.0, -24.0)
-	draw_line(yard - perp * 12.0, yard + perp * 12.0, wood, 2.0)
+	# Draw ship sprite
+	var angle: float = p.dir.angle()
+	var norm_angle: float = fposmod(angle + PI/4, TAU)
+	var frame_idx: int = 0
+	if norm_angle < PI/2:
+		frame_idx = 2 # SE
+	elif norm_angle < PI:
+		frame_idx = 3 # SW
+	elif norm_angle < 3*PI/2:
+		frame_idx = 0 # NW
+	else:
+		frame_idx = 1 # NE
+	
+	var tex: Texture2D = _SHIP_TEXTURES[frame_idx]
+	var tex_size: Vector2 = tex.get_size()
+	var draw_scale: float = _zoom * 1.0
+	var draw_pos: Vector2 = sp + (lift * _zoom)
+	
+	# Modulate with player color slightly to distinguish players
+	var mod_color: Color = p.palette[0]
+	mod_color.a = 1.0
+	draw_texture_rect(tex, Rect2(draw_pos - tex_size * 0.5 * draw_scale, tex_size * draw_scale), false, Color(1,1,1,1))
+	# Draw a small indicator circle with player color
+	draw_circle(draw_pos + Vector2(0, 12 * _zoom), 4 * _zoom, mod_color)
 
 	if p.atk_time > 0.0:
-		# Cannon fire — flash on both sides
-		var t: float = 1.0 - float(p.atk_time) / ATK_DUR
-		var cannon_l := sp + perp * 10.0 + ds * 6.0 + lift
-		var cannon_r := sp - perp * 10.0 + ds * 6.0 + lift
-		draw_circle(cannon_l + ds * 18.0 * t, 6.0 * (1.0 - t * 0.6), Color(1.0, 0.65, 0.1, 0.9 - t * 0.7))
-		draw_circle(cannon_r + ds * 18.0 * t, 6.0 * (1.0 - t * 0.6), Color(1.0, 0.65, 0.1, 0.9 - t * 0.7))
-
-	# Sail — rectangle between yard and lower tie
-	var sail_tl := yard - perp * 11.0
-	var sail_tr := yard + perp * 11.0
-	var sail_br := mast_base + Vector2(0.0, -10.0) + perp * 8.0
-	var sail_bl := mast_base + Vector2(0.0, -10.0) - perp * 8.0
-	draw_polygon(PackedVector2Array([sail_tl, sail_tr, sail_br, sail_bl]),
-				 PackedColorArray([pb, pb, Color(pb.r, pb.g, pb.b, 0.8), Color(pb.r, pb.g, pb.b, 0.8)]))
-	draw_polyline(PackedVector2Array([sail_tl, sail_tr, sail_br, sail_bl, sail_tl]),
-				  Color(0.0, 0.0, 0.0, 0.25), 1.0)
-
-	# Skull flag at mast top
-	draw_rect(Rect2(mast_top.x - 6.0, mast_top.y - 8.0, 10.0, 8.0), Color(0.0, 0.0, 0.0, 0.9))
-	draw_circle(mast_top + Vector2(1.0, -4.0), 2.5, Color(1.0, 1.0, 1.0, 0.85))
+		var ds   := _dir_screen(p.dir.x, p.dir.y)
+		var perp := Vector2(-ds.y, ds.x)
 
 	# Name tag
 	var font := ThemeDB.fallback_font

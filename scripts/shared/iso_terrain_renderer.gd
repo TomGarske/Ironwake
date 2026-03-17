@@ -4,21 +4,22 @@ class_name IsoTerrainRenderer
 const T_DEEP:  int = 0
 const T_WATER: int = 1
 const T_SAND:  int = 2
+const T_MOUNTAIN: int = 3
+const T_SNOW:  int = 4
+const T_GRASS: int = 5
 
-# Spritesheet: 96×128, 3 cols × 2 rows, 32×64 px per tile, drawn at 2× scale.
-#  Row 0: shallow water | deep water | sand
-#  Row 1: mountain      | snow       | grass
-const _TERRAIN_TEX: Texture2D = preload("res://assets/tilesets/tileset.png")
-const _SP_W:     int   = 32
-const _SP_H:     int   = 64
-const _SP_SCALE: float = 2.0
-const _SP_INSET: float = 0.5  # prevents linear-filter bleeding between sheet tiles
-
-const _SPRITE_MAP: Dictionary = {
-	T_DEEP:  [0, 1],
-	T_WATER: [0, 0],
-	T_SAND:  [0, 2],
+const _TEXTURES: Dictionary = {
+	T_DEEP:  preload("res://assets/generated/deep_water_tile_frame_0_1773704178.png"),
+	T_WATER: preload("res://assets/generated/shallow_water_tile_frame_0_1773704180.png"),
+	T_SAND:  preload("res://assets/generated/sand_tile_frame_0_1773704178.png"),
+	T_MOUNTAIN: preload("res://assets/generated/mountain_tile_frame_0_1773704179.png"),
+	T_SNOW:  preload("res://assets/generated/snow_tile_frame_0_1773704189.png"),
+	T_GRASS: preload("res://assets/generated/grass_tile_frame_0_1773704181.png"),
 }
+
+const _SP_W:	 int   = 64
+const _SP_H:	 int   = 64
+const _SP_SCALE: float = 1.0 # New textures are already 64x64
 
 var chunk_size: int = 16
 
@@ -123,13 +124,11 @@ func draw_tiles(canvas: CanvasItem, origin: Vector2, viewport: Vector2, tile_w: 
 
 func _draw_tile(canvas: CanvasItem, origin: Vector2, tile_w: float, tile_h: float, tx: int, ty: int) -> void:
 	var tt:   int   = _get_tile(tx, ty)
-	var info: Array = _SPRITE_MAP[tt]
-	var src  := Rect2(info[1] * _SP_W + _SP_INSET, info[0] * _SP_H + _SP_INSET,
-					  _SP_W - _SP_INSET * 2.0, _SP_H - _SP_INSET * 2.0)
-	var dw   := _SP_W * _SP_SCALE
-	var dh   := _SP_H * _SP_SCALE
+	var tex: Texture2D = _TEXTURES.get(tt, _TEXTURES[T_SAND])
+	var dw   := float(_SP_W) * _SP_SCALE
+	var dh   := float(_SP_H) * _SP_SCALE
 	var top  := _w2s(origin, tile_w, tile_h, tx + 0.5, float(ty))
-	canvas.draw_texture_rect_region(_TERRAIN_TEX, Rect2(top.x - dw * 0.5, top.y, dw, dh), src)
+	canvas.draw_texture_rect(tex, Rect2(top.x - dw * 0.5, top.y, dw, dh), false)
 
 func _w2s(origin: Vector2, tile_w: float, tile_h: float, wx: float, wy: float) -> Vector2:
 	return origin + Vector2((wx - wy) * tile_w * 0.5, (wx + wy) * tile_h * 0.5)
@@ -159,10 +158,16 @@ func _ensure_chunk(cx: int, cy: int) -> void:
 			var t: int
 			if e < -0.15:
 				t = T_DEEP
-			elif e < 0.50:
+			elif e < 0.20:
 				t = T_WATER
-			else:
+			elif e < 0.45:
 				t = T_SAND
+			elif e < 0.70:
+				t = T_GRASS
+			elif e < 0.85:
+				t = T_MOUNTAIN
+			else:
+				t = T_SNOW
 			data[i * chunk_size + j] = t
 	_chunks[key] = data
 
@@ -185,12 +190,10 @@ func get_tile_at(wx: float, wy: float) -> int:
 	return _get_tile(floori(wx), floori(wy))
 
 func _draw_fallback_tiles(canvas: CanvasItem, origin: Vector2, viewport: Vector2, tile_w: float, tile_h: float) -> void:
-	var info: Array = _SPRITE_MAP[T_SAND]
-	var src := Rect2(info[1] * _SP_W + _SP_INSET, info[0] * _SP_H + _SP_INSET,
-					 _SP_W - _SP_INSET * 2.0, _SP_H - _SP_INSET * 2.0)
-	var dw := _SP_W * _SP_SCALE
-	var dh := _SP_H * _SP_SCALE
+	var tex: Texture2D = _TEXTURES[T_SAND]
+	var dw := float(_SP_W) * _SP_SCALE
+	var dh := float(_SP_H) * _SP_SCALE
 	for row in range(-2, int(ceili(viewport.y / tile_h)) + 6):
 		for col in range(-2, int(ceili(viewport.x / tile_w)) + 6):
 			var top := _w2s(origin, tile_w, tile_h, col + 0.5, float(row))
-			canvas.draw_texture_rect_region(_TERRAIN_TEX, Rect2(top.x - dw * 0.5, top.y, dw, dh), src)
+			canvas.draw_texture_rect(tex, Rect2(top.x - dw * 0.5, top.y, dw, dh), false)
