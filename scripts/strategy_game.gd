@@ -131,7 +131,11 @@ func _ready() -> void:
 
 	# Style top controls bar
 	if _top_bar:
-		UiStyleScript.style_panel(_top_bar)
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.04, 0.06, 0.12, 0.9)
+		sb.border_width_bottom = 1
+		sb.border_color = UiStyleScript.BORDER_SOFT
+		_top_bar.add_theme_stylebox_override("panel", sb)
 		var lbl := _top_bar.get_node_or_null("TopBarLabel") as Label
 		if lbl:
 			lbl.add_theme_color_override("font_color", UiStyleScript.TEXT_SECONDARY)
