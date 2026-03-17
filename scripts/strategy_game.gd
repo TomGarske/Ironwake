@@ -41,22 +41,15 @@ const TERRAIN_ATLAS_COORDS: Dictionary = {
 	"surface_water": Vector2i(4, 0),
 }
 const HIGHLIGHT_ATLAS_COORD := Vector2i(5, 0)
-const FOG_UNSEEN_COORD      := Vector2i(6, 0)  # never-seen hex — fully opaque black
-const FOG_SEEN_COORD        := Vector2i(7, 0)  # previously seen hex — grey semi-transparent
-
-# How many extra rings beyond a creature's vision radius get the grey "seen" overlay
-const FOG_SEEN_RING_WIDTH := 3
 
 # Terrain colors for built-in atlas
 const _BUILTIN_COLORS: Array[Color] = [
-	Color("#0D1A66"),              # 0  deep_ocean
-	Color("#2666CC"),              # 1  shallow_ocean
-	Color("#999999"),              # 2  mountain
-	Color("#4D9933"),              # 3  land
-	Color("#4DB3E6"),              # 4  surface_water
-	Color("#FFFF00"),              # 5  highlight (outline only)
-	Color(0.04, 0.04, 0.08, 1.0), # 6  fog unseen  — fully opaque dark
-	Color(0.35, 0.35, 0.38, 0.62),# 7  fog seen    — grey semi-transparent
+	Color("#0D1A66"),  # 0  deep_ocean
+	Color("#2666CC"),  # 1  shallow_ocean
+	Color("#999999"),  # 2  mountain
+	Color("#4D9933"),  # 3  land
+	Color("#4DB3E6"),  # 4  surface_water
+	Color("#FFFF00"),  # 5  highlight (outline only)
 ]
 
 # ---------------------------------------------------------------------------
@@ -89,7 +82,7 @@ var _camera: Camera2D
 var _hover_label: Label
 var _hover_panel: Panel
 var _terrain_creator_layer: CanvasLayer
-var _fog_layer: TileMapLayer
+var _fog_drawer: FogDrawer
 var _creature_token_layer: Node2D
 var _creature_panel_layer: CanvasLayer
 
@@ -109,8 +102,8 @@ func _ready() -> void:
 	_hover_panel           = $UILayer/HoverPanel
 	_hover_label           = $UILayer/HoverPanel/HoverLabel
 	_terrain_creator_layer = $TerrainCreatorLayer if has_node("TerrainCreatorLayer") else null
-	_fog_layer             = $FogLayer if has_node("FogLayer") else null
-	_creature_token_layer  = $CreatureTokenLayer if has_node("CreatureTokenLayer") else null
+	_fog_drawer           = $FogDrawer if has_node("FogDrawer") else null
+	_creature_token_layer = $CreatureTokenLayer if has_node("CreatureTokenLayer") else null
 	_creature_panel_layer  = $CreaturePanelLayer if has_node("CreaturePanelLayer") else null
 
 	_setup_noise()
@@ -121,11 +114,8 @@ func _ready() -> void:
 	_load_terrain_overrides()
 	_update_chunks()
 
-	if _fog_layer:
-		_fog_layer.tile_set = _tile_set
-		_fill_fog()
-		# Start with a small revealed window around the spawn hex
-		reveal_hexes(SPAWN_HEX, 4)
+	# Start with a small revealed window around the spawn hex
+	reveal_hexes(SPAWN_HEX, 4)
 
 	# Center camera on the middle of the map
 	_camera.global_position = _terrain_layer.map_to_local(Vector2i(GRID_WIDTH / 2.0, GRID_HEIGHT / 2.0))
@@ -645,45 +635,16 @@ func _update_hover(cell: Vector2i) -> void:
 	_hovered_cell = cell
 
 # ---------------------------------------------------------------------------
-# Fog of war
+# Fog of war — delegates to FogDrawer Node2D
 # ---------------------------------------------------------------------------
 
-func _fill_fog() -> void:
-	if not _fog_layer:
-		return
-	for col in GRID_WIDTH:
-		for row in GRID_HEIGHT:
-			_fog_layer.set_cell(Vector2i(col, row), ATLAS_SOURCE_ID, FOG_UNSEEN_COORD)
-
-
-## Reveals hexes around `center` in three tiers:
-##   within radius       → fully visible (fog erased)
-##   radius+1 .. radius+FOG_SEEN_RING_WIDTH → grey "seen" overlay
-##   beyond that         → untouched (stays UNSEEN / fully dark)
-## Already-revealed cells are never re-fogged.
 func reveal_hexes(center: Vector2i, radius: int) -> void:
-	if not _fog_layer:
-		return
-	_fog_layer.erase_cell(center)
-	var visited: Dictionary = {center: true}
-	var ring: Array[Vector2i] = [center]
-	var total_rings := radius + FOG_SEEN_RING_WIDTH
-	for r in total_rings:
-		var next_ring: Array[Vector2i] = []
-		for cell: Vector2i in ring:
-			for nb: Vector2i in _fog_layer.get_surrounding_cells(cell):
-				if visited.has(nb):
-					continue
-				visited[nb] = true
-				next_ring.append(nb)
-				if r < radius:
-					# Inner rings — fully visible
-					_fog_layer.erase_cell(nb)
-				else:
-					# Outer rings — grey "seen" overlay, but never re-fog a revealed cell
-					if _fog_layer.get_cell_source_id(nb) != -1:
-						_fog_layer.set_cell(nb, ATLAS_SOURCE_ID, FOG_SEEN_COORD)
-		ring = next_ring
+	if _fog_drawer:
+		_fog_drawer.reveal_hexes(center, radius)
+
+
+func is_hex_seen(cell: Vector2i) -> bool:
+	return _fog_drawer.is_hex_seen(cell) if _fog_drawer else false
 
 
 func refresh_creature_tokens() -> void:
@@ -695,11 +656,7 @@ func refresh_creature_tokens() -> void:
 # ---------------------------------------------------------------------------
 
 func get_hex_neighbors(cell: Vector2i) -> Array[Vector2i]:
-	if _fog_layer:
-		return _fog_layer.get_surrounding_cells(cell)
-	if _terrain_layer:
-		return _terrain_layer.get_surrounding_cells(cell)
-	return []
+	return _terrain_layer.get_surrounding_cells(cell)
 
 
 func hex_to_world(cell: Vector2i) -> Vector2:
@@ -772,6 +729,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		# C — toggle creature panel
 		if event.keycode == KEY_C and _creature_panel_layer:
 			_creature_panel_layer.visible = not _creature_panel_layer.visible
+			get_viewport().set_input_as_handled()
+			return
+		# F — toggle fog of war
+		if event.keycode == KEY_F and _fog_drawer:
+			_fog_drawer.visible = not _fog_drawer.visible
 			get_viewport().set_input_as_handled()
 			return
 

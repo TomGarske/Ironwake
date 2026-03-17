@@ -1,8 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://strategy_game_v1"]
+[gd_scene load_steps=9 format=3 uid="uid://strategy_game_v1"]
 
 [ext_resource type="Script" path="res://scripts/strategy_game.gd" id="1_sgame"]
 [ext_resource type="PackedScene" path="res://scenes/ui/terrain_creator.tscn" id="2_tcreat"]
 [ext_resource type="Script" path="res://scripts/ui/creature_token_layer.gd" id="3_ctlayer"]
+[ext_resource type="Script" path="res://scripts/ui/fog_drawer.gd" id="8_fogdrawer"]
 [ext_resource type="PackedScene" path="res://scenes/ui/creature_builder.tscn" id="4_cbuilder"]
 [ext_resource type="PackedScene" path="res://scenes/ui/character_bucket.tscn" id="5_cbucket"]
 [ext_resource type="PackedScene" path="res://scenes/ui/creature_stats_panel.tscn" id="6_cstats"]
@@ -27,8 +28,9 @@ z_index = 2
 z_index = 3
 script = ExtResource("3_ctlayer")
 
-[node name="FogLayer" type="TileMapLayer" parent="."]
+[node name="FogDrawer" type="Node2D" parent="."]
 z_index = 4
+script = ExtResource("8_fogdrawer")
 
 [node name="UILayer" type="CanvasLayer" parent="."]
 layer = 128

@@ -22,7 +22,6 @@ var _strategy_game: StrategyGame = null
 var _selected_creature_id: String = ""
 var _movement_queues: Dictionary = {}  # creature_id → Array[Vector2i]
 var _explore_active: Dictionary = {}   # creature_id → bool
-var _seen_hexes: Dictionary = {}       # Vector2i → true
 var _color_index: int = 0
 
 
@@ -89,7 +88,6 @@ func advance_turn() -> void:
 				var vision: int = int(cdata.get("vision", 3))
 				if _strategy_game:
 					_strategy_game.reveal_hexes(current_hex, vision)
-					_mark_seen(current_hex, vision)
 				steps_taken += 1
 			else:
 				# Path is blocked — clear queue
@@ -152,25 +150,7 @@ func place_creature_on_map(creature_id: String, creature_data: Dictionary) -> vo
 	var vision: int = int(creature_data.get("vision", 3))
 	if _strategy_game:
 		_strategy_game.reveal_hexes(SPAWN_HEX, vision)
-		_mark_seen(SPAWN_HEX, vision)
 		_strategy_game.refresh_creature_tokens()
-
-
-func _mark_seen(center: Vector2i, radius: int) -> void:
-	if not _strategy_game:
-		return
-	_seen_hexes[center] = true
-	var visited: Dictionary = {center: true}
-	var frontier: Array[Vector2i] = [center]
-	for _r in radius:
-		var next_frontier: Array[Vector2i] = []
-		for cell: Vector2i in frontier:
-			for neighbor: Vector2i in _strategy_game.get_hex_neighbors(cell):
-				if not visited.has(neighbor):
-					visited[neighbor] = true
-					_seen_hexes[neighbor] = true
-					next_frontier.append(neighbor)
-		frontier = next_frontier
 
 
 func _a_star_path(from: Vector2i, to: Vector2i,
@@ -258,7 +238,7 @@ func _find_explore_target(creature_id: String) -> Vector2i:
 					continue
 				visited[neighbor] = true
 				# Target: unseen hex adjacent to a seen hex that creature can enter
-				if not _seen_hexes.has(neighbor):
+				if not _strategy_game.is_hex_seen(neighbor):
 					var terrain: String = _strategy_game.get_terrain_at(neighbor)
 					if not terrain.is_empty() and TerrainMovementRules.can_enter(movement_types, terrain):
 						return neighbor
