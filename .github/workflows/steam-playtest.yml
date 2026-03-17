@@ -19,9 +19,9 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       STEAM_APP_ID: ${{ secrets.STEAM_APP_ID }}
       STEAM_DEPOT_ID_WINDOWS: ${{ secrets.STEAM_DEPOT_ID_WINDOWS }}
-      STEAM_BUILDER_USERNAME: ${{ secrets.STEAM_BUILDER_USERNAME }}
-      STEAM_BUILDER_PASSWORD: ${{ secrets.STEAM_BUILDER_PASSWORD }}
-      STEAM_GUARD_CODE: ${{ secrets.STEAM_GUARD_CODE }}
+      STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+      STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
+      STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
 
     steps:
       - name: Checkout

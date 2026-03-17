@@ -26,9 +26,9 @@ if (-not (Test-Path $contentRoot)) {
 
 $steamAppId = Require-Env "STEAM_APP_ID"
 $steamDepotIdWindows = Require-Env "STEAM_DEPOT_ID_WINDOWS"
-$steamUser = Require-Env "STEAM_BUILDER_USERNAME"
-$steamPassword = Require-Env "STEAM_BUILDER_PASSWORD"
-$steamGuardCode = [Environment]::GetEnvironmentVariable("STEAM_GUARD_CODE")
+$steamUser = Require-Env "STEAM_USERNAME"
+$steamPassword = Require-Env "STEAM_PASSWORD"
+$steamConfigVdf = [Environment]::GetEnvironmentVariable("STEAM_CONFIG_VDF")
 
 $steamDir = Join-Path $env:RUNNER_TEMP "steamcmd"
 New-Item -ItemType Directory -Path $steamDir -Force | Out-Null
@@ -39,6 +39,17 @@ if (-not (Test-Path $steamExe)) {
     Write-Host "Downloading SteamCMD..."
     Invoke-WebRequest -Uri "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip" -OutFile $steamZip -UseBasicParsing
     Expand-Archive -Path $steamZip -DestinationPath $steamDir -Force
+}
+
+# Restore cached Steam session so no interactive Steam Guard prompt is needed.
+if (-not [string]::IsNullOrWhiteSpace($steamConfigVdf)) {
+    $steamConfigDir = Join-Path $steamDir "config"
+    New-Item -ItemType Directory -Path $steamConfigDir -Force | Out-Null
+    $configBytes = [Convert]::FromBase64String($steamConfigVdf)
+    [System.IO.File]::WriteAllBytes((Join-Path $steamConfigDir "config.vdf"), $configBytes)
+    Write-Host "Steam session restored from STEAM_CONFIG_VDF."
+} else {
+    Write-Warning "STEAM_CONFIG_VDF is not set. Login may require an interactive Steam Guard code."
 }
 
 $templateAppBuild = Join-Path $projectRootResolved "tools/steam/app_build_template.vdf"
@@ -66,11 +77,7 @@ $depotBuildText = $depotBuildText.Replace("__DEPOT_ID_WINDOWS__", $steamDepotIdW
 Set-Content -Path $generatedDepotBuild -Value $depotBuildText -NoNewline
 
 Write-Host "Uploading build to Steam app $steamAppId (branch: $SteamBranch)..."
-if ([string]::IsNullOrWhiteSpace($steamGuardCode)) {
-    & $steamExe +login $steamUser $steamPassword +run_app_build $generatedAppBuild +quit
-} else {
-    & $steamExe +set_steam_guard_code $steamGuardCode +login $steamUser $steamPassword +run_app_build $generatedAppBuild +quit
-}
+& $steamExe +login $steamUser $steamPassword +run_app_build $generatedAppBuild +quit
 
 if ($LASTEXITCODE -ne 0) {
     throw "SteamCMD upload failed with exit code $LASTEXITCODE"
