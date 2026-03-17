@@ -158,6 +158,8 @@ func _calculate_cost() -> int:
 func _update_points(_val: Variant = null) -> void:
 	var spent := _calculate_cost()
 	_points_remaining = PointCostConstants.TOTAL_STARTING_POINTS - spent
+	if not _points_label:
+		return
 	_points_label.text = str(_points_remaining)
 	if _points_remaining < 0:
 		_points_label.add_theme_color_override("font_color", Color.RED)
