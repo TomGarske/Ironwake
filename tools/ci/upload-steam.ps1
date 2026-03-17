@@ -41,6 +41,10 @@ if (-not (Test-Path $steamExe)) {
     Expand-Archive -Path $steamZip -DestinationPath $steamDir -Force
 }
 
+# Run SteamCMD once to let it self-update before writing config.
+Write-Host "Running SteamCMD self-update..."
+& $steamExe +quit
+
 # Restore cached Steam session so no interactive Steam Guard prompt is needed.
 if (-not [string]::IsNullOrWhiteSpace($steamConfigVdf)) {
     $steamConfigDir = Join-Path $steamDir "config"
