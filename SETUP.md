@@ -20,7 +20,7 @@ The easiest way to install them is with the setup scripts:
 - **Linux / SteamOS:** `./setup-steamos.sh`
 - **Windows:** `.\setup-windows.ps1`
 
-The scripts read versions from `addons/addons.cfg` and download both plugins automatically.
+The scripts inline version config and derive addon paths from `.godot/extension_list.cfg`.
 
 ### Manual installation
 If you prefer to install manually:
@@ -38,11 +38,12 @@ If you prefer to install manually:
 Both `addons/godotsteam/` and `addons/limboai/` are git-ignored — each developer must do this step.
 
 ## 3. Create steam_appid.txt
-Create a file named `steam_appid.txt` at the project root containing just the app ID:
+The setup scripts create this file automatically. It lives at the project root and contains the Steam App ID.
+
+For playtesting use the **Fireteam MNG Playtest** app ID:
 ```
-480
+4530870
 ```
-App ID `480` is Valve's **SpaceWar** test app, used for local development. Replace with your real Steam App ID when registered via the Steamworks Developer portal.
 
 This file is git-ignored and must never be committed.
 

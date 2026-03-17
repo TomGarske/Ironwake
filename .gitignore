@@ -1,5 +1,6 @@
 # Godot-generated cache and import data
 .godot/
+!.godot/extension_list.cfg
 *.import
 *.translation
 *.uid
@@ -12,6 +13,9 @@ addons/godotsteam/
 
 # LimboAI GDExtension binaries — installed via setup scripts
 addons/limboai/
+
+# Ziva AI agent GDExtension binaries — installed via ziva.sh/install.sh
+addons/ziva_agent/
 
 # Steam test app ID file — never commit
 steam_appid.txt

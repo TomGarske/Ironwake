@@ -5,19 +5,39 @@
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ConfigPath = Join-Path $ScriptDir "addons\addons.cfg"
 
-if (-not (Test-Path $ConfigPath)) {
-    Write-Error "addons\addons.cfg not found at $ConfigPath"
+# ── Addon versions ────────────────────────────────────────────────────
+# GodotSteam GDExtension plugin
+$GodotSteamVersion = "4.17.1"
+$GodotSteamGdeTag  = "v4.17.1-gde"
+$GodotSteamArchive = "godotsteam-4.17-gdextension-plugin-4.4.tar.xz"
+$GodotSteamBaseUrl = "https://codeberg.org/godotsteam/godotsteam/releases/download"
+
+# LimboAI GDExtension plugin (Behavior Trees & State Machines)
+$LimboVersion  = "1.7.0"
+$LimboTag      = "v1.7.0"
+$LimboArchive  = "limboai+v1.7.0.gdextension-4.6.zip"
+$LimboBaseUrl  = "https://github.com/limbonaut/limboai/releases/download"
+
+# Steam app ID — Fireteam MNG Playtest (App ID 4530870)
+$SteamAppId = "4530870"
+
+# ── Godot extension registry ──────────────────────────────────────────
+# .godot\extension_list.cfg is Godot's authoritative list of GDExtensions.
+# Addon install paths are derived from it rather than hardcoded.
+$ExtensionList = Join-Path $ScriptDir ".godot\extension_list.cfg"
+if (-not (Test-Path $ExtensionList)) {
+    Write-Error ".godot\extension_list.cfg not found. Open the project in Godot at least once to generate it."
     exit 1
 }
 
-# Parse the config file (key="value" format)
-$Config = @{}
-Get-Content $ConfigPath | ForEach-Object {
-    if ($_ -match '^\s*([A-Z_]+)\s*=\s*"(.+)"') {
-        $Config[$Matches[1]] = $Matches[2]
-    }
+function Get-AddonDir {
+    param([string]$Pattern)
+    $line = Get-Content $ExtensionList | Where-Object { $_ -imatch $Pattern } | Select-Object -First 1
+    if (-not $line) { return $null }
+    $rel = $line -replace '^res://', ''
+    $parts = $rel -split '/'
+    return Join-Path $ScriptDir ($parts[0] + '\' + $parts[1])
 }
 
 # Warn if Godot is running (locked DLLs will cause errors on reinstall)
@@ -31,12 +51,16 @@ if ($GodotProc) {
     }
 }
 
-$Version    = $Config["GODOTSTEAM_VERSION"]
-$GdeTag     = $Config["GODOTSTEAM_GDE_TAG"]
-$Archive    = $Config["GODOTSTEAM_ARCHIVE"]
-$BaseUrl    = $Config["GODOTSTEAM_BASE_URL"]
+$Version     = $GodotSteamVersion
+$GdeTag      = $GodotSteamGdeTag
+$Archive     = $GodotSteamArchive
+$BaseUrl     = $GodotSteamBaseUrl
 $DownloadUrl = "$BaseUrl/$GdeTag/$Archive"
-$AddonDir   = Join-Path $ScriptDir "addons\godotsteam"
+$AddonDir    = Get-AddonDir "godotsteam"
+if (-not $AddonDir) {
+    Write-Error "godotsteam not found in .godot\extension_list.cfg. Enable the extension in Godot first."
+    exit 1
+}
 
 if (Test-Path $AddonDir) {
     Write-Host "GodotSteam already installed at $AddonDir"
@@ -106,7 +130,7 @@ try {
     # Create steam_appid.txt if it doesn't exist
     $AppIdFile = Join-Path $ScriptDir "steam_appid.txt"
     if (-not (Test-Path $AppIdFile)) {
-        $Config["STEAM_APP_ID"] | Out-File -FilePath $AppIdFile -Encoding ascii -NoNewline
+        $SteamAppId | Out-File -FilePath $AppIdFile -Encoding ascii -NoNewline
         Write-Host "Created steam_appid.txt (app ID: $($Config['STEAM_APP_ID']))"
     }
 
@@ -118,12 +142,12 @@ finally {
 }
 
 # ── LimboAI GDExtension ──────────────────────────────────────────────
-$LimboVersion  = $Config["LIMBOAI_VERSION"]
-$LimboTag      = $Config["LIMBOAI_TAG"]
-$LimboArchive  = $Config["LIMBOAI_ARCHIVE"]
-$LimboBaseUrl  = $Config["LIMBOAI_BASE_URL"]
-$LimboUrl      = "$LimboBaseUrl/$LimboTag/$LimboArchive"
-$LimboDir      = Join-Path $ScriptDir "addons\limboai"
+$LimboUrl  = "$LimboBaseUrl/$LimboTag/$LimboArchive"
+$LimboDir  = Get-AddonDir "limboai"
+if (-not $LimboDir) {
+    Write-Error "limboai not found in .godot\extension_list.cfg. Enable the extension in Godot first."
+    exit 1
+}
 
 $installLimbo = $true
 if (Test-Path $LimboDir) {
