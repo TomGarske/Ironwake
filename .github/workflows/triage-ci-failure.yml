@@ -1,0 +1,41 @@
+name: Triage CI Failure
+
+on:
+  workflow_run:
+    workflows: ["Build And Upload Steam Playtest"]
+    types: [completed]
+
+jobs:
+  triage:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: warpdotdev/oz-agent-action@main
+        id: agent
+        with:
+          prompt: |
+            The GitHub Actions workflow "${{ github.event.workflow_run.name }}" (run ID: ${{ github.event.workflow_run.id }}) just failed on branch "${{ github.event.workflow_run.head_branch }}".
+
+            Use the `gh` CLI to fetch the logs:
+            gh run view ${{ github.event.workflow_run.id }} --log
+
+            Analyze the failure and determine:
+            1. If this is a transient/network error (e.g. download timeout, connection refused), re-run the workflow:
+               gh run rerun ${{ github.event.workflow_run.id }}
+               Then comment on the latest commit that you re-triggered the build due to a transient error.
+
+            2. If this is a real build/config error, create a GitHub issue with:
+               - A clear title describing the failure
+               - The relevant error logs
+               - Your analysis of the root cause
+               - Suggested fix
+
+            Use `gh` for all GitHub interactions.
+          warp_api_key: ${{ secrets.WARP_API_KEY }}
+          profile: ${{ vars.WARP_AGENT_PROFILE || '' }}
