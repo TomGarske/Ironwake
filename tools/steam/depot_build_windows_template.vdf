@@ -1,0 +1,13 @@
+"DepotBuildConfig"
+{
+	"DepotID" "__DEPOT_ID_WINDOWS__"
+	"ContentRoot" "."
+	"FileMapping"
+	{
+		"LocalPath" "*"
+		"DepotPath" "."
+		"recursive" "1"
+	}
+	"FileExclusion" "*.pdb"
+	"FileExclusion" "*.tmp"
+}

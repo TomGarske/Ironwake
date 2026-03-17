@@ -234,14 +234,14 @@ if ($hasZivaBinary) {
         Write-Host "Skipped Ziva Agent."
         $installZiva = $false
     }
-} elseif (Test-Path $ZivaDir -PathType Container -and $Force) {
+} elseif ((Test-Path $ZivaDir -PathType Container) -and $Force) {
     Remove-Item -Recurse -Force $ZivaDir
 }
 
 if ($installZiva) {
     Write-Host "Installing Ziva Agent via official installer..."
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-Expression ((Invoke-WebRequest -UseBasicParsing -Uri "https://ziva.sh/install.ps1").Content)
+    irm https://ziva.sh/install.ps1 | iex
     $hasZivaBinary = (Test-Path $ZivaLibX64) -or (Test-Path $ZivaLibArm64)
     if (-not $hasZivaBinary) {
         Write-Error "Ziva install completed, but Windows binary was not found under $ZivaDir\bin."
