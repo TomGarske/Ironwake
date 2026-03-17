@@ -16,6 +16,7 @@ jobs:
       EXPORT_PRESET_NAME: "Windows Desktop"
       BUILD_OUTPUT_DIR: "build/windows"
       STEAM_BRANCH: "playtest"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       STEAM_APP_ID: ${{ secrets.STEAM_APP_ID }}
       STEAM_DEPOT_ID_WINDOWS: ${{ secrets.STEAM_DEPOT_ID_WINDOWS }}
       STEAM_BUILDER_USERNAME: ${{ secrets.STEAM_BUILDER_USERNAME }}
@@ -24,13 +25,21 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Godot
         uses: chickensoft-games/setup-godot@v2
         with:
           version: ${{ env.GODOT_VERSION }}
           include-templates: true
+
+      - name: Verify Godot CLI
+        shell: pwsh
+        run: |
+          if ($env:GODOT4) { Write-Host "GODOT4=$env:GODOT4" }
+          if ($env:GODOT) { Write-Host "GODOT=$env:GODOT" }
+          try { godot --version } catch { Write-Host "godot command not in PATH" }
+          try { godot4 --version } catch { Write-Host "godot4 command not in PATH" }
 
       - name: Export Windows build
         shell: pwsh

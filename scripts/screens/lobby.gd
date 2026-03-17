@@ -215,20 +215,14 @@ func _refresh_online_friends() -> void:
 		invite_note_label.text = "Invites appear as FireTeam MNG."
 
 	var online_friends: Array[Dictionary] = SteamManager.get_online_friends()
-	var in_game_friends: Array[Dictionary] = []
-	for friend in online_friends:
-		var friend_game_app_id: int = int(friend.get("game_app_id", 0))
-		if app_id > 0 and friend_game_app_id == app_id:
-			in_game_friends.append(friend)
-
-	if in_game_friends.is_empty():
+	if online_friends.is_empty():
 		var empty_label := Label.new()
-		empty_label.text = "No friends currently in FireTeam MNG."
+		empty_label.text = "No online friends available to invite."
 		UiStyleScript.style_body(empty_label, true)
 		friends_list.add_child(empty_label)
 		return
 
-	for friend in in_game_friends:
+	for friend in online_friends:
 		var row_panel := PanelContainer.new()
 		row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		UiStyleScript.style_panel(row_panel)
