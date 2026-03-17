@@ -39,13 +39,29 @@ Copy-Item -Path $presetTemplatePath -Destination $presetPath -Force
 New-Item -ItemType Directory -Path $outputDirResolved -Force | Out-Null
 
 $gameExePath = Join-Path $outputDirResolved "FireTeamMNG.exe"
+# Native Godot export is more reliable with a project-relative output path.
+$relativeExportPath = ((Join-Path $OutputDir "FireTeamMNG.exe") -replace "\\", "/")
 $godotCommand = Resolve-GodotCommand
 
 Write-Host "Exporting with preset '$ExportPresetName' to '$gameExePath'..."
 Write-Host "Using Godot CLI: $godotCommand"
+try {
+    $resolved = Get-Command $godotCommand -ErrorAction SilentlyContinue
+    if ($resolved) { Write-Host "Resolved CLI path: $($resolved.Source)" }
+} catch {}
 # Stream Godot output directly to the log (no capture) so every line is visible in CI.
-& $godotCommand --headless --verbose --path $projectRootResolved --export-release $ExportPresetName $gameExePath
-$exitCode = $LASTEXITCODE
+try {
+    & $godotCommand --headless --verbose --path $projectRootResolved --export-release $ExportPresetName $relativeExportPath
+    $exitCode = $LASTEXITCODE
+} catch {
+    Write-Host "Godot invocation error: $($_.Exception.Message)"
+    $exitCode = $LASTEXITCODE
+}
+
+if ($null -eq $exitCode) {
+    # Some invocation failures do not populate LASTEXITCODE.
+    $exitCode = if ($?) { 0 } else { 1 }
+}
 
 if ($exitCode -ne 0) {
     throw "Godot export command failed with exit code $exitCode."
