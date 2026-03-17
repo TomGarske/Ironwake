@@ -10,20 +10,30 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Resolve-GodotCommand {
-    # Env vars are preferred only if they resolve to a real .exe.
-    foreach ($envPath in @($env:GODOT4, $env:GODOT)) {
-        if ([string]::IsNullOrWhiteSpace($envPath)) { continue }
-        if ($envPath -match '\.exe$' -and (Test-Path $envPath)) { return $envPath }
-        if (Test-Path "$envPath.exe") { return "$envPath.exe" }
+    # chickensoft-games/setup-godot installs Godot to $env:USERPROFILE\godot\
+    #
+    # The Mono build (use-dotnet: true) includes TWO executables:
+    #   Godot_v*_mono_win64.exe         <- GUI subsystem, no stdout in CI
+    #   Godot_v*_mono_win64_console.exe <- Console subsystem, stdout works!
+    #
+    # The setup-godot action hard-links the GUI exe as 'godot' (no .exe) and
+    # calling any no-extension binary by path/name silently fails in PowerShell
+    # on Windows (LASTEXITCODE stays null, no output).
+    #
+    # Solution: find the _console.exe directly by path.
+    $godotInstallDir = Join-Path $env:USERPROFILE "godot"
+    if (Test-Path $godotInstallDir) {
+        $console = Get-ChildItem $godotInstallDir -Recurse -Filter "*_console.exe" `
+            -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($console) { return $console.FullName }
+
+        # No console exe (standard build): fall back to any Godot_v*.exe
+        $any = Get-ChildItem $godotInstallDir -Recurse -Filter "Godot_v*.exe" `
+            -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($any) { return $any.FullName }
     }
 
-    # Fallback to command-name lookup. Returning the name (not Source path)
-    # lets PowerShell resolve PATH/PATHEXT and invoke hard links correctly.
-    foreach ($name in @("godot4", "godot")) {
-        if (Get-Command $name -ErrorAction SilentlyContinue) { return $name }
-    }
-
-    throw "Godot CLI not found. Set GODOT4/GODOT to an .exe path, or ensure godot/godot4 is in PATH."
+    throw "Godot CLI not found. Expected Godot install at '$godotInstallDir'."
 }
 
 $projectRootResolved = (Resolve-Path $ProjectRoot).Path
@@ -39,29 +49,14 @@ Copy-Item -Path $presetTemplatePath -Destination $presetPath -Force
 New-Item -ItemType Directory -Path $outputDirResolved -Force | Out-Null
 
 $gameExePath = Join-Path $outputDirResolved "FireTeamMNG.exe"
-# Native Godot export is more reliable with a project-relative output path.
-$relativeExportPath = ((Join-Path $OutputDir "FireTeamMNG.exe") -replace "\\", "/")
 $godotCommand = Resolve-GodotCommand
 
 Write-Host "Exporting with preset '$ExportPresetName' to '$gameExePath'..."
 Write-Host "Using Godot CLI: $godotCommand"
-try {
-    $resolved = Get-Command $godotCommand -ErrorAction SilentlyContinue
-    if ($resolved) { Write-Host "Resolved CLI path: $($resolved.Source)" }
-} catch {}
-# Stream Godot output directly to the log (no capture) so every line is visible in CI.
-try {
-    & $godotCommand --headless --verbose --path $projectRootResolved --export-release $ExportPresetName $relativeExportPath
-    $exitCode = $LASTEXITCODE
-} catch {
-    Write-Host "Godot invocation error: $($_.Exception.Message)"
-    $exitCode = $LASTEXITCODE
-}
-
-if ($null -eq $exitCode) {
-    # Some invocation failures do not populate LASTEXITCODE.
-    $exitCode = if ($?) { 0 } else { 1 }
-}
+# Stream directly — the console exe writes to inherited stdout/stderr handles.
+& $godotCommand --headless --verbose --path $projectRootResolved --export-release $ExportPresetName $gameExePath
+$exitCode = $LASTEXITCODE
+if ($null -eq $exitCode) { $exitCode = 1 }
 
 if ($exitCode -ne 0) {
     throw "Godot export command failed with exit code $exitCode."
