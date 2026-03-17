@@ -13,7 +13,8 @@ function Resolve-GodotCommand {
     $candidates = @()
     if (-not [string]::IsNullOrWhiteSpace($env:GODOT4)) { $candidates += $env:GODOT4 }
     if (-not [string]::IsNullOrWhiteSpace($env:GODOT)) { $candidates += $env:GODOT }
-    $candidates += @("godot", "godot4")
+    # Prefer godot4 over generic godot to avoid old shims.
+    $candidates += @("godot4", "godot")
 
     foreach ($candidate in $candidates) {
         if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
@@ -38,6 +39,8 @@ Copy-Item -Path $presetTemplatePath -Destination $presetPath -Force
 New-Item -ItemType Directory -Path $outputDirResolved -Force | Out-Null
 
 $gameExePath = Join-Path $outputDirResolved "FireTeamMNG.exe"
+# Godot export is most reliable with a path relative to project root.
+$relativeExportPath = ((Join-Path $OutputDir "FireTeamMNG.exe") -replace "\\", "/").TrimStart("./")
 $godotCommand = Resolve-GodotCommand
 
 Write-Host "Exporting with preset '$ExportPresetName' to '$gameExePath'..."
@@ -45,7 +48,7 @@ Write-Host "Using Godot CLI: $godotCommand"
 $exportOutput = @()
 $exitCode = $null
 try {
-    $exportOutput = & $godotCommand --headless --verbose --path $projectRootResolved --export-release $ExportPresetName $gameExePath 2>&1
+    $exportOutput = & $godotCommand --headless --verbose --path $projectRootResolved --export-release $ExportPresetName $relativeExportPath 2>&1
     $exitCode = $LASTEXITCODE
 } catch {
     $exportOutput += $_.Exception.Message
