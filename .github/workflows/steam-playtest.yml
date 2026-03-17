@@ -32,6 +32,7 @@ jobs:
         with:
           version: ${{ env.GODOT_VERSION }}
           include-templates: true
+          use-dotnet: false
 
       - name: Verify Godot CLI
         shell: pwsh

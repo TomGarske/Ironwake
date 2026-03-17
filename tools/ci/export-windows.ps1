@@ -18,12 +18,18 @@ function Resolve-GodotCommand {
 
     foreach ($candidate in $candidates) {
         if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-        if (Test-Path $candidate) { return $candidate }
-        $command = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($null -ne $command) { return $command.Path }
+        # Use Get-Command first — it handles PATH lookup, PATHEXT extension resolution,
+        # and correctly resolves hard links / symlinks to their actual executable path.
+        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($null -ne $cmd) { return $cmd.Source }
+        # Fallback: try path directly and with .exe suffix for absolute paths
+        if ($candidate -match '[/\\]') {
+            if (Test-Path "$candidate.exe") { return "$candidate.exe" }
+            if (Test-Path $candidate) { return $candidate }
+        }
     }
 
-    throw "Godot CLI not found. Checked env:GODOT4, env:GODOT, godot, and godot4."
+    throw "Godot CLI not found. Checked env:GODOT4, env:GODOT, godot4, and godot."
 }
 
 $projectRootResolved = (Resolve-Path $ProjectRoot).Path
@@ -39,31 +45,13 @@ Copy-Item -Path $presetTemplatePath -Destination $presetPath -Force
 New-Item -ItemType Directory -Path $outputDirResolved -Force | Out-Null
 
 $gameExePath = Join-Path $outputDirResolved "FireTeamMNG.exe"
-# Godot export is most reliable with a path relative to project root.
-$relativeExportPath = ((Join-Path $OutputDir "FireTeamMNG.exe") -replace "\\", "/").TrimStart("./")
 $godotCommand = Resolve-GodotCommand
 
 Write-Host "Exporting with preset '$ExportPresetName' to '$gameExePath'..."
 Write-Host "Using Godot CLI: $godotCommand"
-$exportOutput = @()
-$exitCode = $null
-try {
-    $exportOutput = & $godotCommand --headless --verbose --path $projectRootResolved --export-release $ExportPresetName $relativeExportPath 2>&1
-    $exitCode = $LASTEXITCODE
-} catch {
-    $exportOutput += $_.Exception.Message
-    $exitCode = $LASTEXITCODE
-}
-
-if ($exportOutput.Count -gt 0) {
-    Write-Host "Godot export output:"
-    $exportOutput | ForEach-Object { Write-Host $_ }
-}
-
-if ($null -eq $exitCode) {
-    # Some command invocation failures do not populate LASTEXITCODE.
-    $exitCode = if ($?) { 0 } else { 1 }
-}
+# Stream Godot output directly to the log (no capture) so every line is visible in CI.
+& $godotCommand --headless --verbose --path $projectRootResolved --export-release $ExportPresetName $gameExePath
+$exitCode = $LASTEXITCODE
 
 if ($exitCode -ne 0) {
     throw "Godot export command failed with exit code $exitCode."
