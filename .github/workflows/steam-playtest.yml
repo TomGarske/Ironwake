@@ -1,19 +1,13 @@
-name: Build And Upload Steam Playtest
+name: Build Steam Playtest
 
 on:
-  # TODO: re-enable push trigger once STEAM_TOTP_SECRET is configured
-  # push:
-  #   branches:
-  #     - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      steam_guard_code:
-        description: "Steam Guard code from mobile app (only needed until STEAM_TOTP_SECRET is configured)"
-        required: false
-        type: string
 
 jobs:
-  export-and-upload:
+  export:
     runs-on: windows-latest
     permissions:
       contents: read
@@ -21,14 +15,7 @@ jobs:
       GODOT_VERSION: "4.6.1"
       EXPORT_PRESET_NAME: "Windows Desktop"
       BUILD_OUTPUT_DIR: "build/windows"
-      STEAM_BRANCH: "playtest"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-      STEAM_APP_ID: ${{ secrets.STEAM_APP_ID }}
-      STEAM_DEPOT_ID_WINDOWS: ${{ secrets.STEAM_DEPOT_ID_WINDOWS }}
-      STEAM_USERNAME: ${{ secrets.STEAM_BUILDER_USERNAME }}
-      STEAM_PASSWORD: ${{ secrets.STEAM_BUILDER_PASSWORD }}
-      STEAM_TOTP_SECRET: ${{ secrets.STEAM_TOTP_SECRET }}
-      STEAM_GUARD_CODE: ${{ inputs.steam_guard_code }}
 
     steps:
       - name: Checkout
@@ -62,10 +49,9 @@ jobs:
             -ExportPresetName "${env:EXPORT_PRESET_NAME}" `
             -OutputDir "${env:BUILD_OUTPUT_DIR}"
 
-      - name: Upload to Steam Playtest branch
-        shell: pwsh
-        run: |
-          ./tools/ci/upload-steam.ps1 `
-            -ProjectRoot "$PWD" `
-            -BuildOutputDir "${env:BUILD_OUTPUT_DIR}" `
-            -SteamBranch "${env:STEAM_BRANCH}"
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: steam-playtest-windows
+          path: build/windows/
+          retention-days: 7

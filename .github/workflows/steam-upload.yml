@@ -1,0 +1,54 @@
+name: Upload to Steam
+
+on:
+  workflow_dispatch:
+    inputs:
+      steam_guard_code:
+        description: "Steam Guard code from mobile app (only needed until STEAM_TOTP_SECRET is configured)"
+        required: false
+        type: string
+      steam_branch:
+        description: "Steam branch to upload to"
+        required: false
+        default: "playtest"
+        type: string
+
+jobs:
+  upload:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      STEAM_BRANCH: ${{ inputs.steam_branch }}
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      STEAM_APP_ID: ${{ secrets.STEAM_APP_ID }}
+      STEAM_DEPOT_ID_WINDOWS: ${{ secrets.STEAM_DEPOT_ID_WINDOWS }}
+      STEAM_USERNAME: ${{ secrets.STEAM_BUILDER_USERNAME }}
+      STEAM_PASSWORD: ${{ secrets.STEAM_BUILDER_PASSWORD }}
+      STEAM_TOTP_SECRET: ${{ secrets.STEAM_TOTP_SECRET }}
+      STEAM_GUARD_CODE: ${{ inputs.steam_guard_code }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download latest build artifact
+        shell: pwsh
+        run: |
+          $runId = gh run list --workflow steam-playtest.yml --status success --limit 1 --json databaseId -q ".[0].databaseId"
+          if (-not $runId) {
+            throw "No successful build found. Run the 'Build Steam Playtest' workflow first."
+          }
+          Write-Host "Downloading artifact from build run $runId..."
+          gh run download $runId --name steam-playtest-windows --dir build/windows/
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to Steam
+        shell: pwsh
+        run: |
+          ./tools/ci/upload-steam.ps1 `
+            -ProjectRoot "$PWD" `
+            -BuildOutputDir "build/windows" `
+            -SteamBranch "${env:STEAM_BRANCH}"

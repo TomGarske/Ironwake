@@ -2,7 +2,7 @@ name: Triage CI Failure
 
 on:
   workflow_run:
-    workflows: ["Build And Upload Steam Playtest"]
+    workflows: ["Build Steam Playtest", "Upload to Steam"]
     types: [completed]
 
 jobs:
