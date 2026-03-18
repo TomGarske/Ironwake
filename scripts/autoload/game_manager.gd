@@ -12,6 +12,7 @@ const CHIMERA_SCENE_PATH: String = "res://scenes/game/chrimera/chrimera_landing.
 const REPLICANTS_SCENE_PATH: String = "res://scenes/game/replicants/replicants_landing.tscn"
 const BLACKSITE_BREAKOUT_SCENE_PATH: String = "res://scenes/game/area51/blacksite_breakout_landing.tscn"
 const STRATEGY_SCENE_PATH: String = "res://scenes/game/strategy/strategy_game.tscn"
+const GLOBE_SCENE_PATH: String = "res://scenes/globe/globe_arena.tscn"
 const HOME_SCREEN_SCENE_PATH: String = "res://scenes/screens/home_screen.tscn"
 const LOBBY_SCENE_PATH: String = "res://scenes/screens/lobby.tscn"
 const DEFAULT_GAME_MODE_ID: String = "blacksite_containment"
@@ -71,6 +72,15 @@ const GAME_MODES: Array[Dictionary] = [
 		"badge": "[HEX]",
 		"scene_path": STRATEGY_SCENE_PATH,
 		"description": "Hex-based strategy sandbox focused on terrain control, planning, and tactical map decisions.",
+		"enabled": true,
+	},
+	{
+		"id": "globe",
+		"label": "Globe",
+		"subtitle": "Orbital Theater",
+		"badge": "[GLOBE]",
+		"scene_path": GLOBE_SCENE_PATH,
+		"description": "Planetary control view for globe-based local/multiplayer navigation experiments.",
 		"enabled": true,
 	},
 ]

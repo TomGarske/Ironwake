@@ -149,7 +149,7 @@ theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
-text = "Open Operations"
+text = "Multiplayer"
 
 [node name="Separator" type="HSeparator" parent="LeftMenuPanel/VBoxContainer" unique_id=1608539323]
 layout_mode = 2
@@ -161,7 +161,7 @@ theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
-text = "Solo Sim (Offline)"
+text = "Pirates (Local)"
 
 [node name="GlobeButton" type="Button" parent="LeftMenuPanel/VBoxContainer" unique_id=631047201]
 layout_mode = 2
@@ -170,7 +170,7 @@ theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
-text = "Globe"
+text = "Globe (Local)"
 
 [node name="StrategyButton" type="Button" parent="LeftMenuPanel/VBoxContainer" unique_id=312947501]
 layout_mode = 2
@@ -179,7 +179,7 @@ theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
-text = "Strategy Game"
+text = "Strategy Game (Local)"
 
 [node name="SettingsButton" type="Button" parent="LeftMenuPanel/VBoxContainer" unique_id=742518400]
 layout_mode = 2

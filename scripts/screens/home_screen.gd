@@ -309,6 +309,7 @@ func _on_test_button_pressed() -> void:
 		multiplayer.multiplayer_peer.close()
 		multiplayer.multiplayer_peer = null
 	GameManager.setup_offline_test()
+	GameManager.set_selected_game_mode("strategy")
 	var mode: Dictionary = GameManager.get_selected_game_mode()
 	var test_scene_path: String = str(mode.get("scene_path", GameManager.MATCH_SCENE_PATH))
 	get_tree().change_scene_to_file(test_scene_path)

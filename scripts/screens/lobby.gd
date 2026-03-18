@@ -24,6 +24,11 @@ var _friends_refresh_elapsed: float = 0.0
 var _game_mode_ids: Array[String] = []
 
 const _FRIENDS_REFRESH_INTERVAL: float = 6.0
+const _MULTIPLAYER_MODE_IDS: Array[String] = [
+	GameManager.DEFAULT_GAME_MODE_ID,
+	"globe",
+	"strategy",
+]
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -120,14 +125,16 @@ func _setup_game_mode_selector() -> void:
 		var mode_id: String = str(mode.get("id", ""))
 		if mode_id.is_empty():
 			continue
+		if not _MULTIPLAYER_MODE_IDS.has(mode_id):
+			continue
 		_game_mode_ids.append(mode_id)
 		var badge: String = str(mode.get("badge", "")).strip_edges()
 		var label: String = str(mode.get("label", mode_id.capitalize()))
 		if not badge.is_empty():
 			label = "%s %s" % [badge, label]
-		if mode_id != GameManager.DEFAULT_GAME_MODE_ID:
-			label += " [WIP]"
 		game_mode_selector.add_item(label)
+	if SteamManager.is_host and not _MULTIPLAYER_MODE_IDS.has(GameManager.selected_game_mode_id):
+		GameManager.set_selected_game_mode(GameManager.DEFAULT_GAME_MODE_ID)
 	_on_selected_game_mode_changed(GameManager.selected_game_mode_id)
 
 func _on_game_mode_selector_item_selected(index: int) -> void:
