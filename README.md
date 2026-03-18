@@ -67,6 +67,20 @@ Expected success logs include:
 
 ---
 
+## Globe / Strategy Local MP Tests
+
+Run the same localhost host/client harness for other modes:
+
+- `./tests/globe_local_mp_test.sh` (visual by default)
+- `./tests/globe_local_mp_test.sh --mode smoke`
+- `./tests/strategy_local_mp_test.sh` (visual by default)
+- `./tests/strategy_local_mp_test.sh --mode smoke`
+
+All wrappers accept the same options as `tests/blacksite_local_mp_test.sh`
+(`--godot`, `--port`, `--host`, window position/resolution options, etc.).
+
+---
+
 ## Tech Stack
 
 | Layer | Choice |

@@ -9,9 +9,9 @@ set -euo pipefail
 #   smoke:            runs headless host/client autotest and prints PASS/FAIL
 #
 # Examples:
-#   ./tools/blacksite_local_mp_test.sh
-#   ./tools/blacksite_local_mp_test.sh --mode visual --port 29777
-#   ./tools/blacksite_local_mp_test.sh --mode smoke --godot /opt/homebrew/bin/godot
+#   ./tests/blacksite_local_mp_test.sh
+#   ./tests/blacksite_local_mp_test.sh --mode visual --port 29777
+#   ./tests/blacksite_local_mp_test.sh --mode smoke --godot /opt/homebrew/bin/godot
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -25,6 +25,8 @@ HOST_POSITION="40,80"
 CLIENT_POSITION="1360,80"
 
 SCENE_PATH="res://scenes/game/blacksite/blacksite_containment_arena.tscn"
+HOST_SUCCESS_PATTERN="\\[LocalMP-Test\\] Host roster size=2 success=true"
+CLIENT_SUCCESS_PATTERN="\\[LocalMP-Test\\] Client roster size=2 success=true"
 
 contains_success_line() {
   local pattern="$1"
@@ -38,7 +40,7 @@ contains_success_line() {
 
 usage() {
   cat <<'EOF'
-Usage: ./tools/blacksite_local_mp_test.sh [options]
+Usage: ./tests/blacksite_local_mp_test.sh [options]
 
 Options:
   --mode <visual|smoke>      Test mode (default: visual)
@@ -48,6 +50,9 @@ Options:
   --resolution <WxH>         Visual window resolution (default: 1280x720)
   --host-position <X,Y>      Host window position (default: 40,80)
   --client-position <X,Y>    Client window position (default: 1360,80)
+  --scene <res://...>        Scene path (default: Blacksite containment)
+  --host-success <regex>     Smoke host success regex
+  --client-success <regex>   Smoke client success regex
   -h, --help                 Show this help message
 EOF
 }
@@ -80,6 +85,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --client-position)
       CLIENT_POSITION="${2:-}"
+      shift 2
+      ;;
+    --scene)
+      SCENE_PATH="${2:-}"
+      shift 2
+      ;;
+    --host-success)
+      HOST_SUCCESS_PATTERN="${2:-}"
+      shift 2
+      ;;
+    --client-success)
+      CLIENT_SUCCESS_PATTERN="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -178,18 +195,32 @@ if [[ "${MODE}" == "smoke" ]]; then
   HOST_PID=$!
   sleep 1
   echo "Running headless client..."
-  "${CLIENT_CMD[@]}" >"${CLIENT_LOG}" 2>&1 || true
-
-  wait "${HOST_PID}" || true
+  "${CLIENT_CMD[@]}" >"${CLIENT_LOG}" 2>&1 &
+  CLIENT_PID=$!
 
   HOST_OK=0
   CLIENT_OK=0
-  if contains_success_line "\\[LocalMP-Test\\] Host roster size=2 success=true" "${HOST_LOG}"; then
-    HOST_OK=1
+  for _ in $(seq 1 20); do
+    if [[ "${HOST_OK}" -eq 0 ]] && contains_success_line "${HOST_SUCCESS_PATTERN}" "${HOST_LOG}"; then
+      HOST_OK=1
+    fi
+    if [[ "${CLIENT_OK}" -eq 0 ]] && contains_success_line "${CLIENT_SUCCESS_PATTERN}" "${CLIENT_LOG}"; then
+      CLIENT_OK=1
+    fi
+    if [[ "${HOST_OK}" -eq 1 && "${CLIENT_OK}" -eq 1 ]]; then
+      break
+    fi
+    sleep 1
+  done
+
+  if [[ -n "${HOST_PID:-}" ]] && kill -0 "${HOST_PID}" >/dev/null 2>&1; then
+    kill "${HOST_PID}" >/dev/null 2>&1 || true
   fi
-  if contains_success_line "\\[LocalMP-Test\\] Client roster size=2 success=true" "${CLIENT_LOG}"; then
-    CLIENT_OK=1
+  if [[ -n "${CLIENT_PID:-}" ]] && kill -0 "${CLIENT_PID}" >/dev/null 2>&1; then
+    kill "${CLIENT_PID}" >/dev/null 2>&1 || true
   fi
+  wait "${HOST_PID}" >/dev/null 2>&1 || true
+  wait "${CLIENT_PID}" >/dev/null 2>&1 || true
 
   echo "----- Host Log -----"
   sed -n '1,200p' "${HOST_LOG}"

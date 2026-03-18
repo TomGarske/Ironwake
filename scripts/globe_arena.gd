@@ -1,5 +1,21 @@
 extends Node3D
 const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
+const _LOCAL_MP_ARG_MODE := "--local-mp="
+const _LOCAL_MP_ARG_PORT := "--local-mp-port="
+const _LOCAL_MP_ARG_HOST := "--local-mp-host="
+const _LOCAL_MP_ARG_AUTOTEST := "--local-mp-autotest"
+const _LOCAL_MP_ARG_AUTOTEST_QUIT := "--local-mp-autotest-quit"
+const _DEFAULT_LOCAL_MP_PORT: int = 29777
+const _DEFAULT_LOCAL_MP_HOST: String = "127.0.0.1"
+const _HIGHLIGHT_BASE_RADIUS: float = 1.012
+const _PLAYER_HIGHLIGHT_COLORS: Array[Color] = [
+	Color(0.20, 0.75, 1.00, 1.0),
+	Color(1.00, 0.45, 0.25, 1.0),
+	Color(0.55, 0.95, 0.35, 1.0),
+	Color(0.95, 0.80, 0.25, 1.0),
+	Color(0.85, 0.45, 1.00, 1.0),
+	Color(0.45, 0.90, 0.95, 1.0),
+]
 
 @onready var _camera:     Camera3D       = $Camera3D
 @onready var _globe_root: Node3D         = $GlobeRoot
@@ -12,6 +28,16 @@ const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 @onready var _pause_music_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseMusicButton
 @onready var _pause_quit_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseQuitButton
 @onready var _quit_confirm_dialog: ConfirmationDialog = $UILayer/QuitConfirmDialog
+var _local_mp_mode: String = ""
+var _local_mp_port: int = _DEFAULT_LOCAL_MP_PORT
+var _local_mp_host: String = _DEFAULT_LOCAL_MP_HOST
+var _local_mp_enabled: bool = false
+var _local_mp_autotest: bool = false
+var _local_mp_autotest_quit: bool = false
+var _local_mp_host_success_emitted: bool = false
+var _local_peer_id: int = 1
+var _peer_hex_indices: Dictionary = {}    # peer_id -> hex index
+var _peer_highlights: Dictionary = {}     # peer_id -> MeshInstance3D
 
 # ── Focus ─────────────────────────────────────────────────────────────────────
 enum Focus { EARTH, MOON, SYSTEM, SOLAR }
@@ -103,6 +129,9 @@ const SOLAR_ZOOM_STEPS:  Array = [15000.0, 20000.0, 30000.0, 40000.0, 50000.0, 7
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
+	_parse_local_mp_args()
+	_bootstrap_local_mp_if_requested()
+	_update_local_peer_identity()
 	_default_quat = Quaternion(Vector3.RIGHT, deg_to_rad(AXIAL_TILT_DEG))
 	_load_hex_data()
 	_apply_globe_texture()
@@ -114,6 +143,10 @@ func _ready() -> void:
 	_update_globe()
 	_update_camera(0.0)
 	_setup_pause_menu()
+	if _local_mp_enabled:
+		_attach_local_mp_hooks()
+		_peer_hex_indices[_local_peer_id] = _selected_hex
+		_broadcast_local_hex_selection()
 	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
 
@@ -122,6 +155,7 @@ func _exit_tree() -> void:
 		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
 
 func _process(delta: float) -> void:
+	_poll_local_mp_autotest_host()
 	_sim_angle       += BASE_DEG_PER_SEC * _time_scale * delta
 	_orbital_angle   += deg_to_rad(ORBITAL_DEG_PER_SEC * _time_scale * delta)
 	_cam_dist         = lerpf(_cam_dist, _cam_dist_target, ZOOM_SMOOTH * delta)
@@ -182,9 +216,206 @@ func _toggle_hex_grid() -> void:
 	_hex_grid_visible = not _hex_grid_visible
 	if _goldberg_overlay: _goldberg_overlay.visible = _hex_grid_visible
 	if _hex_highlight:    _hex_highlight.visible    = _hex_grid_visible
+	for peer_id: int in _peer_highlights.keys():
+		var node: MeshInstance3D = _peer_highlights[peer_id]
+		if is_instance_valid(node):
+			node.visible = _hex_grid_visible
 	_moon.set_hex_grid_visible(_hex_grid_visible)
 	if _grid_btn:
 		_grid_btn.text = "Grid: ON" if _hex_grid_visible else "Grid: OFF"
+
+func _parse_local_mp_args() -> void:
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	if args.is_empty():
+		args = OS.get_cmdline_args()
+	for arg in args:
+		if arg.begins_with(_LOCAL_MP_ARG_MODE):
+			_local_mp_mode = arg.trim_prefix(_LOCAL_MP_ARG_MODE).strip_edges().to_lower()
+		elif arg.begins_with(_LOCAL_MP_ARG_PORT):
+			_local_mp_port = int(arg.trim_prefix(_LOCAL_MP_ARG_PORT))
+		elif arg.begins_with(_LOCAL_MP_ARG_HOST):
+			_local_mp_host = arg.trim_prefix(_LOCAL_MP_ARG_HOST).strip_edges()
+		elif arg == _LOCAL_MP_ARG_AUTOTEST:
+			_local_mp_autotest = true
+		elif arg == _LOCAL_MP_ARG_AUTOTEST_QUIT:
+			_local_mp_autotest_quit = true
+	if _local_mp_port <= 0:
+		_local_mp_port = _DEFAULT_LOCAL_MP_PORT
+	if _local_mp_host.is_empty():
+		_local_mp_host = _DEFAULT_LOCAL_MP_HOST
+	_local_mp_enabled = _local_mp_mode == "host" or _local_mp_mode == "client"
+
+func _bootstrap_local_mp_if_requested() -> void:
+	if not _local_mp_enabled:
+		return
+	var peer := ENetMultiplayerPeer.new()
+	if _local_mp_mode == "host":
+		var create_server_result: int = peer.create_server(_local_mp_port, 8)
+		if create_server_result != OK:
+			push_error("[LocalMP] Failed to create server: %d" % create_server_result)
+			_local_mp_enabled = false
+			return
+		multiplayer.multiplayer_peer = peer
+		print("[LocalMP] Host server listening on port %d" % _local_mp_port)
+		return
+	var create_client_result: int = peer.create_client(_local_mp_host, _local_mp_port)
+	if create_client_result != OK:
+		push_error("[LocalMP] Failed to create client: %d" % create_client_result)
+		_local_mp_enabled = false
+		return
+	multiplayer.multiplayer_peer = peer
+	print("[LocalMP] Client connecting to %s:%d" % [_local_mp_host, _local_mp_port])
+
+func _attach_local_mp_hooks() -> void:
+	if not multiplayer.has_multiplayer_peer():
+		return
+	if not multiplayer.peer_connected.is_connected(_on_local_mp_peer_connected):
+		multiplayer.peer_connected.connect(_on_local_mp_peer_connected)
+	if not multiplayer.peer_disconnected.is_connected(_on_local_mp_peer_disconnected):
+		multiplayer.peer_disconnected.connect(_on_local_mp_peer_disconnected)
+	if not multiplayer.connected_to_server.is_connected(_on_local_mp_connected_to_server):
+		multiplayer.connected_to_server.connect(_on_local_mp_connected_to_server)
+	if not multiplayer.connection_failed.is_connected(_on_local_mp_connection_failed):
+		multiplayer.connection_failed.connect(_on_local_mp_connection_failed)
+	if _local_mp_mode == "host":
+		_emit_local_mp_host_success_if_ready()
+
+func _on_local_mp_peer_connected(peer_id: int) -> void:
+	if not _local_mp_enabled:
+		return
+	print("[LocalMP] Peer connected: %d" % peer_id)
+	_broadcast_local_hex_selection()
+	if _local_mp_mode == "host":
+		_emit_local_mp_host_success_if_ready()
+
+func _on_local_mp_peer_disconnected(peer_id: int) -> void:
+	if not _local_mp_enabled:
+		return
+	if _peer_highlights.has(peer_id):
+		var node: MeshInstance3D = _peer_highlights[peer_id]
+		if is_instance_valid(node):
+			node.queue_free()
+	_peer_highlights.erase(peer_id)
+	_peer_hex_indices.erase(peer_id)
+
+func _on_local_mp_connected_to_server() -> void:
+	if not _local_mp_enabled:
+		return
+	_update_local_peer_identity()
+	_update_hex_highlight()
+	print("[LocalMP] Client connected to server.")
+	_broadcast_local_hex_selection()
+	print("[LocalMP-Test] Client connected success=true")
+	if _local_mp_autotest_quit:
+		get_tree().quit(0)
+
+func _on_local_mp_connection_failed() -> void:
+	if not _local_mp_enabled:
+		return
+	push_error("[LocalMP] Client failed to connect.")
+	if _local_mp_autotest_quit:
+		get_tree().quit(1)
+
+func _emit_local_mp_host_success_if_ready() -> void:
+	if not _local_mp_enabled or not multiplayer.has_multiplayer_peer():
+		return
+	if _local_mp_host_success_emitted:
+		return
+	var peer_count: int = multiplayer.get_peers().size()
+	if peer_count <= 0:
+		return
+	_local_mp_host_success_emitted = true
+	print("[LocalMP-Test] Host peer count=%d success=true" % peer_count)
+	if _local_mp_autotest_quit:
+		get_tree().quit(0)
+
+func _poll_local_mp_autotest_host() -> void:
+	if not _local_mp_enabled or _local_mp_mode != "host":
+		return
+	_emit_local_mp_host_success_if_ready()
+
+func _update_local_peer_identity() -> void:
+	if multiplayer.has_multiplayer_peer():
+		_local_peer_id = multiplayer.get_unique_id()
+	else:
+		_local_peer_id = 1
+
+func _color_for_peer(peer_id: int) -> Color:
+	return _PLAYER_HIGHLIGHT_COLORS[abs(peer_id) % _PLAYER_HIGHLIGHT_COLORS.size()]
+
+func _build_highlight_material(color: Color, pulsing: bool) -> ShaderMaterial:
+	var shader_code := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, blend_add, depth_draw_never;
+
+uniform vec4 highlight_color : source_color = vec4(0.2, 0.75, 1.0, 1.0);
+uniform bool pulsing = true;
+
+void fragment() {
+	float pulse = pulsing ? (0.55 + 0.45 * sin(TIME * 4.0)) : 1.0;
+	ALBEDO = highlight_color.rgb * (1.2 * pulse);
+	ALPHA  = 0.75 * pulse * highlight_color.a;
+}
+"""
+	var shader := Shader.new()
+	shader.code = shader_code
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("highlight_color", color)
+	mat.set_shader_parameter("pulsing", pulsing)
+	return mat
+
+func _build_hex_highlight_mesh(hex_index: int, radius: float = _HIGHLIGHT_BASE_RADIUS) -> ArrayMesh:
+	var clamped_index: int = clampi(hex_index, 0, _hex_data.size() - 1)
+	var poly: PackedVector3Array = _hex_data[clamped_index].p
+	var n := poly.size()
+	var sum := Vector3.ZERO
+	for v in poly:
+		sum += v
+	var center := (sum / n).normalized() * radius
+	var verts := PackedVector3Array()
+	for i in range(n):
+		verts.append(center)
+		verts.append(poly[i] * radius)
+		verts.append(poly[(i + 1) % n] * radius)
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	var arr_mesh := ArrayMesh.new()
+	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return arr_mesh
+
+func _broadcast_local_hex_selection() -> void:
+	if not _local_mp_enabled or not multiplayer.has_multiplayer_peer():
+		return
+	var peer: MultiplayerPeer = multiplayer.multiplayer_peer
+	if peer == null:
+		return
+	if peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	sync_peer_hex_selection.rpc(_local_peer_id, _selected_hex)
+
+@rpc("any_peer", "call_local", "unreliable")
+func sync_peer_hex_selection(peer_id: int, hex_index: int) -> void:
+	if _hex_data.is_empty():
+		return
+	var safe_hex_index: int = clampi(hex_index, 0, _hex_data.size() - 1)
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		var sender_peer_id: int = multiplayer.get_remote_sender_id()
+		if sender_peer_id > 0:
+			peer_id = sender_peer_id
+	_peer_hex_indices[peer_id] = safe_hex_index
+	if peer_id == _local_peer_id:
+		return
+	var node: MeshInstance3D = _peer_highlights.get(peer_id, null)
+	if node == null or not is_instance_valid(node):
+		node = MeshInstance3D.new()
+		node.name = "PeerHighlight_%d" % peer_id
+		node.material_override = _build_highlight_material(_color_for_peer(peer_id), false)
+		_globe_root.add_child(node)
+		_peer_highlights[peer_id] = node
+	node.mesh = _build_hex_highlight_mesh(safe_hex_index, _HIGHLIGHT_BASE_RADIUS + 0.002)
+	node.visible = _hex_grid_visible
 
 func _setup_pause_menu() -> void:
 	if _pause_menu_panel != null:
@@ -540,49 +771,17 @@ func _load_hex_data() -> void:
 	_selected_hex = best
 
 func _setup_hex_highlight() -> void:
-	var shader_code := """
-shader_type spatial;
-render_mode unshaded, cull_disabled, blend_add, depth_draw_never;
-
-void fragment() {
-\tfloat pulse = 0.55 + 0.45 * sin(TIME * 4.0);
-\tALBEDO = vec3(0.2, 0.75, 1.0) * (1.5 * pulse);
-\tALPHA  = 0.9 * pulse;
-}
-"""
-	var shader := Shader.new()
-	shader.code = shader_code
-	var mat := ShaderMaterial.new()
-	mat.shader = shader
-
 	_hex_highlight = MeshInstance3D.new()
 	_hex_highlight.name = "HexHighlight"
-	_hex_highlight.material_override = mat
+	_hex_highlight.material_override = _build_highlight_material(_color_for_peer(_local_peer_id), true)
 	_globe_root.add_child(_hex_highlight)
 	_update_hex_highlight()
 
 func _update_hex_highlight() -> void:
 	if _hex_data.is_empty() or _hex_highlight == null:
 		return
-	var poly: PackedVector3Array = _hex_data[_selected_hex].p
-	var n := poly.size()
-	var sum := Vector3.ZERO
-	for v in poly:
-		sum += v
-	var center := (sum / n).normalized() * 1.012
-
-	var verts := PackedVector3Array()
-	for i in range(n):
-		verts.append(center)
-		verts.append(poly[i] * 1.012)
-		verts.append(poly[(i + 1) % n] * 1.012)
-
-	var arrays: Array = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	var arr_mesh := ArrayMesh.new()
-	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	_hex_highlight.mesh = arr_mesh
+	_hex_highlight.material_override = _build_highlight_material(_color_for_peer(_local_peer_id), true)
+	_hex_highlight.mesh = _build_hex_highlight_mesh(_selected_hex, _HIGHLIGHT_BASE_RADIUS)
 
 func _navigate_hex(dir: Vector2) -> void:
 	if _hex_data.is_empty():
@@ -604,7 +803,9 @@ func _navigate_hex(dir: Vector2) -> void:
 			best_score = score
 			best = int(ni)
 	_selected_hex = best
+	_peer_hex_indices[_local_peer_id] = _selected_hex
 	_update_hex_highlight()
+	_broadcast_local_hex_selection()
 
 
 # ── HUD setup ─────────────────────────────────────────────────────────────────
