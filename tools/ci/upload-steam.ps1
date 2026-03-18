@@ -28,7 +28,8 @@ $steamAppId = Require-Env "STEAM_APP_ID"
 $steamDepotIdWindows = Require-Env "STEAM_DEPOT_ID_WINDOWS"
 $steamUser = Require-Env "STEAM_USERNAME"
 $steamPassword = Require-Env "STEAM_PASSWORD"
-$steamTotpSecret = Require-Env "STEAM_TOTP_SECRET"
+$steamTotpSecret = [Environment]::GetEnvironmentVariable("STEAM_TOTP_SECRET")
+$steamGuardCode = [Environment]::GetEnvironmentVariable("STEAM_GUARD_CODE")
 
 $steamDir = Join-Path $env:RUNNER_TEMP "steamcmd"
 New-Item -ItemType Directory -Path $steamDir -Force | Out-Null
@@ -78,8 +79,16 @@ function Get-SteamGuardCode {
 Write-Host "Running SteamCMD self-update..."
 & $steamExe +quit
 
-$guardCode = Get-SteamGuardCode -SharedSecret $steamTotpSecret
-Write-Host "Generated Steam Guard TOTP code."
+# Resolve Steam Guard code: prefer manual code (workflow_dispatch), then TOTP secret
+if (-not [string]::IsNullOrWhiteSpace($steamGuardCode)) {
+    $guardCode = $steamGuardCode
+    Write-Host "Using manually provided Steam Guard code."
+} elseif (-not [string]::IsNullOrWhiteSpace($steamTotpSecret)) {
+    $guardCode = Get-SteamGuardCode -SharedSecret $steamTotpSecret
+    Write-Host "Generated Steam Guard code from TOTP secret."
+} else {
+    throw "No Steam Guard code available. Provide a code via workflow_dispatch or set STEAM_TOTP_SECRET."
+}
 
 $templateAppBuild = Join-Path $projectRootResolved "tools/steam/app_build_template.vdf"
 $templateDepotBuild = Join-Path $projectRootResolved "tools/steam/depot_build_windows_template.vdf"

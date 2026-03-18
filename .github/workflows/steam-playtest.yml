@@ -1,10 +1,16 @@
 name: Build And Upload Steam Playtest
 
 on:
-  push:
-    branches:
-      - main
+  # TODO: re-enable push trigger once STEAM_TOTP_SECRET is configured
+  # push:
+  #   branches:
+  #     - main
   workflow_dispatch:
+    inputs:
+      steam_guard_code:
+        description: "Steam Guard code from mobile app (only needed until STEAM_TOTP_SECRET is configured)"
+        required: false
+        type: string
 
 jobs:
   export-and-upload:
@@ -22,6 +28,7 @@ jobs:
       STEAM_USERNAME: ${{ secrets.STEAM_BUILDER_USERNAME }}
       STEAM_PASSWORD: ${{ secrets.STEAM_BUILDER_PASSWORD }}
       STEAM_TOTP_SECRET: ${{ secrets.STEAM_TOTP_SECRET }}
+      STEAM_GUARD_CODE: ${{ inputs.steam_guard_code }}
 
     steps:
       - name: Checkout
