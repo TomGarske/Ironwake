@@ -6,6 +6,24 @@ extends Node
 # _occupancy: Vector2i → Array[{creature_id: String, slice_count: int}]
 var _occupancy: Dictionary = {}
 
+func clear_all() -> void:
+	_occupancy.clear()
+
+func rebuild_from_placed_creatures(placed_creatures: Dictionary) -> void:
+	_occupancy.clear()
+	for creature_id: String in placed_creatures.keys():
+		var entry: Dictionary = placed_creatures.get(creature_id, {})
+		if entry.is_empty():
+			continue
+		var hex_coords: Vector2i = entry.get("hex", Vector2i(-1, -1))
+		if hex_coords.x < 0 or hex_coords.y < 0:
+			continue
+		var physical_size: String = str(entry.get("data", {}).get("physical_size", "Small"))
+		var slice_count: int = int(PointCostConstants.PHYSICAL_SIZE_COSTS.get(physical_size, 1))
+		if not can_place(hex_coords, slice_count):
+			continue
+		place_creature(hex_coords, creature_id, slice_count)
+
 
 func get_occupied_slices(hex_coords: Vector2i) -> int:
 	var entries: Array = _occupancy.get(hex_coords, [])

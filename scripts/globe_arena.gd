@@ -1,10 +1,17 @@
 extends Node3D
+const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 
 @onready var _camera:     Camera3D       = $Camera3D
 @onready var _globe_root: Node3D         = $GlobeRoot
 @onready var _globe_mesh: MeshInstance3D = $GlobeRoot/Globe
 @onready var _atmo_mesh:  MeshInstance3D = $GlobeRoot/Atmosphere
 @onready var _moon:       Node3D         = $Moon
+@onready var _pause_backdrop: ColorRect = $UILayer/PauseBackdrop
+@onready var _pause_menu_panel: PanelContainer = $UILayer/PauseMenuPanel
+@onready var _pause_resume_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseResumeButton
+@onready var _pause_music_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseMusicButton
+@onready var _pause_quit_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseQuitButton
+@onready var _quit_confirm_dialog: ConfirmationDialog = $UILayer/QuitConfirmDialog
 
 # ── Focus ─────────────────────────────────────────────────────────────────────
 enum Focus { EARTH, MOON, SYSTEM, SOLAR }
@@ -106,6 +113,13 @@ func _ready() -> void:
 	_add_sun()
 	_update_globe()
 	_update_camera(0.0)
+	_setup_pause_menu()
+	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
+		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
+
+func _exit_tree() -> void:
+	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
+		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
 
 func _process(delta: float) -> void:
 	_sim_angle       += BASE_DEG_PER_SEC * _time_scale * delta
@@ -172,8 +186,123 @@ func _toggle_hex_grid() -> void:
 	if _grid_btn:
 		_grid_btn.text = "Grid: ON" if _hex_grid_visible else "Grid: OFF"
 
+func _setup_pause_menu() -> void:
+	if _pause_menu_panel != null:
+		_pause_menu_panel.visible = false
+		UiStyleScript.style_panel(_pause_menu_panel)
+	if _pause_backdrop != null:
+		_pause_backdrop.visible = false
+
+	if _pause_resume_button != null:
+		UiStyleScript.style_button(_pause_resume_button)
+		if not _pause_resume_button.pressed.is_connected(_on_pause_resume_pressed):
+			_pause_resume_button.pressed.connect(_on_pause_resume_pressed)
+	if _pause_music_button != null:
+		UiStyleScript.style_button(_pause_music_button)
+		if not _pause_music_button.pressed.is_connected(_on_pause_music_pressed):
+			_pause_music_button.pressed.connect(_on_pause_music_pressed)
+	if _pause_quit_button != null:
+		UiStyleScript.style_button(_pause_quit_button)
+		if not _pause_quit_button.pressed.is_connected(_on_pause_quit_pressed):
+			_pause_quit_button.pressed.connect(_on_pause_quit_pressed)
+
+	if _pause_resume_button != null and _pause_music_button != null and _pause_quit_button != null:
+		_pause_resume_button.focus_neighbor_bottom = _pause_resume_button.get_path_to(_pause_music_button)
+		_pause_music_button.focus_neighbor_top = _pause_music_button.get_path_to(_pause_resume_button)
+		_pause_music_button.focus_neighbor_bottom = _pause_music_button.get_path_to(_pause_quit_button)
+		_pause_quit_button.focus_neighbor_top = _pause_quit_button.get_path_to(_pause_music_button)
+		_pause_quit_button.focus_neighbor_bottom = _pause_quit_button.get_path_to(_pause_resume_button)
+
+	if _quit_confirm_dialog != null:
+		_quit_confirm_dialog.title = "Leave Match"
+		_quit_confirm_dialog.ok_button_text = "Quit Match"
+		if not _quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
+			_quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
+		_apply_quit_dialog_theme()
+
+	_update_pause_music_button_label()
+
+func _on_pause_resume_pressed() -> void:
+	_close_pause_menu()
+
+func _on_pause_music_pressed() -> void:
+	if GameManager == null:
+		return
+	GameManager.set_music_enabled(not GameManager.music_enabled)
+	_update_pause_music_button_label()
+
+func _on_pause_quit_pressed() -> void:
+	_request_quit_to_menu()
+
+func _toggle_pause_menu() -> void:
+	if _pause_menu_panel == null:
+		return
+	if _pause_menu_panel.visible:
+		_close_pause_menu()
+	else:
+		_open_pause_menu()
+
+func _open_pause_menu() -> void:
+	if _pause_menu_panel == null:
+		return
+	_pause_menu_panel.visible = true
+	if _pause_backdrop != null:
+		_pause_backdrop.visible = true
+	_update_pause_music_button_label()
+	if _pause_resume_button != null:
+		_pause_resume_button.grab_focus()
+
+func _close_pause_menu() -> void:
+	if _pause_menu_panel == null:
+		return
+	_pause_menu_panel.visible = false
+	if _pause_backdrop != null:
+		_pause_backdrop.visible = false
+
+func _request_quit_to_menu() -> void:
+	_close_pause_menu()
+	if _quit_confirm_dialog == null:
+		get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
+		return
+	_apply_quit_dialog_theme()
+	_quit_confirm_dialog.dialog_text = "Are you sure you want to leave this match and return to the main menu?"
+	_quit_confirm_dialog.popup_centered()
+
+func _apply_quit_dialog_theme() -> void:
+	if _quit_confirm_dialog == null:
+		return
+	_quit_confirm_dialog.add_theme_stylebox_override("panel", UiStyleScript.make_panel_style())
+	_quit_confirm_dialog.add_theme_color_override("title_color", UiStyleScript.TEXT_PRIMARY)
+	_quit_confirm_dialog.add_theme_color_override("font_color", UiStyleScript.TEXT_SECONDARY)
+	UiStyleScript.style_button(_quit_confirm_dialog.get_ok_button())
+	UiStyleScript.style_button(_quit_confirm_dialog.get_cancel_button())
+
+func _on_quit_confirmed() -> void:
+	get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
+
+func _on_music_enabled_changed(enabled: bool) -> void:
+	if MusicManager != null:
+		if enabled:
+			MusicManager.play()
+		else:
+			MusicManager.stop()
+	_update_pause_music_button_label()
+
+func _update_pause_music_button_label() -> void:
+	if _pause_music_button == null or GameManager == null:
+		return
+	_pause_music_button.text = "Music: %s" % ("On" if GameManager.music_enabled else "Off")
+
 # ── Input ─────────────────────────────────────────────────────────────────────
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		_toggle_pause_menu()
+		get_viewport().set_input_as_handled()
+		return
+	if _pause_menu_panel != null and _pause_menu_panel.visible:
+		get_viewport().set_input_as_handled()
+		return
+
 	if event is InputEventMouseButton:
 		var mbe := event as InputEventMouseButton
 		match mbe.button_index:

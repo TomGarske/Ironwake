@@ -32,6 +32,7 @@ const ZOOM_MAX := Vector2(2.0, 2.0)
 const ZOOM_STEP := 0.1
 
 const TERRAIN_OVERRIDE_SAVE_PATH := "user://hex_terrain_overrides.json"
+const HOST_PEER_ID: int = 1
 
 const SPAWN_HEX := Vector2i(90, 45)
 
@@ -86,6 +87,12 @@ var _terrain_creator_layer: CanvasLayer
 var _fog_drawer: FogDrawer
 var _creature_token_layer: Node2D
 var _creature_panel_layer: CanvasLayer
+var _pause_backdrop: ColorRect
+var _pause_menu_panel: PanelContainer
+var _pause_resume_button: Button
+var _pause_music_button: Button
+var _pause_quit_button: Button
+var _quit_confirm_dialog: ConfirmationDialog
 
 # Pinned selection (set when T is pressed)
 var _pinned_cell: Vector2i = Vector2i(-1, -1)
@@ -111,7 +118,8 @@ func _ready() -> void:
 	_build_custom_terrain_sources()
 	_load_geojson()
 	_generate_terrain_map()
-	_load_terrain_overrides()
+	if not multiplayer.has_multiplayer_peer():
+		_load_terrain_overrides()
 	_update_chunks()
 
 	# Start with a small revealed window around the spawn hex
@@ -125,6 +133,14 @@ func _ready() -> void:
 
 	# Wire up creature movement singleton
 	CreatureMovement.set_strategy_game(self)
+
+	# In multiplayer, the host owns state mutation and pushes snapshots to clients.
+	if multiplayer.has_multiplayer_peer():
+		if multiplayer.is_server():
+			_prepare_multiplayer_match_state()
+			sync_multiplayer_state()
+		else:
+			request_multiplayer_state_sync.rpc_id(HOST_PEER_ID)
 
 	# Wire up creature panel
 	_wire_creature_panel()
@@ -140,6 +156,10 @@ func _ready() -> void:
 		if lbl:
 			lbl.add_theme_color_override("font_color", UiStyleScript.TEXT_SECONDARY)
 			lbl.add_theme_font_size_override("font_size", 12)
+
+	_setup_pause_menu()
+	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
+		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
 
 	set_process_input(true)
 	set_process(true)
@@ -631,6 +651,119 @@ func _update_hover(cell: Vector2i) -> void:
 
 	_hovered_cell = cell
 
+func _setup_pause_menu() -> void:
+	_pause_backdrop = get_node_or_null("UILayer/PauseBackdrop") as ColorRect
+	_pause_menu_panel = get_node_or_null("UILayer/PauseMenuPanel") as PanelContainer
+	_pause_resume_button = get_node_or_null("UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseResumeButton") as Button
+	_pause_music_button = get_node_or_null("UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseMusicButton") as Button
+	_pause_quit_button = get_node_or_null("UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseQuitButton") as Button
+	_quit_confirm_dialog = get_node_or_null("UILayer/QuitConfirmDialog") as ConfirmationDialog
+
+	if _pause_menu_panel != null:
+		_pause_menu_panel.visible = false
+		UiStyleScript.style_panel(_pause_menu_panel)
+	if _pause_backdrop != null:
+		_pause_backdrop.visible = false
+	if _pause_resume_button != null:
+		UiStyleScript.style_button(_pause_resume_button)
+		if not _pause_resume_button.pressed.is_connected(_on_pause_resume_pressed):
+			_pause_resume_button.pressed.connect(_on_pause_resume_pressed)
+	if _pause_music_button != null:
+		UiStyleScript.style_button(_pause_music_button)
+		if not _pause_music_button.pressed.is_connected(_on_pause_music_pressed):
+			_pause_music_button.pressed.connect(_on_pause_music_pressed)
+	if _pause_quit_button != null:
+		UiStyleScript.style_button(_pause_quit_button)
+		if not _pause_quit_button.pressed.is_connected(_on_pause_quit_pressed):
+			_pause_quit_button.pressed.connect(_on_pause_quit_pressed)
+
+	if _pause_resume_button != null and _pause_music_button != null and _pause_quit_button != null:
+		_pause_resume_button.focus_neighbor_bottom = _pause_resume_button.get_path_to(_pause_music_button)
+		_pause_music_button.focus_neighbor_top = _pause_music_button.get_path_to(_pause_resume_button)
+		_pause_music_button.focus_neighbor_bottom = _pause_music_button.get_path_to(_pause_quit_button)
+		_pause_quit_button.focus_neighbor_top = _pause_quit_button.get_path_to(_pause_music_button)
+		_pause_quit_button.focus_neighbor_bottom = _pause_quit_button.get_path_to(_pause_resume_button)
+
+	if _quit_confirm_dialog != null:
+		_quit_confirm_dialog.title = "Leave Match"
+		_quit_confirm_dialog.ok_button_text = "Quit Match"
+		if not _quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
+			_quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
+		_apply_quit_dialog_theme()
+
+	_update_pause_music_button_label()
+
+func _on_pause_resume_pressed() -> void:
+	_close_pause_menu()
+
+func _on_pause_music_pressed() -> void:
+	if GameManager == null:
+		return
+	GameManager.set_music_enabled(not GameManager.music_enabled)
+	_update_pause_music_button_label()
+
+func _on_pause_quit_pressed() -> void:
+	_request_quit_to_menu()
+
+func _toggle_pause_menu() -> void:
+	if _pause_menu_panel == null:
+		return
+	if _pause_menu_panel.visible:
+		_close_pause_menu()
+	else:
+		_open_pause_menu()
+
+func _open_pause_menu() -> void:
+	if _pause_menu_panel == null:
+		return
+	_pause_menu_panel.visible = true
+	if _pause_backdrop != null:
+		_pause_backdrop.visible = true
+	_update_pause_music_button_label()
+	if _pause_resume_button != null:
+		_pause_resume_button.grab_focus()
+
+func _close_pause_menu() -> void:
+	if _pause_menu_panel == null:
+		return
+	_pause_menu_panel.visible = false
+	if _pause_backdrop != null:
+		_pause_backdrop.visible = false
+
+func _request_quit_to_menu() -> void:
+	_close_pause_menu()
+	if _quit_confirm_dialog == null:
+		get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
+		return
+	_apply_quit_dialog_theme()
+	_quit_confirm_dialog.dialog_text = "Are you sure you want to leave this match and return to the main menu?"
+	_quit_confirm_dialog.popup_centered()
+
+func _apply_quit_dialog_theme() -> void:
+	if _quit_confirm_dialog == null:
+		return
+	_quit_confirm_dialog.add_theme_stylebox_override("panel", UiStyleScript.make_panel_style())
+	_quit_confirm_dialog.add_theme_color_override("title_color", UiStyleScript.TEXT_PRIMARY)
+	_quit_confirm_dialog.add_theme_color_override("font_color", UiStyleScript.TEXT_SECONDARY)
+	UiStyleScript.style_button(_quit_confirm_dialog.get_ok_button())
+	UiStyleScript.style_button(_quit_confirm_dialog.get_cancel_button())
+
+func _on_quit_confirmed() -> void:
+	get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
+
+func _on_music_enabled_changed(enabled: bool) -> void:
+	if MusicManager != null:
+		if enabled:
+			MusicManager.play()
+		else:
+			MusicManager.stop()
+	_update_pause_music_button_label()
+
+func _update_pause_music_button_label() -> void:
+	if _pause_music_button == null or GameManager == null:
+		return
+	_pause_music_button.text = "Music: %s" % ("On" if GameManager.music_enabled else "Off")
+
 # ---------------------------------------------------------------------------
 # Fog of war — delegates to FogDrawer Node2D
 # ---------------------------------------------------------------------------
@@ -709,7 +842,8 @@ func _wire_creature_panel() -> void:
 		)
 
 	# Load persisted state and restore bucket tokens
-	GameState.load_game()
+	if not multiplayer.has_multiplayer_peer():
+		GameState.load_game()
 	if bucket:
 		for c: Dictionary in GameState.character_bucket:
 			bucket.restore_token(c)
@@ -721,11 +855,154 @@ func _on_send_to_hex(creature_id: String) -> void:
 			CreatureMovement.place_creature_on_map(creature_id, c)
 			return
 
+func _prepare_multiplayer_match_state() -> void:
+	# Match instances should not inherit persisted single-player placed units.
+	GameState.placed_creatures.clear()
+	GameState.dead_creatures.clear()
+	HexOccupancyValidator.clear_all()
+	CreatureMovement.reset_runtime_state()
+
+func sync_multiplayer_state() -> void:
+	if not multiplayer.has_multiplayer_peer() or not multiplayer.is_server():
+		return
+	apply_multiplayer_state_snapshot.rpc(
+		_serialize_placed_creatures(),
+		_serialize_terrain_overrides()
+	)
+
+func broadcast_creature_placed_delta(creature_id: String) -> void:
+	if not multiplayer.has_multiplayer_peer() or not multiplayer.is_server():
+		return
+	var entry: Dictionary = _serialize_creature_entry(creature_id)
+	if entry.is_empty():
+		return
+	apply_creature_placed_delta.rpc(creature_id, entry)
+
+func broadcast_creature_moved_delta(creature_id: String, new_hex: Vector2i) -> void:
+	if not multiplayer.has_multiplayer_peer() or not multiplayer.is_server():
+		return
+	apply_creature_moved_delta.rpc(creature_id, new_hex.x, new_hex.y)
+
+func broadcast_creature_removed_delta(creature_id: String) -> void:
+	if not multiplayer.has_multiplayer_peer() or not multiplayer.is_server():
+		return
+	apply_creature_removed_delta.rpc(creature_id)
+
+@rpc("any_peer", "call_local", "reliable")
+func request_multiplayer_state_sync() -> void:
+	if not multiplayer.is_server():
+		return
+	sync_multiplayer_state()
+
+@rpc("authority", "call_local", "reliable")
+func apply_multiplayer_state_snapshot(placed_serial: Dictionary, overrides_serial: Dictionary) -> void:
+	_apply_serialized_placed_creatures(placed_serial)
+	_apply_serialized_terrain_overrides(overrides_serial)
+	HexOccupancyValidator.rebuild_from_placed_creatures(GameState.placed_creatures)
+	CreatureMovement.reset_runtime_state()
+	refresh_creature_tokens()
+
+@rpc("authority", "call_local", "reliable")
+func apply_creature_placed_delta(creature_id: String, entry: Dictionary) -> void:
+	var deserialized_entry: Dictionary = _deserialize_creature_entry(entry)
+	if deserialized_entry.is_empty():
+		return
+	GameState.placed_creatures[creature_id] = deserialized_entry
+	HexOccupancyValidator.rebuild_from_placed_creatures(GameState.placed_creatures)
+	refresh_creature_tokens()
+
+@rpc("authority", "call_local", "reliable")
+func apply_creature_moved_delta(creature_id: String, x: int, y: int) -> void:
+	if not GameState.placed_creatures.has(creature_id):
+		return
+	GameState.placed_creatures[creature_id]["hex"] = Vector2i(x, y)
+	HexOccupancyValidator.rebuild_from_placed_creatures(GameState.placed_creatures)
+	refresh_creature_tokens()
+
+@rpc("authority", "call_local", "reliable")
+func apply_creature_removed_delta(creature_id: String) -> void:
+	if not GameState.placed_creatures.has(creature_id):
+		return
+	GameState.placed_creatures.erase(creature_id)
+	HexOccupancyValidator.rebuild_from_placed_creatures(GameState.placed_creatures)
+	refresh_creature_tokens()
+
+func _serialize_creature_entry(creature_id: String) -> Dictionary:
+	var entry: Dictionary = GameState.placed_creatures.get(creature_id, {})
+	if entry.is_empty():
+		return {}
+	var serialized: Dictionary = entry.duplicate(true)
+	var hex: Vector2i = serialized.get("hex", Vector2i(0, 0))
+	serialized["hex"] = [hex.x, hex.y]
+	var color: Color = serialized.get("color", Color.WHITE)
+	serialized["color"] = [color.r, color.g, color.b, color.a]
+	return serialized
+
+func _deserialize_creature_entry(serialized: Dictionary) -> Dictionary:
+	if serialized.is_empty():
+		return {}
+	var entry: Dictionary = serialized.duplicate(true)
+	var hex_values: Array = entry.get("hex", [0, 0])
+	if hex_values.size() >= 2:
+		entry["hex"] = Vector2i(int(hex_values[0]), int(hex_values[1]))
+	var color_values: Array = entry.get("color", [1.0, 1.0, 1.0, 1.0])
+	if color_values.size() >= 4:
+		entry["color"] = Color(
+			float(color_values[0]),
+			float(color_values[1]),
+			float(color_values[2]),
+			float(color_values[3])
+		)
+	return entry
+
+func _serialize_placed_creatures() -> Dictionary:
+	var output: Dictionary = {}
+	for creature_id: String in GameState.placed_creatures.keys():
+		var entry: Dictionary = _serialize_creature_entry(creature_id)
+		output[creature_id] = entry
+	return output
+
+func _apply_serialized_placed_creatures(serialized: Dictionary) -> void:
+	GameState.placed_creatures.clear()
+	for creature_id: String in serialized.keys():
+		var entry: Dictionary = _deserialize_creature_entry(serialized.get(creature_id, {}))
+		GameState.placed_creatures[creature_id] = entry
+
+func _serialize_terrain_overrides() -> Dictionary:
+	var output: Dictionary = {}
+	for cell: Vector2i in _terrain_overrides.keys():
+		output["%d,%d" % [cell.x, cell.y]] = _terrain_overrides[cell]
+	return output
+
+func _apply_serialized_terrain_overrides(serialized: Dictionary) -> void:
+	_terrain_overrides.clear()
+	for key: String in serialized.keys():
+		var parts: PackedStringArray = key.split(",")
+		if parts.size() != 2:
+			continue
+		var cell := Vector2i(int(parts[0]), int(parts[1]))
+		var terrain_type: String = str(serialized[key])
+		_terrain_overrides[cell] = terrain_type
+		hex_terrain_map[cell] = terrain_type
+		var chunk := _hex_to_chunk(cell)
+		if _terrain_cache.has(chunk):
+			_terrain_cache[chunk][cell] = terrain_type
+		if _loaded_chunks.has(chunk):
+			_set_terrain_cell_visual(cell, terrain_type)
+
 # ---------------------------------------------------------------------------
 # Input — camera and hex click
 # ---------------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		_toggle_pause_menu()
+		get_viewport().set_input_as_handled()
+		return
+	if _pause_menu_panel != null and _pause_menu_panel.visible:
+		get_viewport().set_input_as_handled()
+		return
+
 	# T — open Terrain Creator, pin the hovered cell, and pass it to the creator
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_T and _terrain_creator_layer:
@@ -789,6 +1066,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Arrow / WASD pan (handled each frame would require tracking keys;
 	# instead we handle them in _process via Input.is_action_pressed checks).
 
+func _exit_tree() -> void:
+	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
+		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
+
 func _zoom_camera(step: float) -> void:
 	var new_zoom := _camera.zoom + Vector2(step, step)
 	_camera.zoom = new_zoom.clamp(ZOOM_MIN, ZOOM_MAX)
@@ -833,9 +1114,29 @@ func _load_terrain_overrides() -> void:
 # ---------------------------------------------------------------------------
 
 func set_tile_terrain(coords: Vector2i, terrain_type: String) -> void:
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		request_set_tile_terrain.rpc_id(HOST_PEER_ID, coords.x, coords.y, terrain_type)
+		return
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		apply_set_tile_terrain.rpc(coords.x, coords.y, terrain_type)
+		return
+	_apply_tile_terrain(coords, terrain_type, true)
+
+@rpc("any_peer", "call_local", "reliable")
+func request_set_tile_terrain(x: int, y: int, terrain_type: String) -> void:
+	if not multiplayer.is_server():
+		return
+	apply_set_tile_terrain.rpc(x, y, terrain_type)
+
+@rpc("authority", "call_local", "reliable")
+func apply_set_tile_terrain(x: int, y: int, terrain_type: String) -> void:
+	_apply_tile_terrain(Vector2i(x, y), terrain_type, multiplayer.is_server())
+
+func _apply_tile_terrain(coords: Vector2i, terrain_type: String, should_persist: bool) -> void:
 	hex_terrain_map[coords] = terrain_type
 	_terrain_overrides[coords] = terrain_type
-	_save_terrain_overrides()
+	if should_persist:
+		_save_terrain_overrides()
 	# Update terrain cache
 	var chunk := _hex_to_chunk(coords)
 	if _terrain_cache.has(chunk):

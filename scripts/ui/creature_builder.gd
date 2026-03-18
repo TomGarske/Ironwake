@@ -204,8 +204,11 @@ func _update_points(_val: Variant = null) -> void:
 
 func _on_confirm() -> void:
 	_creature_counter += 1
+	var creature_id: String = "creature_%d" % _creature_counter
+	if multiplayer.has_multiplayer_peer():
+		creature_id = "p%d_%s" % [multiplayer.get_unique_id(), creature_id]
 	var creature_data := {
-		"id":             "creature_%d" % _creature_counter,
+		"id":             creature_id,
 		"name":           _name_input.text.strip_edges(),
 		"physical_size":  _get_selected_size(),
 		"movement_types": _get_selected_movement_types(),
