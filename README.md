@@ -46,6 +46,27 @@ Short version:
 
 ---
 
+## Blacksite Local MP Smoke Test
+
+You can run a localhost host/client test for Blacksite without a second Steam account by using ENet harness flags on the Blacksite scene script.
+
+Host:
+
+`godot --headless --path . --scene res://scenes/game/blacksite/blacksite_containment_arena.tscn -- --local-mp=host --local-mp-port=29777 --local-mp-autotest --local-mp-autotest-quit`
+
+Client:
+
+`godot --headless --path . --scene res://scenes/game/blacksite/blacksite_containment_arena.tscn -- --local-mp=client --local-mp-host=127.0.0.1 --local-mp-port=29777 --local-mp-autotest --local-mp-autotest-quit`
+
+Expected success logs include:
+
+- `[LocalMP] Host server listening on port ...`
+- `[LocalMP] Client connected to server.`
+- `[LocalMP-Test] Host roster size=2 success=true`
+- `[LocalMP-Test] Client roster size=2 success=true`
+
+---
+
 ## Tech Stack
 
 | Layer | Choice |

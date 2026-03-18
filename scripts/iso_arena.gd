@@ -448,6 +448,11 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 func _broadcast_my_state() -> void:
 	if not multiplayer.has_multiplayer_peer():
 		return
+	var peer: MultiplayerPeer = multiplayer.multiplayer_peer
+	if peer == null:
+		return
+	if peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
 	var p: Dictionary = _players[_my_index]
 	_receive_player_state.rpc(
 		int(p.peer_id),
