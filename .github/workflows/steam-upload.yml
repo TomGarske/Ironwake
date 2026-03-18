@@ -33,13 +33,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Warm SteamCMD and validate auth
-        shell: pwsh
-        run: |
-          ./tools/ci/upload-steam.ps1 `
-            -ProjectRoot "$PWD" `
-            -PrepareOnly
-
       - name: Download latest build artifact
         shell: pwsh
         run: |
@@ -58,5 +51,4 @@ jobs:
           ./tools/ci/upload-steam.ps1 `
             -ProjectRoot "$PWD" `
             -BuildOutputDir "build/windows" `
-            -SteamBranch "${env:STEAM_BRANCH}" `
-            -SkipSteamCmdUpdate
+            -SteamBranch "${env:STEAM_BRANCH}"
