@@ -4,7 +4,11 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$BuildOutputDir = "build/windows",
     [Parameter(Mandatory = $false)]
-    [string]$SteamBranch = "playtest"
+    [string]$SteamBranch = "playtest",
+    [Parameter(Mandatory = $false)]
+    [switch]$PrepareOnly,
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipSteamCmdUpdate
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,7 +24,7 @@ function Require-Env {
 
 $projectRootResolved = (Resolve-Path $ProjectRoot).Path
 $contentRoot = Join-Path $projectRootResolved $BuildOutputDir
-if (-not (Test-Path $contentRoot)) {
+if (-not $PrepareOnly -and -not (Test-Path $contentRoot)) {
     throw "Build output directory not found: '$contentRoot'"
 }
 
@@ -75,9 +79,13 @@ function Get-SteamGuardCode {
     return $guardCode
 }
 
-# Run SteamCMD once to let it self-update.
-Write-Host "Running SteamCMD self-update..."
-& $steamExe +quit
+if ($SkipSteamCmdUpdate) {
+    Write-Host "Skipping SteamCMD self-update."
+} else {
+    # Run SteamCMD once to let it self-update.
+    Write-Host "Running SteamCMD self-update..."
+    & $steamExe +quit
+}
 
 # Resolve Steam Guard code: prefer manual code (workflow_dispatch), then TOTP secret
 if (-not [string]::IsNullOrWhiteSpace($steamGuardCode)) {
@@ -88,6 +96,18 @@ if (-not [string]::IsNullOrWhiteSpace($steamGuardCode)) {
     Write-Host "Generated Steam Guard code from TOTP secret."
 } else {
     throw "No Steam Guard code available. Provide a code via workflow_dispatch or set STEAM_TOTP_SECRET."
+}
+
+if ($PrepareOnly) {
+    Write-Host "Validating Steam credentials and guard code..."
+    & $steamExe +set_steam_guard_code $guardCode +login $steamUser $steamPassword +quit
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "SteamCMD auth validation failed with exit code $LASTEXITCODE"
+    }
+
+    Write-Host "Steam authentication is ready."
+    return
 }
 
 $templateAppBuild = Join-Path $projectRootResolved "tools/steam/app_build_template.vdf"
