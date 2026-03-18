@@ -49,6 +49,16 @@ func _is_creature_controlled_by_peer(creature_id: String, peer_id: int) -> bool:
 		return true
 	return owner_peer_id == peer_id
 
+func _is_peer_turn(peer_id: int) -> bool:
+	if not multiplayer.has_multiplayer_peer():
+		return true
+	if _strategy_game and _strategy_game.has_method("is_peer_turn"):
+		return _strategy_game.is_peer_turn(peer_id)
+	return peer_id == HOST_PEER_ID
+
+func _is_local_turn() -> bool:
+	return _is_peer_turn(_get_local_peer_id())
+
 
 func on_hex_clicked(coords: Vector2i) -> void:
 	# Check if any creature occupies this hex
@@ -73,6 +83,8 @@ func on_hex_clicked(coords: Vector2i) -> void:
 			return
 	# Else queue movement for the selected creature
 	if not _selected_creature_id.is_empty():
+		if multiplayer.has_multiplayer_peer() and not _is_local_turn():
+			return
 		if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
 			request_queue_movement.rpc_id(HOST_PEER_ID, _selected_creature_id, coords)
 			return
@@ -99,6 +111,8 @@ func request_queue_movement(creature_id: String, target_hex: Vector2i) -> void:
 	if not multiplayer.is_server():
 		return
 	var sender_peer_id: int = multiplayer.get_remote_sender_id()
+	if not _is_peer_turn(sender_peer_id):
+		return
 	if not _is_creature_controlled_by_peer(creature_id, sender_peer_id):
 		return
 	_queue_movement_for_creature(creature_id, target_hex, sender_peer_id)
@@ -175,10 +189,15 @@ func advance_turn() -> void:
 func request_advance_turn() -> void:
 	if not multiplayer.is_server():
 		return
+	var sender_peer_id: int = multiplayer.get_remote_sender_id()
+	if not _is_peer_turn(sender_peer_id):
+		return
 	advance_turn()
 
 
 func start_explore(creature_id: String, controlling_peer_id: int = -1) -> void:
+	if multiplayer.has_multiplayer_peer() and controlling_peer_id <= 0 and not _is_local_turn():
+		return
 	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
 		request_start_explore.rpc_id(HOST_PEER_ID, creature_id)
 		return
@@ -210,6 +229,8 @@ func request_start_explore(creature_id: String) -> void:
 	if not multiplayer.is_server():
 		return
 	var sender_peer_id: int = multiplayer.get_remote_sender_id()
+	if not _is_peer_turn(sender_peer_id):
+		return
 	if not _is_creature_controlled_by_peer(creature_id, sender_peer_id):
 		return
 	start_explore(creature_id, sender_peer_id)
@@ -220,6 +241,8 @@ func cancel_explore(creature_id: String) -> void:
 
 
 func place_creature_on_map(creature_id: String, creature_data: Dictionary) -> void:
+	if multiplayer.has_multiplayer_peer() and not _is_local_turn():
+		return
 	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
 		request_place_creature_on_map.rpc_id(HOST_PEER_ID, creature_id, creature_data)
 		return
@@ -257,6 +280,8 @@ func request_place_creature_on_map(creature_id: String, creature_data: Dictionar
 	if not multiplayer.is_server():
 		return
 	var sender_peer_id: int = multiplayer.get_remote_sender_id()
+	if not _is_peer_turn(sender_peer_id):
+		return
 	var canonical_prefix: String = "p%d_" % sender_peer_id
 	var canonical_id: String = creature_id if creature_id.begins_with(canonical_prefix) else "%s%s" % [canonical_prefix, creature_id]
 	var canonical_data: Dictionary = creature_data.duplicate(true)

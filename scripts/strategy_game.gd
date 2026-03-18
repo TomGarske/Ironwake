@@ -33,6 +33,13 @@ const ZOOM_STEP := 0.1
 
 const TERRAIN_OVERRIDE_SAVE_PATH := "user://hex_terrain_overrides.json"
 const HOST_PEER_ID: int = 1
+const _LOCAL_MP_ARG_MODE := "--local-mp="
+const _LOCAL_MP_ARG_PORT := "--local-mp-port="
+const _LOCAL_MP_ARG_HOST := "--local-mp-host="
+const _LOCAL_MP_ARG_AUTOTEST := "--local-mp-autotest"
+const _LOCAL_MP_ARG_AUTOTEST_QUIT := "--local-mp-autotest-quit"
+const _DEFAULT_LOCAL_MP_PORT: int = 29777
+const _DEFAULT_LOCAL_MP_HOST: String = "127.0.0.1"
 
 const SPAWN_HEX := Vector2i(90, 45)
 
@@ -93,6 +100,22 @@ var _pause_resume_button: Button
 var _pause_music_button: Button
 var _pause_quit_button: Button
 var _quit_confirm_dialog: ConfirmationDialog
+var _end_turn_button: Button
+var _local_mp_mode: String = ""
+var _local_mp_port: int = _DEFAULT_LOCAL_MP_PORT
+var _local_mp_host: String = _DEFAULT_LOCAL_MP_HOST
+var _local_mp_enabled: bool = false
+var _local_mp_autotest: bool = false
+var _local_mp_autotest_quit: bool = false
+var _local_mp_host_success_emitted: bool = false
+var _mp_status_panel: PanelContainer
+var _local_identity_label: Label
+var _mp_presence_label: Label
+var _turn_indicator_label: Label
+var _top_right_badge_panel: PanelContainer
+var _top_right_badge_label: Label
+var _turn_order: Array[int] = [HOST_PEER_ID]
+var _current_turn_peer_id: int = HOST_PEER_ID
 
 # Pinned selection (set when T is pressed)
 var _pinned_cell: Vector2i = Vector2i(-1, -1)
@@ -103,6 +126,8 @@ var _pinned_cell: Vector2i = Vector2i(-1, -1)
 
 func _ready() -> void:
 	add_to_group("strategy_game")
+	_parse_local_mp_args()
+	_bootstrap_local_mp_if_requested()
 	_camera                = $Camera2D
 	_terrain_layer         = $TerrainLayer
 	_highlight_layer       = $HighlightLayer
@@ -140,7 +165,7 @@ func _ready() -> void:
 			_prepare_multiplayer_match_state()
 			sync_multiplayer_state()
 		else:
-			request_multiplayer_state_sync.rpc_id(HOST_PEER_ID)
+			_request_initial_state_sync()
 
 	# Wire up creature panel
 	_wire_creature_panel()
@@ -156,10 +181,13 @@ func _ready() -> void:
 		if lbl:
 			lbl.add_theme_color_override("font_color", UiStyleScript.TEXT_SECONDARY)
 			lbl.add_theme_font_size_override("font_size", 12)
+	_setup_multiplayer_status_ui()
 
 	_setup_pause_menu()
 	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
+	if multiplayer.has_multiplayer_peer():
+		_attach_local_mp_hooks()
 
 	set_process_input(true)
 	set_process(true)
@@ -615,6 +643,8 @@ func _set_terrain_cell_visual(cell: Vector2i, terrain: String) -> void:
 # ---------------------------------------------------------------------------
 
 func _process(_delta: float) -> void:
+	_poll_local_mp_autotest_host()
+	_update_multiplayer_status_ui(_delta)
 	_update_chunks()
 
 	# Hover detection
@@ -815,6 +845,7 @@ func _wire_creature_panel() -> void:
 		"SidePanel/VBoxContainer/BottomTabs/CreatureStatsPanel")
 	var end_turn := _creature_panel_layer.get_node_or_null(
 		"SidePanel/VBoxContainer/ButtonRow/EndTurn") as Button
+	_end_turn_button = end_turn
 
 	# Name the tabs
 	if tabs:
@@ -824,7 +855,8 @@ func _wire_creature_panel() -> void:
 	if end_turn:
 		UiStyleScript.style_button(end_turn)
 		end_turn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		end_turn.pressed.connect(CreatureMovement.advance_turn)
+		if not end_turn.pressed.is_connected(_on_end_turn_pressed):
+			end_turn.pressed.connect(_on_end_turn_pressed)
 
 	if builder and bucket and stats:
 		builder.creature_confirmed.connect(
@@ -855,12 +887,318 @@ func _on_send_to_hex(creature_id: String) -> void:
 			CreatureMovement.place_creature_on_map(creature_id, c)
 			return
 
+func _setup_multiplayer_status_ui() -> void:
+	if _mp_status_panel != null:
+		return
+	var panel := PanelContainer.new()
+	_mp_status_panel = panel
+	panel.name = "MultiplayerStatusPanel"
+	panel.position = Vector2(12, 42)
+	panel.size = Vector2(1020, 108)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	UiStyleScript.style_panel(panel)
+	$UILayer.add_child(panel)
+
+	var panel_vbox := VBoxContainer.new()
+	panel_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(panel_vbox)
+
+	_local_identity_label = Label.new()
+	_local_identity_label.name = "LocalIdentityLabel"
+	_local_identity_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_local_identity_label.add_theme_font_size_override("font_size", 15)
+	panel_vbox.add_child(_local_identity_label)
+
+	_turn_indicator_label = Label.new()
+	_turn_indicator_label.name = "TurnIndicatorLabel"
+	_turn_indicator_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_turn_indicator_label.add_theme_font_size_override("font_size", 14)
+	panel_vbox.add_child(_turn_indicator_label)
+
+	_mp_presence_label = Label.new()
+	_mp_presence_label.name = "MultiplayerPresenceLabel"
+	_mp_presence_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_mp_presence_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mp_presence_label.add_theme_font_size_override("font_size", 12)
+	_mp_presence_label.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
+	panel_vbox.add_child(_mp_presence_label)
+
+	_setup_top_right_identity_badge()
+	_rebuild_turn_order_from_roster()
+	_update_multiplayer_status_ui(0.0, true)
+
+func _setup_top_right_identity_badge() -> void:
+	if _top_right_badge_panel != null:
+		return
+	_top_right_badge_panel = PanelContainer.new()
+	_top_right_badge_panel.name = "TopRightIdentityBadge"
+	_top_right_badge_panel.size = Vector2(220, 46)
+	_top_right_badge_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	UiStyleScript.style_panel(_top_right_badge_panel)
+	$UILayer.add_child(_top_right_badge_panel)
+
+	_top_right_badge_label = Label.new()
+	_top_right_badge_label.name = "TopRightIdentityBadgeLabel"
+	_top_right_badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_top_right_badge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_top_right_badge_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_top_right_badge_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_top_right_badge_label.add_theme_font_size_override("font_size", 16)
+	_top_right_badge_panel.add_child(_top_right_badge_label)
+
+func _update_multiplayer_status_ui(delta: float, force: bool = false) -> void:
+	if _mp_status_panel == null and _top_right_badge_panel == null:
+		return
+	var mode_text: String = "Offline"
+	var local_peer_id: int = 1
+	if multiplayer.has_multiplayer_peer() and multiplayer.multiplayer_peer != null:
+		local_peer_id = multiplayer.get_unique_id()
+		var is_host: bool = multiplayer.is_server()
+		mode_text = "Host" if is_host else "Client"
+	if _local_identity_label != null:
+		var identity_color: Color = _color_for_peer(local_peer_id)
+		_local_identity_label.text = "YOU: %s | Peer %d" % [mode_text, local_peer_id]
+		_local_identity_label.add_theme_color_override("font_color", identity_color)
+	if _top_right_badge_panel != null and _top_right_badge_label != null:
+		var vp_size: Vector2 = get_viewport_rect().size
+		_top_right_badge_panel.position = Vector2(vp_size.x - _top_right_badge_panel.size.x - 16.0, 12.0)
+		_top_right_badge_panel.modulate = _color_for_peer(local_peer_id).lerp(Color.WHITE, 0.55)
+		_top_right_badge_label.text = "%s | P%d" % [mode_text.to_upper(), local_peer_id]
+		_top_right_badge_label.add_theme_color_override("font_color", _color_for_peer(local_peer_id))
+	if _mp_presence_label != null:
+		_mp_presence_label.text = "Players: %s" % _build_presence_summary(local_peer_id)
+	if _turn_indicator_label != null:
+		var is_local_turn: bool = not multiplayer.has_multiplayer_peer() or local_peer_id == _current_turn_peer_id
+		_turn_indicator_label.text = "It's your turn (Peer %d)" % _current_turn_peer_id if is_local_turn else "Waiting for Peer %d..." % _current_turn_peer_id
+		_turn_indicator_label.add_theme_color_override("font_color", UiStyleScript.ACCENT_SOFT if is_local_turn else UiStyleScript.TEXT_SECONDARY)
+	_update_end_turn_button_state(local_peer_id)
+
+func _color_for_peer(peer_id: int) -> Color:
+	var hue: float = fposmod(float(peer_id) * 0.173, 1.0)
+	return Color.from_hsv(hue, 0.55, 1.0, 1.0)
+
+func _build_presence_summary(local_peer_id: int) -> String:
+	var players: Array[int] = _turn_order.duplicate()
+	if players.is_empty():
+		players = [HOST_PEER_ID]
+	var parts: PackedStringArray = PackedStringArray()
+	for peer_id in players:
+		var role_label: String = "You" if peer_id == local_peer_id else "Other Player"
+		var turn_marker: String = " [TURN]" if peer_id == _current_turn_peer_id else ""
+		parts.append("%s (Peer %d)%s" % [role_label, peer_id, turn_marker])
+	return " | ".join(parts)
+
+func _update_end_turn_button_state(local_peer_id: int) -> void:
+	if _end_turn_button == null:
+		return
+	var is_multiplayer: bool = multiplayer.has_multiplayer_peer()
+	var is_local_turn: bool = not is_multiplayer or local_peer_id == _current_turn_peer_id
+	_end_turn_button.disabled = is_multiplayer and not is_local_turn
+	if _end_turn_button.disabled:
+		_end_turn_button.tooltip_text = "Wait for your turn."
+	else:
+		_end_turn_button.tooltip_text = "End your turn."
+
+func _parse_local_mp_args() -> void:
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	if args.is_empty():
+		args = OS.get_cmdline_args()
+	for arg in args:
+		if arg.begins_with(_LOCAL_MP_ARG_MODE):
+			_local_mp_mode = arg.trim_prefix(_LOCAL_MP_ARG_MODE).strip_edges().to_lower()
+		elif arg.begins_with(_LOCAL_MP_ARG_PORT):
+			_local_mp_port = int(arg.trim_prefix(_LOCAL_MP_ARG_PORT))
+		elif arg.begins_with(_LOCAL_MP_ARG_HOST):
+			_local_mp_host = arg.trim_prefix(_LOCAL_MP_ARG_HOST).strip_edges()
+		elif arg == _LOCAL_MP_ARG_AUTOTEST:
+			_local_mp_autotest = true
+		elif arg == _LOCAL_MP_ARG_AUTOTEST_QUIT:
+			_local_mp_autotest_quit = true
+	if _local_mp_port <= 0:
+		_local_mp_port = _DEFAULT_LOCAL_MP_PORT
+	if _local_mp_host.is_empty():
+		_local_mp_host = _DEFAULT_LOCAL_MP_HOST
+	_local_mp_enabled = _local_mp_mode == "host" or _local_mp_mode == "client"
+
+func _bootstrap_local_mp_if_requested() -> void:
+	if not _local_mp_enabled:
+		return
+	var peer := ENetMultiplayerPeer.new()
+	if _local_mp_mode == "host":
+		var create_server_result: int = peer.create_server(_local_mp_port, 8)
+		if create_server_result != OK:
+			push_error("[LocalMP] Failed to create server: %d" % create_server_result)
+			_local_mp_enabled = false
+			return
+		multiplayer.multiplayer_peer = peer
+		print("[LocalMP] Host server listening on port %d" % _local_mp_port)
+		return
+	var create_client_result: int = peer.create_client(_local_mp_host, _local_mp_port)
+	if create_client_result != OK:
+		push_error("[LocalMP] Failed to create client: %d" % create_client_result)
+		_local_mp_enabled = false
+		return
+	multiplayer.multiplayer_peer = peer
+	print("[LocalMP] Client connecting to %s:%d" % [_local_mp_host, _local_mp_port])
+
+func _attach_local_mp_hooks() -> void:
+	if not multiplayer.has_multiplayer_peer():
+		return
+	if not multiplayer.peer_connected.is_connected(_on_local_mp_peer_connected):
+		multiplayer.peer_connected.connect(_on_local_mp_peer_connected)
+	if not multiplayer.peer_disconnected.is_connected(_on_local_mp_peer_disconnected):
+		multiplayer.peer_disconnected.connect(_on_local_mp_peer_disconnected)
+	if not multiplayer.connected_to_server.is_connected(_on_local_mp_connected_to_server):
+		multiplayer.connected_to_server.connect(_on_local_mp_connected_to_server)
+	if not multiplayer.connection_failed.is_connected(_on_local_mp_connection_failed):
+		multiplayer.connection_failed.connect(_on_local_mp_connection_failed)
+	if multiplayer.is_server():
+		_rebuild_turn_order_from_roster()
+		_broadcast_turn_state()
+	if _local_mp_mode == "host":
+		_emit_local_mp_host_success_if_ready()
+
+func _request_initial_state_sync() -> void:
+	if not multiplayer.has_multiplayer_peer():
+		return
+	var peer: MultiplayerPeer = multiplayer.multiplayer_peer
+	if peer == null:
+		return
+	if peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	request_multiplayer_state_sync.rpc_id(HOST_PEER_ID)
+
+func _on_local_mp_peer_connected(peer_id: int) -> void:
+	if _local_mp_enabled:
+		print("[LocalMP] Peer connected: %d" % peer_id)
+	if multiplayer.is_server():
+		_rebuild_turn_order_from_roster()
+		_broadcast_turn_state()
+		sync_multiplayer_state()
+		_emit_local_mp_host_success_if_ready()
+
+func _on_local_mp_peer_disconnected(peer_id: int) -> void:
+	if _local_mp_enabled:
+		print("[LocalMP] Peer disconnected: %d" % peer_id)
+	if multiplayer.is_server():
+		var disconnected_had_turn: bool = peer_id == _current_turn_peer_id
+		_rebuild_turn_order_from_roster()
+		if disconnected_had_turn and _turn_order.size() > 0:
+			_current_turn_peer_id = _turn_order[0]
+		_broadcast_turn_state()
+	else:
+		_rebuild_turn_order_from_roster()
+
+func _on_local_mp_connected_to_server() -> void:
+	if _local_mp_enabled:
+		print("[LocalMP] Client connected to server.")
+	_rebuild_turn_order_from_roster()
+	_request_initial_state_sync()
+	if _local_mp_enabled:
+		print("[LocalMP-Test] Client connected success=true")
+		if _local_mp_autotest_quit:
+			get_tree().quit(0)
+
+func _on_local_mp_connection_failed() -> void:
+	if _local_mp_enabled:
+		push_error("[LocalMP] Client failed to connect.")
+	if _local_mp_autotest_quit:
+		get_tree().quit(1)
+
+func _emit_local_mp_host_success_if_ready() -> void:
+	if not _local_mp_enabled or not multiplayer.has_multiplayer_peer():
+		return
+	if _local_mp_host_success_emitted:
+		return
+	var peer_count: int = multiplayer.get_peers().size()
+	if peer_count <= 0:
+		return
+	_local_mp_host_success_emitted = true
+	print("[LocalMP-Test] Host peer count=%d success=true" % peer_count)
+	if _local_mp_autotest_quit:
+		get_tree().quit(0)
+
+func _poll_local_mp_autotest_host() -> void:
+	if not _local_mp_enabled or _local_mp_mode != "host":
+		return
+	_emit_local_mp_host_success_if_ready()
+
 func _prepare_multiplayer_match_state() -> void:
 	# Match instances should not inherit persisted single-player placed units.
 	GameState.placed_creatures.clear()
 	GameState.dead_creatures.clear()
 	HexOccupancyValidator.clear_all()
 	CreatureMovement.reset_runtime_state()
+	_rebuild_turn_order_from_roster()
+	_current_turn_peer_id = _turn_order[0] if _turn_order.size() > 0 else HOST_PEER_ID
+
+func _rebuild_turn_order_from_roster() -> void:
+	var order: Array[int] = [HOST_PEER_ID]
+	if multiplayer.has_multiplayer_peer():
+		for peer_id in multiplayer.get_peers():
+			var parsed_peer_id: int = int(peer_id)
+			if parsed_peer_id == HOST_PEER_ID:
+				continue
+			order.append(parsed_peer_id)
+	order.sort()
+	_turn_order = order
+	if not _turn_order.has(_current_turn_peer_id):
+		_current_turn_peer_id = _turn_order[0]
+	_update_multiplayer_status_ui(0.0, true)
+
+func _advance_to_next_turn() -> void:
+	if _turn_order.is_empty():
+		_turn_order = [HOST_PEER_ID]
+	var idx: int = _turn_order.find(_current_turn_peer_id)
+	if idx < 0:
+		_current_turn_peer_id = _turn_order[0]
+		return
+	_current_turn_peer_id = _turn_order[(idx + 1) % _turn_order.size()]
+
+func is_peer_turn(peer_id: int) -> bool:
+	if not multiplayer.has_multiplayer_peer():
+		return true
+	return peer_id == _current_turn_peer_id
+
+func is_local_players_turn() -> bool:
+	var local_peer_id: int = multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else HOST_PEER_ID
+	return is_peer_turn(local_peer_id)
+
+func _on_end_turn_pressed() -> void:
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		request_end_turn.rpc_id(HOST_PEER_ID)
+		return
+	_apply_end_turn(HOST_PEER_ID)
+
+func _apply_end_turn(requesting_peer_id: int) -> void:
+	if multiplayer.has_multiplayer_peer() and requesting_peer_id != _current_turn_peer_id:
+		return
+	CreatureMovement.advance_turn()
+	_advance_to_next_turn()
+	_broadcast_turn_state()
+
+func _broadcast_turn_state() -> void:
+	if not multiplayer.has_multiplayer_peer() or not multiplayer.is_server():
+		_update_multiplayer_status_ui(0.0, true)
+		return
+	apply_turn_state.rpc(_current_turn_peer_id, _turn_order.duplicate())
+
+@rpc("any_peer", "call_local", "reliable")
+func request_end_turn() -> void:
+	if not multiplayer.is_server():
+		return
+	var sender_peer_id: int = multiplayer.get_remote_sender_id()
+	_apply_end_turn(sender_peer_id)
+
+@rpc("authority", "call_local", "reliable")
+func apply_turn_state(current_turn_peer_id: int, turn_order: Array) -> void:
+	_current_turn_peer_id = current_turn_peer_id
+	_turn_order.clear()
+	for peer_id in turn_order:
+		_turn_order.append(int(peer_id))
+	if _turn_order.is_empty():
+		_turn_order = [HOST_PEER_ID]
+	_update_multiplayer_status_ui(0.0, true)
 
 func sync_multiplayer_state() -> void:
 	if not multiplayer.has_multiplayer_peer() or not multiplayer.is_server():
@@ -869,6 +1207,7 @@ func sync_multiplayer_state() -> void:
 		_serialize_placed_creatures(),
 		_serialize_terrain_overrides()
 	)
+	_broadcast_turn_state()
 
 func broadcast_creature_placed_delta(creature_id: String) -> void:
 	if not multiplayer.has_multiplayer_peer() or not multiplayer.is_server():

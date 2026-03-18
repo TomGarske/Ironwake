@@ -32,6 +32,29 @@ Expected contract:
 - Runtime consumers can enumerate terrain definitions.
 - Registry emits update notifications when definitions change.
 
+### 4) Multiplayer Turn + Presence HUD
+
+Defines who acts now and provides visible peer presence in strategy mode.
+
+Expected contract:
+
+- Turn state is host-authoritative.
+- Turn roster includes host peer id plus connected peer ids in stable sorted order.
+- The active turn peer id must always exist in the roster; if a peer disconnects, host reassigns to the next valid peer.
+- Client gameplay actions that mutate strategic state are rejected when the sender is not the active turn peer.
+- HUD displays:
+  - local peer role (`You`),
+  - at least one remote peer as `Other Player` when connected,
+  - explicit active-turn marker (`[TURN]`),
+  - a local-turn indicator (`It's your turn` vs waiting text).
+
+Network payload contract:
+
+- `apply_turn_state(current_turn_peer_id: int, turn_order: Array[int])`
+  - `current_turn_peer_id`: active peer id for this turn.
+  - `turn_order`: host-computed ordered roster of active peer ids.
+  - delivery: reliable, authority -> all peers.
+
 ## Data Contract Requirements
 
 When changing strategy data structures, document:
