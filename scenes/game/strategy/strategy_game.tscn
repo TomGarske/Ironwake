@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://strategy_game_v1"]
+[gd_scene load_steps=9 format=3 uid="uid://strategy_game_v1"]
 
 [ext_resource type="Script" path="res://scripts/strategy_game.gd" id="1_sgame"]
 [ext_resource type="PackedScene" path="res://scenes/ui/terrain_creator.tscn" id="2_tcreat"]
@@ -7,6 +7,20 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/creature_builder.tscn" id="4_cbuilder"]
 [ext_resource type="PackedScene" path="res://scenes/ui/character_bucket.tscn" id="5_cbucket"]
 [ext_resource type="PackedScene" path="res://scenes/ui/creature_stats_panel.tscn" id="6_cstats"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pause_panel"]
+bg_color = Color(0.14, 0.11, 0.09, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.48, 0.35, 0.22, 0.84)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 18
 
 [node name="StrategyGame" type="Node2D"]
 script = ExtResource("1_sgame")
@@ -51,6 +65,70 @@ offset_top = 4.0
 offset_right = -8.0
 offset_bottom = -4.0
 text = "LMB: Select/Move Creature  |  MMB+Drag: Pan  |  Scroll: Zoom  |  T: Terrain Editor  |  C: Creature Panel  |  F: Toggle Fog  |  End Turn: Advance Round"
+
+[node name="PauseBackdrop" type="ColorRect" parent="UILayer"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.02, 0.02, 0.02, 0.52)
+
+[node name="PauseMenuPanel" type="PanelContainer" parent="UILayer"]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -120.0
+offset_right = 150.0
+offset_bottom = 120.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_pause_panel")
+
+[node name="PauseMenuMargin" type="MarginContainer" parent="UILayer/PauseMenuPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="PauseMenuVBox" type="VBoxContainer" parent="UILayer/PauseMenuPanel/PauseMenuMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PauseMenuTitle" type="Label" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
+theme_override_font_sizes/font_size = 22
+text = "Pause Menu"
+horizontal_alignment = 1
+
+[node name="PauseResumeButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+text = "Resume"
+
+[node name="PauseMusicButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+text = "Music: On"
+
+[node name="PauseQuitButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+text = "Quit Match"
+
+[node name="QuitConfirmDialog" type="ConfirmationDialog" parent="UILayer"]
+title = "Leave Match?"
+initial_position = 1
+ok_button_text = "Yes, bail out"
+dialog_text = "You are giving up already?
+The bridge is still burning.
+
+Quit the match anyway?"
 
 [node name="TerrainCreatorLayer" type="CanvasLayer" parent="."]
 layer = 129
