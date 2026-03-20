@@ -1,5 +1,5 @@
 # BurnBridgers — Windows addon setup
-# Downloads and installs GDExtension plugins (GodotSteam, LimboAI, Ziva).
+# Downloads and installs GDExtension plugins (GodotSteam, LimboAI).
 # Requires: PowerShell 5.1+, 7-Zip or Windows tar with xz support (for GodotSteam)
 
 param(
@@ -215,41 +215,6 @@ if ($installLimbo) {
         if (Test-Path $LimboTmp) { Remove-Item $LimboTmp -Force }
     }
 }
-
-# ── Ziva Agent GDExtension ───────────────────────────────────────────
-$ZivaDir = Get-AddonDir "ziva_agent"
-if (-not $ZivaDir) {
-    $ZivaDir = Join-Path $ScriptDir "addons\ziva_agent"
-    Write-Host "ziva_agent was not pre-registered; using default path: $ZivaDir"
-}
-
-$ZivaLibX64 = Join-Path $ZivaDir "bin\windows_x86_64\libziva_agent.windows.release.x86_64.dll"
-$ZivaLibArm64 = Join-Path $ZivaDir "bin\windows_arm64\libziva_agent.windows.release.arm64.dll"
-$hasZivaBinary = (Test-Path $ZivaLibX64) -or (Test-Path $ZivaLibArm64)
-$installZiva = $true
-
-if ($hasZivaBinary) {
-    Write-Host "Ziva Agent already installed at $ZivaDir"
-    if (-not (Should-Reinstall "Ziva Agent")) {
-        Write-Host "Skipped Ziva Agent."
-        $installZiva = $false
-    }
-} elseif ((Test-Path $ZivaDir -PathType Container) -and $Force) {
-    Remove-Item -Recurse -Force $ZivaDir
-}
-
-if ($installZiva) {
-    Write-Host "Installing Ziva Agent via official installer..."
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    irm https://ziva.sh/install.ps1 | iex
-    $hasZivaBinary = (Test-Path $ZivaLibX64) -or (Test-Path $ZivaLibArm64)
-    if (-not $hasZivaBinary) {
-        Write-Error "Ziva install completed, but Windows binary was not found under $ZivaDir\bin."
-        exit 1
-    }
-    Write-Host "Ziva Agent installed successfully."
-}
-Ensure-ExtensionEntry "res://addons/ziva_agent/ziva_agent.gdextension"
 
 Write-Host ""
 Write-Host "Setup complete. Open the project in Godot to verify."

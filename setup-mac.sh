@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # BurnBridgers — macOS addon setup
-# Downloads and installs GDExtension plugins (GodotSteam, LimboAI, Ziva).
+# Downloads and installs GDExtension plugins (GodotSteam, LimboAI).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FORCE=0
@@ -159,37 +159,6 @@ if [[ ! -d "$LIMBOAI_DIR" ]]; then
 
     echo "LimboAI v${LIMBOAI_VERSION} installed successfully."
 fi
-
-# ── Ziva Agent GDExtension ───────────────────────────────────────────
-ZIVA_DIR="$(addon_dir "ziva_agent")"
-if [[ -z "$ZIVA_DIR" ]]; then
-    ZIVA_DIR="$SCRIPT_DIR/addons/ziva_agent"
-    echo "ziva_agent was not pre-registered; using default path: $ZIVA_DIR"
-fi
-
-ZIVA_BINARY="$ZIVA_DIR/bin/macos/libziva_agent.macos.release.framework"
-if [[ -d "$ZIVA_BINARY" ]]; then
-    echo "Ziva Agent already installed at $ZIVA_DIR"
-    if ! should_reinstall "Ziva Agent"; then
-        echo "Skipped Ziva Agent."
-    else
-        rm -rf "$ZIVA_DIR"
-    fi
-fi
-
-if [[ ! -d "$ZIVA_BINARY" ]]; then
-    echo "Installing Ziva Agent via official installer..."
-    (
-        cd "$SCRIPT_DIR"
-        curl -fsSL https://ziva.sh/install.sh | bash
-    )
-    if [[ ! -d "$ZIVA_BINARY" ]]; then
-        echo "ERROR: Ziva install completed, but macOS framework was not found under $ZIVA_DIR/bin."
-        exit 1
-    fi
-    echo "Ziva Agent installed successfully."
-fi
-ensure_extension_entry "res://addons/ziva_agent/ziva_agent.gdextension"
 
 echo ""
 echo "Setup complete. Open the project in Godot to verify."

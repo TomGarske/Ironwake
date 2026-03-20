@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # BurnBridgers — SteamOS / Linux addon setup
-# Downloads and installs GDExtension plugins (GodotSteam, LimboAI, Ziva).
+# Downloads and installs GDExtension plugins (GodotSteam, LimboAI).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FORCE=0
@@ -167,43 +167,6 @@ if [[ ! -d "$LIMBOAI_DIR" ]]; then
 
     echo "LimboAI v${LIMBOAI_VERSION} installed successfully."
 fi
-
-# ── Ziva Agent GDExtension ───────────────────────────────────────────
-ZIVA_DIR="$(addon_dir "ziva_agent")"
-if [[ -z "$ZIVA_DIR" ]]; then
-    ZIVA_DIR="$SCRIPT_DIR/addons/ziva_agent"
-    echo "ziva_agent was not pre-registered; using default path: $ZIVA_DIR"
-fi
-
-ZIVA_ARCH="$(uname -m)"
-if [[ "$ZIVA_ARCH" == "aarch64" || "$ZIVA_ARCH" == "arm64" ]]; then
-    ZIVA_BINARY="$ZIVA_DIR/bin/linux_arm64/libziva_agent.linux.release.arm64.so"
-else
-    ZIVA_BINARY="$ZIVA_DIR/bin/linux_x86_64/libziva_agent.linux.release.x86_64.so"
-fi
-
-if [[ -f "$ZIVA_BINARY" ]]; then
-    echo "Ziva Agent already installed at $ZIVA_DIR"
-    if ! should_reinstall "Ziva Agent"; then
-        echo "Skipped Ziva Agent."
-    else
-        rm -rf "$ZIVA_DIR"
-    fi
-fi
-
-if [[ ! -f "$ZIVA_BINARY" ]]; then
-    echo "Installing Ziva Agent via official installer..."
-    (
-        cd "$SCRIPT_DIR"
-        curl -fsSL https://ziva.sh/install.sh | bash
-    )
-    if [[ ! -f "$ZIVA_BINARY" ]]; then
-        echo "ERROR: Ziva install completed, but Linux library was not found under $ZIVA_DIR/bin."
-        exit 1
-    fi
-    echo "Ziva Agent installed successfully."
-fi
-ensure_extension_entry "res://addons/ziva_agent/ziva_agent.gdextension"
 
 echo ""
 echo "Setup complete. Open the project in Godot to verify."
