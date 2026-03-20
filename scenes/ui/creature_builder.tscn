@@ -1,6 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://creature_builder_v1"]
-
-[ext_resource type="Script" path="res://scripts/ui/creature_builder.gd" id="1_cbuilder"]
-
-[node name="CreatureBuilder" type="VBoxContainer"]
-script = ExtResource("1_cbuilder")

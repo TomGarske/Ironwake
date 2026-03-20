@@ -1,7 +1,7 @@
 # Blacksite Containment
 
 ## Subtitle
-Blacksite Border Patrol
+Blacksite Containment
 
 ## Game Type
 Drone defense action (PVE)
@@ -13,7 +13,7 @@ Drone defense action (PVE)
 Patrol containment lanes and destroy anything attempting to escape the blacksite perimeter.
 
 ## Core Concept
-Players control floating security drones assigned to Blacksite Border Patrol. Intercept hostile escapees and maintain containment using aggressive mobility and layered weapons.
+Players control floating security drones assigned to Blacksite Containment operations. Intercept hostile escapees and maintain containment using aggressive mobility and layered weapons.
 
 ## Current Loadout
 1. Directional charge laser (aim in any direction; hold for 1 second before firing)

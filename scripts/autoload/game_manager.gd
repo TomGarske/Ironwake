@@ -6,12 +6,8 @@ extends Node
 # GAME_OVER is set when the match ends (currently only win/draw is handled via TurnManager signal).
 # TODO: assign GAME_OVER in _on_match_over handler once end-match UI flow is implemented.
 enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
-const MATCH_SCENE_PATH: String = "res://scenes/game/iso_arena.tscn"
+const MATCH_SCENE_PATH: String = "res://scenes/game/blacksite/blacksite_containment_arena.tscn"
 const BLACKSITE_CONTAINMENT_SCENE_PATH: String = "res://scenes/game/blacksite/blacksite_containment_arena.tscn"
-const CHIMERA_SCENE_PATH: String = "res://scenes/game/chrimera/chrimera_landing.tscn"
-const REPLICANTS_SCENE_PATH: String = "res://scenes/game/replicants/replicants_landing.tscn"
-const BLACKSITE_BREAKOUT_SCENE_PATH: String = "res://scenes/game/area51/blacksite_breakout_landing.tscn"
-const STRATEGY_SCENE_PATH: String = "res://scenes/game/strategy/strategy_game.tscn"
 const HOME_SCREEN_SCENE_PATH: String = "res://scenes/screens/home_screen.tscn"
 const LOBBY_SCENE_PATH: String = "res://scenes/screens/lobby.tscn"
 const DEFAULT_GAME_MODE_ID: String = "blacksite_containment"
@@ -22,55 +18,15 @@ const DEFAULT_MUSIC_PROFILE: Dictionary = {
 }
 const MODE_MUSIC_PROFILES: Dictionary = {
 	"blacksite_containment": {"intensity": 1.05, "speed": 0.95, "tone": 0.96},
-	"chrimera": {"intensity": 1.20, "speed": 1.15, "tone": 1.08},
-	"replicants": {"intensity": 0.92, "speed": 0.88, "tone": 0.90},
-	"blacksite_breakout": {"intensity": 1.30, "speed": 1.12, "tone": 1.15},
-	"strategy": {"intensity": 0.95, "speed": 0.90, "tone": 0.93},
 }
 const GAME_MODES: Array[Dictionary] = [
 	{
 		"id": "blacksite_containment",
 		"label": "Blacksite Containment",
-		"subtitle": "Blacksite Border Patrol",
+		"subtitle": "Blacksite Containment",
 		"badge": "[CONTAIN]",
 		"scene_path": BLACKSITE_CONTAINMENT_SCENE_PATH,
 		"description": "Pilot floating containment drones with a directional charge laser, orbital strikes, burst speed, and framerate control to intercept escapees.",
-		"enabled": true,
-	},
-	{
-		"id": "chrimera",
-		"label": "Chrimera",
-		"subtitle": "Bioforge Run",
-		"badge": "[BIO]",
-		"scene_path": CHIMERA_SCENE_PATH,
-		"description": "Side-scroller roguelike escape through underground Area 51 floors overrun by CRISPR mutants.",
-		"enabled": true,
-	},
-	{
-		"id": "replicants",
-		"label": "Replicants",
-		"subtitle": "Swarm Command",
-		"badge": "[SWARM]",
-		"scene_path": REPLICANTS_SCENE_PATH,
-		"description": "RTS-style replication command mode focused on harvesting metal and expanding machine swarms.",
-		"enabled": true,
-	},
-	{
-		"id": "blacksite_breakout",
-		"label": "Blacksite Breakout",
-		"subtitle": "Escape from Area 51",
-		"badge": "[BREACH]",
-		"scene_path": BLACKSITE_BREAKOUT_SCENE_PATH,
-		"description": "Fallout 2-style tactical PVE breakout with fog of war and procedurally generated sectors.",
-		"enabled": true,
-	},
-	{
-		"id": "strategy",
-		"label": "Strategy",
-		"subtitle": "Hex Theater",
-		"badge": "[HEX]",
-		"scene_path": STRATEGY_SCENE_PATH,
-		"description": "Hex-based strategy sandbox focused on terrain control, planning, and tactical map decisions.",
 		"enabled": true,
 	},
 ]

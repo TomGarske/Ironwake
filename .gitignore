@@ -41,3 +41,6 @@ desktop.ini
 /steam_api64.dll
 /libgodotsteam.windows.*.dll
 /liblimboai.windows.*.dll
+/assets/blacksite/audio
+/assets/blacksite/models
+/assets/blacksite/ui

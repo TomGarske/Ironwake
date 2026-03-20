@@ -8,8 +8,6 @@ const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 @onready var confirm_join_button: Button = $RightLobbyPanel/VBoxContainer/ConfirmJoinButton
 @onready var host_button: Button = $LeftMenuPanel/VBoxContainer/HostButton
 @onready var test_button: Button = $LeftMenuPanel/VBoxContainer/TestButton
-@onready var globe_button: Button = $LeftMenuPanel/VBoxContainer/GlobeButton
-@onready var strategy_button: Button = $LeftMenuPanel/VBoxContainer/StrategyButton
 @onready var settings_button: Button = $LeftMenuPanel/VBoxContainer/SettingsButton
 @onready var exit_button: Button = $LeftMenuPanel/VBoxContainer/ExitButton
 @onready var lobby_list_title: Label = $RightLobbyPanel/VBoxContainer/PublicLobbiesTitle
@@ -74,8 +72,6 @@ func _process(_delta: float) -> void:
 func _apply_warm_tactical_theme() -> void:
 	UiStyleScript.style_button(host_button)
 	UiStyleScript.style_button(test_button)
-	UiStyleScript.style_button(globe_button)
-	UiStyleScript.style_button(strategy_button)
 	UiStyleScript.style_button(settings_button)
 	UiStyleScript.style_button(exit_button)
 	UiStyleScript.style_button(confirm_join_button)
@@ -113,8 +109,6 @@ func _get_runtime_commit_hash() -> String:
 func _setup_menu_navigation() -> void:
 	host_button.focus_mode = Control.FOCUS_ALL
 	test_button.focus_mode = Control.FOCUS_ALL
-	globe_button.focus_mode = Control.FOCUS_ALL
-	strategy_button.focus_mode = Control.FOCUS_ALL
 	settings_button.focus_mode = Control.FOCUS_ALL
 	exit_button.focus_mode = Control.FOCUS_ALL
 	confirm_join_button.focus_mode = Control.FOCUS_ALL
@@ -123,19 +117,15 @@ func _setup_menu_navigation() -> void:
 	music_toggle.focus_mode = Control.FOCUS_ALL
 	host_button.focus_neighbor_bottom = host_button.get_path_to(test_button)
 	test_button.focus_neighbor_top = test_button.get_path_to(host_button)
-	test_button.focus_neighbor_bottom = test_button.get_path_to(globe_button)
-	globe_button.focus_neighbor_top = globe_button.get_path_to(test_button)
-	globe_button.focus_neighbor_bottom = globe_button.get_path_to(strategy_button)
-	strategy_button.focus_neighbor_top = strategy_button.get_path_to(globe_button)
-	strategy_button.focus_neighbor_bottom = strategy_button.get_path_to(settings_button)
-	settings_button.focus_neighbor_top = settings_button.get_path_to(strategy_button)
+	test_button.focus_neighbor_bottom = test_button.get_path_to(settings_button)
+	settings_button.focus_neighbor_top = settings_button.get_path_to(test_button)
 	settings_button.focus_neighbor_bottom = settings_button.get_path_to(exit_button)
 	exit_button.focus_neighbor_top = exit_button.get_path_to(settings_button)
 	exit_button.focus_neighbor_bottom = exit_button.get_path_to(host_button)
 	_refresh_menu_selection()
 
 func _get_enabled_menu_buttons() -> Array[Button]:
-	var ordered: Array[Button] = [host_button, test_button, globe_button, strategy_button, settings_button, exit_button]
+	var ordered: Array[Button] = [host_button, test_button, settings_button, exit_button]
 	var enabled: Array[Button] = []
 	for button in ordered:
 		if button != null and button.visible and not button.disabled:
@@ -312,12 +302,6 @@ func _on_test_button_pressed() -> void:
 	var mode: Dictionary = GameManager.get_selected_game_mode()
 	var test_scene_path: String = str(mode.get("scene_path", GameManager.MATCH_SCENE_PATH))
 	get_tree().change_scene_to_file(test_scene_path)
-
-func _on_globe_button_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/globe/globe_arena.tscn")
-
-func _on_strategy_button_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/game/strategy/strategy_game.tscn")
 
 func _on_exit_button_pressed() -> void:
 	quit_confirm_dialog.title = "Exit FireTeam MNG"

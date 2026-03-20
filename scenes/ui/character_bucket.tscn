@@ -1,7 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://character_bucket_v1"]
-
-[ext_resource type="Script" path="res://scripts/ui/character_bucket.gd" id="1_cbucket"]
-
-[node name="CharacterBucket" type="ScrollContainer"]
-script = ExtResource("1_cbucket")
-size_flags_vertical = 3

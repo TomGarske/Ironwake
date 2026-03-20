@@ -24,12 +24,6 @@ DebugOverlay="*res://scripts/autoload/debug_overlay.gd"
 SteamManager="*res://scripts/autoload/steam_manager.gd"
 GameManager="*res://scripts/autoload/game_manager.gd"
 MusicManager="*res://addons/procedural_music/music_manager.gd"
-GameState="*res://scripts/autoload/game_state.gd"
-TerrainDefinitions="*res://scripts/autoload/terrain_definitions.gd"
-PointCostConstants="*res://scripts/autoload/point_cost_constants.gd"
-TerrainMovementRules="*res://scripts/autoload/terrain_movement_rules.gd"
-HexOccupancyValidator="*res://scripts/autoload/hex_occupancy_validator.gd"
-CreatureMovement="*res://scripts/autoload/creature_movement.gd"
 
 [display]
 
@@ -37,6 +31,10 @@ window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
 
 [rendering]
 
