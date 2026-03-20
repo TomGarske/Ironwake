@@ -3,7 +3,7 @@
 
 ## Escapee Types
 
-All escapees share a base EscapeeEntity class but differ in stats and behavior. Each type has a LimboAI behavior tree defining its decision logic.
+All escapees share a base EscapeeEntity class but differ in stats and behavior. Each type has a behavior tree defining its decision logic.
 
 ### Type 1: Basic Runner
 
@@ -21,7 +21,7 @@ All escapees share a base EscapeeEntity class but differ in stats and behavior. 
 - If damaged, no behavioral change (continues toward breach).
 - Despawns on death (no loot, no persistent effect).
 
-**LimboAI Tree**:
+**Behavior Tree**:
 ```
 Root (Composite/Selector)
 ├── [Condition] IsAlive?
@@ -88,7 +88,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 ```
 
-**LimboAI Tree**:
+**Behavior Tree**:
 ```
 Root (Selector)
 ├── [Condition] IsThreatened?
@@ -123,7 +123,7 @@ Root (Selector)
 **Variant Armor**:
 - Optional: 30% laser resistance (takes 70% damage from charge laser, 100% from orbital).
 
-**LimboAI Tree**:
+**Behavior Tree**:
 ```
 Root (Selector)
 ├── [Condition] IsAlive?
@@ -168,7 +168,7 @@ func apply_flocking() -> void:
 	velocity += steering * Time.get_physics_process_delta_time()
 ```
 
-**LimboAI Tree**:
+**Behavior Tree**:
 ```
 Root (Selector)
 ├── [Condition] IsAlive?
@@ -204,7 +204,7 @@ Root (Selector)
 
 **Spawn Rate**: 5–10% chance per wave (tunable by `elite_chance` in wave config).
 
-**LimboAI Tree** (Assault Elite example):
+**Behavior Tree** (Assault Elite example):
 ```
 Root (Selector)
 ├── [Condition] IsAlive?
@@ -395,8 +395,8 @@ func spawn_escapee(escapee_type: String, wave_index: int, player_count: int) -> 
 ---
 
 **Implementation Notes:**
-- Use LimboAI for all behavior trees; no hand-rolled FSMs.
+- Use a shared behavior-tree framework for all AI entities; no hand-rolled FSMs.
 - Escapee type and stats are data-driven (JSON or Godot resources); avoid hardcoding.
-- Store LimboAI tree files in `res://assets/ai/escapees/` for organization.
+- Store behavior tree files in `res://assets/ai/escapees/` for organization.
 - Test each type solo, then in mixed waves.
 - Profiling: ensure spawning 50+ escapees doesn't tank frame rate; use object pooling if necessary (defer to optimization phase).

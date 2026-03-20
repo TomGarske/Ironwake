@@ -37,7 +37,7 @@
 - Max Health (int: baseline value before multipliers).
 - Speed (float: m/s, varies by type and difficulty).
 - Position (global_position: Vector3).
-- Behavior Tree (LimboAI root node).
+- Behavior Tree (root node).
 - Damage Sources (array of drone IDs that have dealt damage; used for scoring).
 
 **Behaviors** (vary by type):

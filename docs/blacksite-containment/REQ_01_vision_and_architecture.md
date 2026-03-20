@@ -70,7 +70,7 @@ blacksite_containment_arena (Node3D)
 │   │   ├── CollisionShape3D
 │   │   ├── MeshInstance3D
 │   │   ├── NavigationAgent3D
-│   │   ├── LimboAI BehaviorTree root
+│   │   ├── BehaviorTree root
 │   │   └── HealthComponent (script)
 │   └── EscapeeManager (script - spawning, wave logic)
 ├── GameManager (singleton reference)
@@ -94,7 +94,7 @@ blacksite_containment_arena (Node3D)
 
 ### EscapeeEntity (CharacterBody3D)
 - **Navigation**: NavigationAgent3D toward perimeter breach point
-- **Behavior**: LimboAI-driven state machine (SPAWNED → PATHING → ALERT → EVADING → BREACH_ATTEMPT)
+- **Behavior**: behavior-tree-driven state machine (SPAWNED → PATHING → ALERT → EVADING → BREACH_ATTEMPT)
 - **Health**: Takes damage from laser and orbital strikes; destruction triggers event
 - **Type System**: Inherits from base EscapeeEntity; subclasses define stats and behavior tweaks
 

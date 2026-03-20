@@ -11,9 +11,6 @@ export_presets.cfg
 # GodotSteam GDExtension binaries — installed via setup scripts
 addons/godotsteam/
 
-# LimboAI GDExtension binaries — installed via setup scripts
-addons/limboai/
-
 # Local debug log output from run.ps1 -Mode debug
 logs/
 
@@ -37,7 +34,6 @@ desktop.ini
 /FireTeam MNG.pck
 /steam_api64.dll
 /libgodotsteam.windows.*.dll
-/liblimboai.windows.*.dll
 /assets/blacksite/audio
 /assets/blacksite/models
 /assets/blacksite/ui
