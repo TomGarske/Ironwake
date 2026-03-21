@@ -1,9 +1,9 @@
 # REQ_01: Vision and Architecture
-**Blacksite Containment: Blacksite Border Patrol**
+**Blacksite Containment**
 
 ## Game Identity
 
-Blacksite Containment is a cooperative, multiplayer drone defense action game set at a high-security sci-fi containment facility. Players pilot advanced hovering security drones assigned to border patrol duty, working together to intercept and eliminate escapees before they breach the perimeter. The game combines fast-paced aerial combat with strategic positioning and resource management, rewarding teamwork and split-second decision-making. Designed for 1–8 players in seamless cooperative multiplayer, Blacksite Containment emphasizes responsive controls, clarity of threat, and shared responsibility for facility security.
+Blacksite Containment is a cooperative, multiplayer drone defense action game set at a high-security sci-fi containment facility. Players pilot advanced hovering security drones assigned to containment duty, working together to intercept and eliminate escapees before they breach the perimeter. The game combines fast-paced aerial combat with strategic positioning and resource management, rewarding teamwork and split-second decision-making. Designed for 1–8 players in seamless cooperative multiplayer, Blacksite Containment emphasizes responsive controls, clarity of threat, and shared responsibility for facility security.
 
 ## Design Pillars
 
@@ -70,7 +70,7 @@ blacksite_containment_arena (Node3D)
 │   │   ├── CollisionShape3D
 │   │   ├── MeshInstance3D
 │   │   ├── NavigationAgent3D
-│   │   ├── LimboAI BehaviorTree root
+│   │   ├── BehaviorTree root
 │   │   └── HealthComponent (script)
 │   └── EscapeeManager (script - spawning, wave logic)
 ├── GameManager (singleton reference)
@@ -94,7 +94,7 @@ blacksite_containment_arena (Node3D)
 
 ### EscapeeEntity (CharacterBody3D)
 - **Navigation**: NavigationAgent3D toward perimeter breach point
-- **Behavior**: LimboAI-driven state machine (SPAWNED → PATHING → ALERT → EVADING → BREACH_ATTEMPT)
+- **Behavior**: behavior-tree-driven state machine (SPAWNED → PATHING → ALERT → EVADING → BREACH_ATTEMPT)
 - **Health**: Takes damage from laser and orbital strikes; destruction triggers event
 - **Type System**: Inherits from base EscapeeEntity; subclasses define stats and behavior tweaks
 

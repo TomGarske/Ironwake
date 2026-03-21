@@ -13,8 +13,12 @@ signal chord_changed(chord_name: String)
 
 const SAMPLE_RATE   := 22050   # Lower rate is fine — we're generating musical tones
 const BPM           := 120.0
-const SIXTEENTH     := 60.0 / BPM / 4.0   # 0.125s
-const BEAT          := SIXTEENTH * 4.0
+const BASE_SIXTEENTH := 60.0 / BPM / 4.0   # 0.125s
+const BASE_BEAT      := BASE_SIXTEENTH * 4.0
+const MIN_INTENSITY  := 0.2
+const MAX_INTENSITY  := 2.0
+const MIN_SPEED      := 0.3
+const MAX_SPEED      := 1.3
 
 # G natural minor frequencies
 const FREQ = {
@@ -62,10 +66,14 @@ var _playing       := false
 var _phase_idx     := 0
 var _phase_time    := 0.0
 var _song_time     := 0.0
-var _step          := 0        # sixteenth note counter
+var _step          := 0        # arp sixteenth note counter
+var _groove_step   := 0        # drum/chord sixteenth note counter
 var _beat_count    := 0
 var _piano_seq_idx := 0
 var _master_vol    := 0.6
+var _intensity     := 1.0
+var _speed         := 1.0
+var _tone          := 1.0
 
 # Per-oscillator phases (for continuous waveform generation)
 var _arp_phase     := 0.0
@@ -78,6 +86,7 @@ var _bass_freq     := FREQ["G2"]
 # Envelope state
 var _arp_env       := 0.0       # current arp amplitude
 var _thump_env     := 0.0       # thump decay envelope
+var _thump_attack  := 0.0       # thump attack ramp to avoid click transients
 var _thump_freq    := 80.0
 var _piano_env     := 0.0       # piano release envelope
 var _piano_freqs   := []        # current chord being played
@@ -89,6 +98,7 @@ var _playback: AudioStreamGeneratorPlayback
 # Next event times (in samples from _sample_pos)
 var _sample_pos        := 0     # absolute sample counter
 var _next_step_sample  := 0
+var _next_groove_sample := 0
 
 const PAD_FREQS = [196.00, 293.66, 98.00, 146.83]  # G3 D4 G2 D3
 const PAD_DETUNES = [0.0, 3.0, 0.0, -2.0]           # cents
@@ -115,6 +125,7 @@ func play() -> void:
 	_player.play()
 	_playback = _player.get_stream_playback()
 	_next_step_sample = 0
+	_next_groove_sample = 0
 
 func stop() -> void:
 	_playing = false
@@ -123,6 +134,15 @@ func stop() -> void:
 func set_volume(v: float) -> void:
 	_master_vol = clampf(v, 0.0, 1.0)
 	_player.volume_db = linear_to_db(_master_vol)
+
+func set_profile(intensity: float, speed: float, tone: float) -> void:
+	var previous_speed: float = _speed
+	var previous_interval_samples: int = _samples_per_sixteenth_for_speed(previous_speed)
+	_intensity = clampf(intensity, MIN_INTENSITY, MAX_INTENSITY)
+	_speed = clampf(speed, MIN_SPEED, MAX_SPEED)
+	_tone = 1.0
+	if _playing and not is_equal_approx(previous_speed, _speed):
+		_reschedule_timing_for_speed_change(previous_interval_samples, _samples_per_sixteenth_for_speed(_speed))
 
 func seek_to_phase(phase_id: String) -> void:
 	for i in PHASES.size():
@@ -148,22 +168,35 @@ func _fill_buffer() -> void:
 	var ph: Dictionary = PHASES[_phase_idx]
 	var lv: Dictionary = ph["lv"]
 	var dt := 1.0 / SAMPLE_RATE
+	var tone_pitch: float = 1.0
+	var intensity_norm: float = clampf((_intensity - MIN_INTENSITY) / (MAX_INTENSITY - MIN_INTENSITY), 0.0, 1.0)
+	var intensity_gain: float = clampf(0.55 + intensity_norm * 1.05, 0.55, 1.60)
+	var arp_mix_gain: float = lerpf(0.55, 1.50, intensity_norm)
+	var thump_mix_gain: float = lerpf(0.65, 1.45, intensity_norm)
+	var sub_mix_gain: float = lerpf(0.75, 1.25, intensity_norm)
+	var pad_mix_gain: float = lerpf(0.35, 1.75, intensity_norm)
+	var bass_mix_gain: float = lerpf(0.60, 1.45, intensity_norm)
+	var speed_scale: float = clampf(_speed, MIN_SPEED, MAX_SPEED)
+	var sixteenth_samples: int = _samples_per_sixteenth_for_speed(speed_scale)
 
 	for _i in frames:
 		# ── Trigger events on step boundaries ──
 		if _sample_pos >= _next_step_sample:
-			_trigger_step(lv, ph)
-			_next_step_sample = _sample_pos + int(SIXTEENTH * SAMPLE_RATE)
+			_trigger_arp_step()
+			_next_step_sample = _sample_pos + sixteenth_samples
+		if _sample_pos >= _next_groove_sample:
+			_trigger_groove_step(ph)
+			_next_groove_sample = _sample_pos + sixteenth_samples
 
 		# ── Advance per-oscillator phases ──
-		var arp_inc   = _arp_freq  / SAMPLE_RATE
-		var sub_inc   = FREQ["G1"] / SAMPLE_RATE
-		var bass_inc  = _bass_freq / SAMPLE_RATE
+		var arp_inc   = (_arp_freq * tone_pitch) / SAMPLE_RATE
+		var sub_inc   = (FREQ["G1"] * tone_pitch) / SAMPLE_RATE
+		var bass_inc  = (_bass_freq * tone_pitch) / SAMPLE_RATE
 		_arp_phase  = fmod(_arp_phase  + arp_inc,  1.0)
 		_sub_phase  = fmod(_sub_phase  + sub_inc,  1.0)
 		_bass_phase = fmod(_bass_phase + bass_inc, 1.0)
 		for j in 4:
-			var f = PAD_FREQS[j] * pow(2.0, PAD_DETUNES[j] / 1200.0)
+			var f = PAD_FREQS[j] * tone_pitch * pow(2.0, PAD_DETUNES[j] / 1200.0)
 			_pad_phases[j] = fmod(_pad_phases[j] + f / SAMPLE_RATE, 1.0)
 
 		# ── Generate sample ──
@@ -172,35 +205,38 @@ func _fill_buffer() -> void:
 		# Arp — triangle wave with velocity envelope
 		_arp_env *= 0.9985   # slow exponential decay between steps
 		if lv.get("arp", 0.0) > 0.01:
-			sample += _triangle(_arp_phase) * _arp_env * lv["arp"] * 0.38
+			sample += _triangle(_arp_phase) * _arp_env * lv["arp"] * 0.38 * intensity_gain * arp_mix_gain
 
 		# Thump — pitch-swept sine decay
 		if _thump_env > 0.001:
+			if _thump_attack > 0.0:
+				_thump_env = minf(_thump_env + 0.035, 1.0)
+				_thump_attack = maxf(_thump_attack - 0.035, 0.0)
 			_thump_freq = 140.0 * _thump_env + 55.0
-			sample += sin(_thump_phase * TAU) * _thump_env * lv.get("thump", 0.0) * 0.50
+			sample += sin(_thump_phase * TAU) * _thump_env * lv.get("thump", 0.0) * 0.50 * intensity_gain * thump_mix_gain
 			_thump_phase = fmod(_thump_phase + _thump_freq / SAMPLE_RATE, 1.0)
 			_thump_env *= 0.9965
 
 		# Piano chord — multi-partial sine decay
 		if _piano_env > 0.001 and _piano_freqs.size() > 0:
 			for freq in _piano_freqs:
-				sample += sin(freq * TAU * float(_sample_pos) / SAMPLE_RATE) * _piano_env * 0.18
+				sample += sin((freq * tone_pitch) * TAU * float(_sample_pos) / SAMPLE_RATE) * _piano_env * 0.18 * intensity_gain * pad_mix_gain
 			_piano_env *= 0.9988
 
 		# Sub bass — pure sine
 		if lv.get("sub", 0.0) > 0.01:
-			sample += sin(_sub_phase * TAU) * lv["sub"] * 0.15
+			sample += sin(_sub_phase * TAU) * lv["sub"] * 0.15 * intensity_gain * sub_mix_gain
 
 		# String pad — four sine voices detuned
 		if lv.get("pad", 0.0) > 0.01:
 			var pad_sum := 0.0
 			for j in 4:
 				pad_sum += sin(_pad_phases[j] * TAU) * 0.25
-			sample += pad_sum * lv["pad"] * 0.20
+			sample += pad_sum * lv["pad"] * 0.20 * intensity_gain * pad_mix_gain
 
 		# Bass — sine
 		if lv.get("bass", 0.0) > 0.01:
-			sample += sin(_bass_phase * TAU) * lv["bass"] * 0.22
+			sample += sin(_bass_phase * TAU) * lv["bass"] * 0.22 * intensity_gain * bass_mix_gain
 
 		# Push stereo frame
 		var s := clampf(sample, -1.0, 1.0)
@@ -208,27 +244,48 @@ func _fill_buffer() -> void:
 		_sample_pos += 1
 
 	# Advance phase time
-	_phase_time += float(frames) / SAMPLE_RATE
-	_song_time  += float(frames) / SAMPLE_RATE
+	var scaled_time_advance: float = (float(frames) / SAMPLE_RATE) * speed_scale
+	_phase_time += scaled_time_advance
+	_song_time  += scaled_time_advance
 	if _phase_time >= PHASES[_phase_idx]["duration"]:
 		_advance_phase()
+
+func _samples_per_sixteenth_for_speed(speed: float) -> int:
+	var speed_scale: float = clampf(speed, MIN_SPEED, MAX_SPEED)
+	return maxi(int(BASE_SIXTEENTH * SAMPLE_RATE / speed_scale), 1)
+
+func _reschedule_timing_for_speed_change(previous_interval: int, next_interval: int) -> void:
+	_next_step_sample = _reschedule_event_sample(_next_step_sample, previous_interval, next_interval)
+	_next_groove_sample = _reschedule_event_sample(_next_groove_sample, previous_interval, next_interval)
+
+func _reschedule_event_sample(current_target_sample: int, previous_interval: int, next_interval: int) -> int:
+	if previous_interval <= 0:
+		return _sample_pos + maxi(next_interval, 1)
+	var remaining_samples: int = maxi(current_target_sample - _sample_pos, 0)
+	var progress: float = clampf(1.0 - (float(remaining_samples) / float(previous_interval)), 0.0, 1.0)
+	var next_remaining: int = int(round((1.0 - progress) * float(maxi(next_interval, 1))))
+	return _sample_pos + maxi(next_remaining, 1)
 
 # Thump needs its own continuous phase counter
 var _thump_phase := 0.0
 
 # ── Step sequencer ────────────────────────────────────────────────────────────
 
-func _trigger_step(lv: Dictionary, ph: Dictionary) -> void:
+func _trigger_arp_step() -> void:
 	var idx = _step % 16
 
 	# Retrigger arp frequency and velocity envelope
 	_arp_freq = ARP_FREQS[idx]
 	_arp_env  = ARP_VELS[idx]
+	_step += 1
 
+func _trigger_groove_step(ph: Dictionary) -> void:
+	var idx = _groove_step % 16
 	# Thump every 2 beats (every 8 sixteenths: idx 0 and 8)
 	if idx == 0 or idx == 8:
-		_thump_env   = 1.0
-		_thump_phase = 0.0
+		# Use a tiny attack ramp to avoid audible click/skip artifacts.
+		_thump_env   = 0.0
+		_thump_attack = 1.0
 		_thump_freq  = 140.0
 
 		# Piano every bar (idx 0 only)
@@ -237,8 +294,7 @@ func _trigger_step(lv: Dictionary, ph: Dictionary) -> void:
 
 		# Bass root on beat
 		_bass_freq = FREQ.get("G2", 98.0)
-
-	_step += 1
+	_groove_step += 1
 
 func _trigger_piano(ph: Dictionary) -> void:
 	var seq: Array

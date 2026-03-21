@@ -1,0 +1,34 @@
+[gd_scene format=3 uid="uid://co5ekixxtll7p"]
+
+[ext_resource type="Script" path="res://scripts/game_modes/blacksite_containment_preview_3d.gd" id="1_preview"]
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
+background_color = Color(0.78, 0.84, 0.9, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.92, 0.9, 0.84, 1)
+ambient_light_energy = 0.65
+fog_enabled = true
+fog_light_color = Color(0.96, 0.86, 0.68, 1)
+fog_light_energy = 0.55
+fog_sun_scatter = 0.22
+fog_density = 0.0028
+
+[node name="BlacksiteContainmentPreview3D" type="Node3D"]
+script = ExtResource("1_preview")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.742404, -0.48584, 0.461988, 0, 0.689955, 0.723853, -0.669951, -0.537408, 0.512192, 0, 0, 0)
+light_energy = 1.85
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.707107, -0.5, 0.5, 0, 0.707107, 0.707107, -0.707107, -0.5, 0.5, 120, 110, 120)
+projection = 1
+size = 120.0
+far = 400.0
+
+[node name="Geometry" type="Node3D" parent="."]

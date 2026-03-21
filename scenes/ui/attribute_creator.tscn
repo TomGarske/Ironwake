@@ -1,7 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://attribute_creator_v1"]
-
-[ext_resource type="Script" path="res://scripts/ui/attribute_creator.gd" id="1_attrcreator"]
-
-[node name="AttributeCreator" type="PanelContainer"]
-script = ExtResource("1_attrcreator")
-visible = false

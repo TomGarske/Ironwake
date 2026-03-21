@@ -1,26 +1,19 @@
 # FireTeam MNG
 
-FireTeam MNG is a Godot 4 sci-fi multiplayer prototype with selectable mission profiles.  
-Every mode is currently **PVE** and supports **1 to max players**.
+FireTeam MNG is a Godot 4 sci-fi multiplayer prototype currently focused on **Blacksite Containment**.  
+Gameplay is currently **PVE** and supports **1 to max players**.
 
 The project uses [GodotSteam](https://godotsteam.com/) for Steam lobbies and peer-to-peer multiplayer. One player hosts and acts as authority for match start and mode selection.
 
-> **Status:** Active prototype. Core lobby + mode routing is implemented; gameplay systems are in-progress per mode.
+> **Status:** Active prototype. Core lobby + Blacksite routing are implemented; gameplay systems are in progress.
 
 ---
 
-## Current Game Modes
+## Current Game Mode
 
-- **Blacksite Containment** (`Blacksite Border Patrol`)  
+- **Blacksite Containment**  
   Floating drone defense mode with a directional charge laser, orbital strikes, burst speed, and framerate-control perception.
-- **Chrimera** (`Bioforge Run`)  
-  Side-scroller roguelike escape concept.
-- **Replicants** (`Swarm Command`)  
-  Strategy expansion and replication concept.
-- **Blacksite Breakout** (`Escape from Area 51`)  
-  Tactical escape concept with procedural map goals.
-
-Detailed concept docs live in `docs/game-info/`.
+Detailed mode docs live in `docs/blacksite-containment/`.
 
 ---
 
@@ -40,7 +33,7 @@ Short version:
 ## Play Flow
 
 - **Open Operations** on the home screen to host a Steam lobby.
-- In lobby, choose a **Mission Profile** (game mode).
+- In lobby, ready up for the **Blacksite Containment** mission.
 - All players ready up, then host launches mission.
 - **Solo Sim (Offline)** starts local testing without Steam.
 
@@ -52,8 +45,8 @@ Short version:
 |-------|--------|
 | Engine | Godot 4.x (GDScript) |
 | Multiplayer transport | GodotSteam GDExtension (`SteamMultiplayerPeer`) |
-| Session model | Host-controlled lobby + mode selection |
-| Audio | Procedural synth with mode-specific presets (`intensity`, `speed`, `tone`) |
+| Session model | Host-controlled lobby + Blacksite mission flow |
+| Audio | Procedural synth with Blacksite profile presets (`intensity`, `speed`, `tone`) |
 
 ---
 
@@ -62,7 +55,6 @@ Short version:
 - Main scene: `res://scenes/screens/home_screen.tscn`
 - Lobby scene: `res://scenes/screens/lobby.tscn`
 - Blacksite Containment scene: `res://scenes/game/blacksite/blacksite_containment_arena.tscn`
-- Legacy arena scene (untouched): `res://scenes/game/iso_arena.tscn`
 - Mode metadata and routing: `scripts/autoload/game_manager.gd`
 
 ---

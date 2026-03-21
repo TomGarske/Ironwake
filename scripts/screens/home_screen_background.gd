@@ -4,7 +4,7 @@ extends CanvasLayer
 # Scrolling rendered map background
 # ---------------------------------------------------------------------------
 
-const _SCROLL_SPEED: Vector2 = Vector2(34.0, 18.0)
+const _SCROLL_SPEED: Vector2 = Vector2(18.0, 10.0)
 
 var _time: float = 0.0
 var _map_offset: Vector2 = Vector2.ZERO

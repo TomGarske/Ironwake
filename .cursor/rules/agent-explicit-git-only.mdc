@@ -1,0 +1,18 @@
+---
+description: Never commit or push unless the user explicitly asks in this task
+alwaysApply: true
+---
+
+# Git — User-Explicit Only (Agents)
+
+Do **not** run **`git commit`**, **`git push`**, **`git push --force`**, or create/update remote branches on **origin** unless the user **explicitly** asks for that action in the current conversation (e.g. “commit and push”, “push this branch”, “open a PR and push”).
+
+## Allowed without an explicit push/commit request
+
+- Read-only git: `git status`, `git log`, `git diff`, `git show`, `git branch`, fetch, merge/rebase **locally** when the user asked to resolve conflicts or “prepare” a merge for review **without** publishing.
+
+## If publishing is needed to finish a task
+
+- Stop and **ask** the user to confirm commit message, branch name, and push — or give them the exact commands to run — unless they already said to push.
+
+This rule **overrides** generic “push your branch” wording in other docs when the agent is acting autonomously.

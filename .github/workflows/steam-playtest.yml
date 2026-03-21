@@ -35,7 +35,7 @@ jobs:
           try { godot --version } catch { Write-Host "godot command not in PATH" }
           try { godot4 --version } catch { Write-Host "godot4 command not in PATH" }
 
-      - name: Install GDExtensions (GodotSteam, LimboAI)
+      - name: Install GDExtensions (GodotSteam)
         shell: pwsh
         run: |
           ./tools/ci/setup-extensions.ps1 -ProjectRoot "$PWD"

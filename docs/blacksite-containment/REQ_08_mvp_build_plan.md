@@ -14,7 +14,7 @@ Prove that the core loop (patrol + charge laser + escapee destruction) is fun an
 - **Drone Movement**: Full 3D hover physics, smooth acceleration, omnidirectional input via controller.
 - **Charge Laser**: Hold-to-charge mechanism (1 second full charge), fire on release, damage output varies by charge level, overheat system with cooldown.
 - **Containment Arena**: One complete lane, perimeter breach zone, spawn points, navigation mesh.
-- **Escapee AI**: Basic Runner type only (direct path to breach, no evasion), LimboAI-driven pathfinding, health/destruction.
+- **Escapee AI**: Basic Runner type only (direct path to breach, no evasion), behavior-tree-driven pathfinding, health/destruction.
 - **Wave System**: 3 waves of increasing difficulty; wave spawning, tracking, progression to next wave.
 - **Mission States**: LOBBY → BRIEFING → PATROL → ALERT (optional, may simplify to direct breach detection) → BREACH_ATTEMPT → MISSION_COMPLETE / MISSION_FAILED → DEBRIEF.
 - **HUD (Minimal)**: Charge laser bar, energy meter, team status (player count), mission integrity meter, minimap (basic viewport), wave counter, kill count.
@@ -137,7 +137,7 @@ Prove that the core loop (patrol + charge laser + escapee destruction) is fun an
   - `destroy()` method (emit signal, queue_free).
 - [ ] Create EscapeeRunner subclass.
   - Base stats: health 50, speed 15 m/s, size 1.0.
-  - Simple LimboAI tree: move toward breach at constant speed.
+  - Simple behavior tree: move toward breach at constant speed.
 - [ ] Implement EscapeeManager (Node, spawner logic).
   - Spawn point marker definitions in arena.
   - Wave configuration (JSON or GDScript resource): Wave 1 (20 runners over 60s), Wave 2 (25 runners over 45s), Wave 3 (30 runners over 40s).

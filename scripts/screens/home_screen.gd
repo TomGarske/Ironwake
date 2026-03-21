@@ -8,8 +8,6 @@ const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 @onready var confirm_join_button: Button = $RightLobbyPanel/VBoxContainer/ConfirmJoinButton
 @onready var host_button: Button = $LeftMenuPanel/VBoxContainer/HostButton
 @onready var test_button: Button = $LeftMenuPanel/VBoxContainer/TestButton
-@onready var globe_button: Button = $LeftMenuPanel/VBoxContainer/GlobeButton
-@onready var strategy_button: Button = $LeftMenuPanel/VBoxContainer/StrategyButton
 @onready var settings_button: Button = $LeftMenuPanel/VBoxContainer/SettingsButton
 @onready var exit_button: Button = $LeftMenuPanel/VBoxContainer/ExitButton
 @onready var lobby_list_title: Label = $RightLobbyPanel/VBoxContainer/PublicLobbiesTitle
@@ -19,7 +17,10 @@ const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 @onready var version_label: Label = $VersionLabel
 @onready var quit_confirm_dialog: ConfirmationDialog = $QuitConfirmDialog
 @onready var settings_popup: PopupPanel = $SettingsPopup
-@onready var music_toggle: CheckButton = $SettingsPopup/SettingsMargin/VBoxContainer/MusicToggle
+@onready var music_volume_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/MusicVolumeRow/MusicVolumeSlider
+@onready var sfx_volume_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/SfxVolumeRow/SfxVolumeSlider
+@onready var music_intensity_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/MusicIntensityRow/MusicIntensitySlider
+@onready var music_speed_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/MusicSpeedRow/MusicSpeedSlider
 
 var _menu_index: int = 0
 var _menu_up_prev: bool = false
@@ -37,8 +38,8 @@ func _ready() -> void:
 	_setup_menu_navigation()
 	_setup_controller_debug_line()
 	_setup_menu_music()
-	_sync_music_toggle()
-	_apply_music_enabled_state()
+	_sync_audio_settings_ui()
+	_apply_music_runtime_settings()
 	_apply_dialog_theme()
 
 	if SteamManager == null:
@@ -61,6 +62,10 @@ func _ready() -> void:
 		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
 	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
+	if GameManager != null and not GameManager.audio_volume_changed.is_connected(_on_audio_volume_changed):
+		GameManager.audio_volume_changed.connect(_on_audio_volume_changed)
+	if GameManager != null and not GameManager.music_profile_changed.is_connected(_on_music_profile_changed):
+		GameManager.music_profile_changed.connect(_on_music_profile_changed)
 	_refresh_menu_selection()
 
 	DebugOverlay.log_message("[HomeScreen] Ready.")
@@ -74,17 +79,19 @@ func _process(_delta: float) -> void:
 func _apply_warm_tactical_theme() -> void:
 	UiStyleScript.style_button(host_button)
 	UiStyleScript.style_button(test_button)
-	UiStyleScript.style_button(globe_button)
-	UiStyleScript.style_button(strategy_button)
 	UiStyleScript.style_button(settings_button)
 	UiStyleScript.style_button(exit_button)
 	UiStyleScript.style_button(confirm_join_button)
 	UiStyleScript.style_button(refresh_lobbies_button)
 	UiStyleScript.style_line_edit(join_input)
-	if music_toggle != null:
-		music_toggle.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
-		music_toggle.add_theme_color_override("font_pressed_color", UiStyleScript.TEXT_PRIMARY)
-		music_toggle.add_theme_color_override("font_hover_color", UiStyleScript.TEXT_PRIMARY)
+	var slider_rows := [
+		$SettingsPopup/SettingsMargin/VBoxContainer/MusicVolumeRow/Label,
+		$SettingsPopup/SettingsMargin/VBoxContainer/SfxVolumeRow/Label,
+		$SettingsPopup/SettingsMargin/VBoxContainer/MusicIntensityRow/Label,
+		$SettingsPopup/SettingsMargin/VBoxContainer/MusicSpeedRow/Label
+	]
+	for row_label in slider_rows:
+		row_label.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
 
 func _apply_dialog_theme() -> void:
 	if quit_confirm_dialog == null:
@@ -113,29 +120,26 @@ func _get_runtime_commit_hash() -> String:
 func _setup_menu_navigation() -> void:
 	host_button.focus_mode = Control.FOCUS_ALL
 	test_button.focus_mode = Control.FOCUS_ALL
-	globe_button.focus_mode = Control.FOCUS_ALL
-	strategy_button.focus_mode = Control.FOCUS_ALL
 	settings_button.focus_mode = Control.FOCUS_ALL
 	exit_button.focus_mode = Control.FOCUS_ALL
 	confirm_join_button.focus_mode = Control.FOCUS_ALL
 	refresh_lobbies_button.focus_mode = Control.FOCUS_ALL
 	join_input.focus_mode = Control.FOCUS_ALL
-	music_toggle.focus_mode = Control.FOCUS_ALL
+	music_volume_slider.focus_mode = Control.FOCUS_ALL
+	sfx_volume_slider.focus_mode = Control.FOCUS_ALL
+	music_intensity_slider.focus_mode = Control.FOCUS_ALL
+	music_speed_slider.focus_mode = Control.FOCUS_ALL
 	host_button.focus_neighbor_bottom = host_button.get_path_to(test_button)
 	test_button.focus_neighbor_top = test_button.get_path_to(host_button)
-	test_button.focus_neighbor_bottom = test_button.get_path_to(globe_button)
-	globe_button.focus_neighbor_top = globe_button.get_path_to(test_button)
-	globe_button.focus_neighbor_bottom = globe_button.get_path_to(strategy_button)
-	strategy_button.focus_neighbor_top = strategy_button.get_path_to(globe_button)
-	strategy_button.focus_neighbor_bottom = strategy_button.get_path_to(settings_button)
-	settings_button.focus_neighbor_top = settings_button.get_path_to(strategy_button)
+	test_button.focus_neighbor_bottom = test_button.get_path_to(settings_button)
+	settings_button.focus_neighbor_top = settings_button.get_path_to(test_button)
 	settings_button.focus_neighbor_bottom = settings_button.get_path_to(exit_button)
 	exit_button.focus_neighbor_top = exit_button.get_path_to(settings_button)
 	exit_button.focus_neighbor_bottom = exit_button.get_path_to(host_button)
 	_refresh_menu_selection()
 
 func _get_enabled_menu_buttons() -> Array[Button]:
-	var ordered: Array[Button] = [host_button, test_button, globe_button, strategy_button, settings_button, exit_button]
+	var ordered: Array[Button] = [host_button, test_button, settings_button, exit_button]
 	var enabled: Array[Button] = []
 	for button in ordered:
 		if button != null and button.visible and not button.disabled:
@@ -266,11 +270,7 @@ func _setup_menu_music() -> void:
 	if MusicManager == null:
 		return
 	MusicManager.seek_to_phase("intro")
-	MusicManager.set_volume(0.38)
-	if GameManager != null and GameManager.music_enabled:
-		MusicManager.play()
-	else:
-		MusicManager.stop()
+	_apply_music_runtime_settings()
 
 func _exit_tree() -> void:
 	if SteamManager != null:
@@ -284,6 +284,10 @@ func _exit_tree() -> void:
 			SteamManager.lobby_list_updated.disconnect(_on_lobby_list_updated)
 	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
 		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
+	if GameManager != null and GameManager.audio_volume_changed.is_connected(_on_audio_volume_changed):
+		GameManager.audio_volume_changed.disconnect(_on_audio_volume_changed)
+	if GameManager != null and GameManager.music_profile_changed.is_connected(_on_music_profile_changed):
+		GameManager.music_profile_changed.disconnect(_on_music_profile_changed)
 
 # ---------------------------------------------------------------------------
 # Button handlers
@@ -313,12 +317,6 @@ func _on_test_button_pressed() -> void:
 	var test_scene_path: String = str(mode.get("scene_path", GameManager.MATCH_SCENE_PATH))
 	get_tree().change_scene_to_file(test_scene_path)
 
-func _on_globe_button_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/globe/globe_arena.tscn")
-
-func _on_strategy_button_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/game/strategy/strategy_game.tscn")
-
 func _on_exit_button_pressed() -> void:
 	quit_confirm_dialog.title = "Exit FireTeam MNG"
 	quit_confirm_dialog.ok_button_text = "Exit Game"
@@ -326,25 +324,49 @@ func _on_exit_button_pressed() -> void:
 	quit_confirm_dialog.popup_centered()
 
 func _on_settings_button_pressed() -> void:
-	_sync_music_toggle()
+	_sync_audio_settings_ui()
 	settings_popup.popup_centered()
 
-func _on_music_toggle_toggled(enabled: bool) -> void:
+func _on_music_volume_slider_changed(value: float) -> void:
 	if GameManager != null:
-		GameManager.set_music_enabled(enabled)
+		GameManager.set_audio_volumes(value, GameManager.sfx_volume)
+
+func _on_sfx_volume_slider_changed(value: float) -> void:
+	if GameManager != null:
+		GameManager.set_audio_volumes(GameManager.music_volume, value)
+
+func _on_music_intensity_slider_changed(value: float) -> void:
+	if GameManager != null:
+		GameManager.set_music_profile(value, GameManager.music_speed, 1.0)
+
+func _on_music_speed_slider_changed(value: float) -> void:
+	if GameManager != null:
+		GameManager.set_music_profile(GameManager.music_intensity, value, 1.0)
 
 func _on_music_enabled_changed(_enabled: bool) -> void:
-	_sync_music_toggle()
-	_apply_music_enabled_state()
+	_apply_music_runtime_settings()
 
-func _sync_music_toggle() -> void:
-	if music_toggle == null or GameManager == null:
+func _on_audio_volume_changed(_music_volume: float, _sfx_volume: float) -> void:
+	_sync_audio_settings_ui()
+	_apply_music_runtime_settings()
+
+func _on_music_profile_changed(_intensity: float, _speed: float, _tone: float) -> void:
+	_sync_audio_settings_ui()
+	_apply_music_runtime_settings()
+
+func _sync_audio_settings_ui() -> void:
+	if GameManager == null:
 		return
-	music_toggle.set_pressed_no_signal(GameManager.music_enabled)
+	music_volume_slider.set_value_no_signal(GameManager.music_volume)
+	sfx_volume_slider.set_value_no_signal(GameManager.sfx_volume)
+	music_intensity_slider.set_value_no_signal(GameManager.music_intensity)
+	music_speed_slider.set_value_no_signal(GameManager.music_speed)
 
-func _apply_music_enabled_state() -> void:
+func _apply_music_runtime_settings() -> void:
 	if GameManager == null or MusicManager == null:
 		return
+	MusicManager.set_volume(GameManager.music_volume)
+	MusicManager.set_profile(GameManager.music_intensity, GameManager.music_speed, 1.0)
 	if GameManager.music_enabled:
 		MusicManager.play()
 	else:

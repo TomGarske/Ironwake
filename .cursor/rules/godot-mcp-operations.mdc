@@ -1,0 +1,24 @@
+---
+description: Use Godot MCP (user-godot-qa) to run, launch, and debug — not raw shell
+alwaysApply: true
+---
+
+# Godot MCP for Run / Editor / Debug
+
+When the user asks to **run the project**, **launch Godot**, **play the game**, **open the editor**, **debug**, or **capture Godot output**, use the **MCP server `user-godot-qa`** first.
+
+## Required behavior
+
+1. **Before calling any MCP tool**, read that tool’s schema in the workspace MCP descriptors (required by MCP usage policy).
+2. Prefer these tools (names may vary — confirm in schema):
+   - **`run_project`** — run with optional `projectPath` (required) and optional `scene`.
+   - **`launch_editor`** — open the project in the editor when appropriate.
+   - **`get_debug_output`** / **`stop_project`** — follow-up for logs or stopping a run.
+3. **Default project path** for this repo: `c:\Users\tdgar\Projects\BurnBridgers` (or the workspace root if different).
+4. **Do not** default to shell commands such as `godot`, `where godot`, or guessing install paths unless:
+   - the user explicitly asks for a raw CLI invocation, or
+   - `user-godot-qa` fails or is unavailable — then say so and offer the fallback.
+
+## Other Godot MCP servers
+
+- **`user-godot-fullcontrol`**: only use if the server is healthy (check MCP status / server metadata). If it is errored or disabled, rely on **`user-godot-qa`** for run/debug workflows.

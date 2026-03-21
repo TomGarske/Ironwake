@@ -10,10 +10,6 @@ $GodotSteamTag     = "v4.17.1-gde"
 $GodotSteamArchive = "godotsteam-4.17-gdextension-plugin-4.4.tar.xz"
 $GodotSteamUrl     = "https://codeberg.org/godotsteam/godotsteam/releases/download/$GodotSteamTag/$GodotSteamArchive"
 
-$LimboTag          = "v1.7.0"
-$LimboArchive      = "limboai+v1.7.0.gdextension-4.6.zip"
-$LimboUrl          = "https://github.com/limbonaut/limboai/releases/download/$LimboTag/$LimboArchive"
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 function Get-7z {
     $candidates = @(
@@ -60,29 +56,6 @@ if (Test-Path $godotSteamDest) {
     } finally {
         if (Test-Path $tmpXz)  { Remove-Item $tmpXz  -Force -ErrorAction SilentlyContinue }
         if (Test-Path $tmpTar) { Remove-Item $tmpTar -Force -ErrorAction SilentlyContinue }
-    }
-}
-
-# ── LimboAI (.zip) ────────────────────────────────────────────────────────────
-$limboDest = Join-Path $ProjectRoot "addons\limboai"
-if (Test-Path $limboDest) {
-    Write-Host "LimboAI already present — skipping download."
-} else {
-    Write-Host "Downloading LimboAI $LimboTag..."
-    $tmpZip = Join-Path $env:TEMP "limboai.zip"
-    try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $LimboUrl -OutFile $tmpZip -UseBasicParsing
-
-        Write-Host "Extracting LimboAI..."
-        Expand-Archive -Path $tmpZip -DestinationPath $ProjectRoot -Force
-
-        if (-not (Test-Path $limboDest)) {
-            throw "LimboAI extraction succeeded but '$limboDest' was not created."
-        }
-        Write-Host "LimboAI installed to $limboDest"
-    } finally {
-        if (Test-Path $tmpZip) { Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue }
     }
 }
 

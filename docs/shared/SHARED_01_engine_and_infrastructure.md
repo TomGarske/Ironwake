@@ -12,7 +12,7 @@
 
 | Specification | Value | Notes |
 |---|---|---|
-| Engine | Godot 4.x | GDExtensions required for Steam & LimboAI |
+| Engine | Godot 4.x | GDExtensions required for Steam |
 | Primary Language | GDScript | Fully typed; see SHARED_02 |
 | Renderer | Forward+ | Real-time 2D rendering, 1–60 FPS target |
 | Player Count | 1–8 players | Scales dynamically; peer ordering for determinism |
@@ -635,17 +635,16 @@ const LOBBY_SCENE_PATH: String = "res://scenes/screens/lobby.tscn"
 
 ---
 
-## 7. LimboAI Integration (Shared)
+## 7. Behavior Tree Integration (Shared)
 
-### 7.1 LimboAI GDExtension
+### 7.1 Behavior Tree Runtime
 
-**Source:** [LimboAI GitHub](https://github.com/limbonaut/limbo_ai)
 **Integration:** Behavior trees for all AI entities
-**Installation:** Downloaded by setup scripts
+**Installation:** Included with game code/resources
 
 ### 7.2 Shared Behavior Tree Structure
 
-All game modes use LimboAI for NPC/enemy AI:
+All game modes use behavior trees for NPC/enemy AI:
 
 ```gdscript
 ## Every AI entity has a BTPlayer node
@@ -714,7 +713,6 @@ These are **not** in the repository; download scripts handle installation:
 | Addon | Purpose | Source |
 |---|---|---|
 | GodotSteam | Steam P2P networking | [GodotSteam Releases](https://github.com/Gramps/GodotSteam/releases) |
-| LimboAI | Behavior trees + FSM | [LimboAI Releases](https://github.com/limbonaut/limbo_ai/releases) |
 
 ### 8.2 Setup Scripts
 
@@ -728,7 +726,7 @@ Run once after cloning the repository:
 
 **What they do:**
 1. Download GodotSteam GDExtension (matching Godot 4.x version)
-2. Download LimboAI GDExtension
+2. Install required game extensions/resources
 3. Extract into `addons/`
 4. Create `steam_appid.txt`
 
@@ -797,7 +795,7 @@ git merge integrate/music-profiles
 | **GameConstants** | Global constants (MAX_PLAYERS) | Yes | `res://scripts/autoload/game_constants.gd` |
 | **MusicManager** | Procedural synthesis, profile application, phase seeking | Yes | `res://addons/procedural_music/music_manager.gd` |
 | **GodotSteam** | Steam SDK bindings | GDExtension | `addons/godotsteam/` |
-| **LimboAI** | Behavior trees, state machines, blackboard | GDExtension | `addons/limboai/` |
+| **Behavior Trees** | NPC decision logic and blackboard-driven flow | Scripted/runtime resources | `res://assets/ai/` |
 
 ---
 

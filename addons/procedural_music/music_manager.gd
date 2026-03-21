@@ -60,6 +60,17 @@ func set_volume(volume: float) -> void:
 		if _desktop_engine:
 			_desktop_engine.set_volume(volume)
 
+## intensity: 0.2-2.0, speed: 0.3-1.3, tone is reserved (kept neutral)
+func set_profile(intensity: float, speed: float, tone: float) -> void:
+	intensity = clampf(intensity, 0.2, 2.0)
+	speed = clampf(speed, 0.3, 1.3)
+	tone = 1.0
+	if _is_web:
+		# Web bridge currently supports play/stop/seek/volume only.
+		return
+	if _desktop_engine:
+		_desktop_engine.set_profile(intensity, speed, tone)
+
 # ── Web setup ─────────────────────────────────────────────────────────────────
 
 func _setup_web() -> void:

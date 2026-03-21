@@ -230,7 +230,11 @@ func _setup_game_music() -> void:
 	if MusicManager == null:
 		return
 	MusicManager.seek_to_phase("build1")
-	MusicManager.set_volume(0.52)
+	if GameManager != null:
+		MusicManager.set_volume(GameManager.music_volume)
+		MusicManager.set_profile(GameManager.music_intensity, GameManager.music_speed, GameManager.music_tone)
+	else:
+		MusicManager.set_volume(0.52)
 	if GameManager != null and GameManager.music_enabled:
 		MusicManager.play()
 	else:
@@ -239,6 +243,9 @@ func _setup_game_music() -> void:
 func _on_music_enabled_changed(enabled: bool) -> void:
 	if MusicManager == null:
 		return
+	if GameManager != null:
+		MusicManager.set_volume(GameManager.music_volume)
+		MusicManager.set_profile(GameManager.music_intensity, GameManager.music_speed, GameManager.music_tone)
 	if enabled:
 		MusicManager.play()
 	else:

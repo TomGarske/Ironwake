@@ -32,6 +32,7 @@ var _static_width:   int             = 0
 var _static_height:  int             = 0
 var _static_tiles:   PackedByteArray = PackedByteArray()
 var _overview_tex:   ImageTexture    = null
+var _tile_modulate:  Dictionary      = {}
 
 # LOD threshold: use overview texture when tiles are smaller than this many pixels wide
 const _LOD_TILE_PX: float = 4.0
@@ -67,6 +68,16 @@ func load_static_map(data: Dictionary) -> void:
 	_chunks.clear()
 	_bake_overview_texture()
 
+func set_tile_modulate(tile_id: int, color: Color) -> void:
+	_tile_modulate[tile_id] = color
+	if _static_mode:
+		_bake_overview_texture()
+
+func clear_tile_modulates() -> void:
+	_tile_modulate.clear()
+	if _static_mode:
+		_bake_overview_texture()
+
 func _bake_overview_texture() -> void:
 	var img := Image.create(_static_width, _static_height, false, Image.FORMAT_RGB8)
 	for ty in range(_static_height):
@@ -77,6 +88,8 @@ func _bake_overview_texture() -> void:
 				T_DEEP:  c = _C_DEEP
 				T_WATER: c = _C_WATER
 				_:       c = _C_SAND
+			if _tile_modulate.has(t):
+				c = _tile_modulate[t]
 			img.set_pixel(tx, ty, c)
 	_overview_tex = ImageTexture.create_from_image(img)
 
@@ -125,10 +138,13 @@ func draw_tiles(canvas: CanvasItem, origin: Vector2, viewport: Vector2, tile_w: 
 func _draw_tile(canvas: CanvasItem, origin: Vector2, tile_w: float, tile_h: float, tx: int, ty: int) -> void:
 	var tt:   int   = _get_tile(tx, ty)
 	var tex: Texture2D = _TEXTURES.get(tt, _TEXTURES[T_SAND])
+	var modulate_color: Color = Color(1.0, 1.0, 1.0, 1.0)
+	if _tile_modulate.has(tt):
+		modulate_color = _tile_modulate[tt]
 	var dw   := float(_SP_W) * _SP_SCALE
 	var dh   := float(_SP_H) * _SP_SCALE
 	var top  := _w2s(origin, tile_w, tile_h, tx + 0.5, float(ty))
-	canvas.draw_texture_rect(tex, Rect2(top.x - dw * 0.5, top.y, dw, dh), false)
+	canvas.draw_texture_rect(tex, Rect2(top.x - dw * 0.5, top.y, dw, dh), false, modulate_color)
 
 func _w2s(origin: Vector2, tile_w: float, tile_h: float, wx: float, wy: float) -> Vector2:
 	return origin + Vector2((wx - wy) * tile_w * 0.5, (wx + wy) * tile_h * 0.5)
