@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # BurnBridgers — SteamOS / Linux addon setup
-# Downloads and installs GDExtension plugins (GodotSteam, LimboAI, Ziva).
+# Downloads and installs GDExtension plugins (GodotSteam).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FORCE=0
@@ -28,12 +28,6 @@ GODOTSTEAM_GDE_TAG="v4.17.1-gde"
 GODOTSTEAM_ARCHIVE="godotsteam-4.17-gdextension-plugin-4.4.tar.xz"
 GODOTSTEAM_BASE_URL="https://codeberg.org/godotsteam/godotsteam/releases/download"
 
-# LimboAI GDExtension plugin (Behavior Trees & State Machines)
-LIMBOAI_VERSION="1.7.0"
-LIMBOAI_TAG="v1.7.0"
-LIMBOAI_ARCHIVE="limboai+v1.7.0.gdextension-4.6.zip"
-LIMBOAI_BASE_URL="https://github.com/limbonaut/limboai/releases/download"
-
 # Steam app ID — Fireteam MNG Playtest (App ID 4530870)
 STEAM_APP_ID="4530870"
 
@@ -54,13 +48,6 @@ addon_dir() {
     entry=$(grep -i "$pattern" "$EXTENSION_LIST" | head -1 | sed 's|^res://||')
     [[ -z "$entry" ]] && { echo ""; return; }
     echo "$SCRIPT_DIR/$(echo "$entry" | cut -d'/' -f1-2)"
-}
-
-ensure_extension_entry() {
-    local entry="$1"
-    if ! grep -Fxq "$entry" "$EXTENSION_LIST"; then
-        printf '%s\n' "$entry" >> "$EXTENSION_LIST"
-    fi
 }
 
 should_reinstall() {
@@ -98,7 +85,7 @@ if [[ -z "$ADDON_DIR" ]]; then
 fi
 
 # Ensure required tools are available
-for cmd in curl tar xz unzip; do
+for cmd in curl tar xz; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "ERROR: '$cmd' is required but not found. Install it and try again."
         exit 1
@@ -137,73 +124,6 @@ if [[ ! -f "$STEAM_APPID_FILE" ]]; then
     echo "$STEAM_APP_ID" > "$STEAM_APPID_FILE"
     echo "Created steam_appid.txt (app ID: $STEAM_APP_ID)"
 fi
-
-# ── LimboAI GDExtension ──────────────────────────────────────────────
-LIMBOAI_URL="${LIMBOAI_BASE_URL}/${LIMBOAI_TAG}/${LIMBOAI_ARCHIVE}"
-LIMBOAI_DIR="$(addon_dir "limboai")"
-if [[ -z "$LIMBOAI_DIR" ]]; then
-    LIMBOAI_DIR="$SCRIPT_DIR/addons/limboai"
-    echo "limboai was not pre-registered; using default path: $LIMBOAI_DIR"
-fi
-
-if [[ -d "$LIMBOAI_DIR" ]]; then
-    echo "LimboAI already installed at $LIMBOAI_DIR"
-    if ! should_reinstall "LimboAI"; then
-        echo "Skipped LimboAI."
-    else
-        rm -rf "$LIMBOAI_DIR"
-    fi
-fi
-
-if [[ ! -d "$LIMBOAI_DIR" ]]; then
-    echo "Downloading LimboAI GDExtension v${LIMBOAI_VERSION}..."
-    LIMBOAI_TMP=$(mktemp /tmp/limboai-XXXXXX.zip)
-    trap 'rm -f "$TMPFILE" "$LIMBOAI_TMP"' EXIT
-
-    curl -fSL --progress-bar -o "$LIMBOAI_TMP" "$LIMBOAI_URL"
-
-    echo "Extracting to addons/limboai/..."
-    unzip -qo "$LIMBOAI_TMP" -d "$SCRIPT_DIR"
-
-    echo "LimboAI v${LIMBOAI_VERSION} installed successfully."
-fi
-
-# ── Ziva Agent GDExtension ───────────────────────────────────────────
-ZIVA_DIR="$(addon_dir "ziva_agent")"
-if [[ -z "$ZIVA_DIR" ]]; then
-    ZIVA_DIR="$SCRIPT_DIR/addons/ziva_agent"
-    echo "ziva_agent was not pre-registered; using default path: $ZIVA_DIR"
-fi
-
-ZIVA_ARCH="$(uname -m)"
-if [[ "$ZIVA_ARCH" == "aarch64" || "$ZIVA_ARCH" == "arm64" ]]; then
-    ZIVA_BINARY="$ZIVA_DIR/bin/linux_arm64/libziva_agent.linux.release.arm64.so"
-else
-    ZIVA_BINARY="$ZIVA_DIR/bin/linux_x86_64/libziva_agent.linux.release.x86_64.so"
-fi
-
-if [[ -f "$ZIVA_BINARY" ]]; then
-    echo "Ziva Agent already installed at $ZIVA_DIR"
-    if ! should_reinstall "Ziva Agent"; then
-        echo "Skipped Ziva Agent."
-    else
-        rm -rf "$ZIVA_DIR"
-    fi
-fi
-
-if [[ ! -f "$ZIVA_BINARY" ]]; then
-    echo "Installing Ziva Agent via official installer..."
-    (
-        cd "$SCRIPT_DIR"
-        curl -fsSL https://ziva.sh/install.sh | bash
-    )
-    if [[ ! -f "$ZIVA_BINARY" ]]; then
-        echo "ERROR: Ziva install completed, but Linux library was not found under $ZIVA_DIR/bin."
-        exit 1
-    fi
-    echo "Ziva Agent installed successfully."
-fi
-ensure_extension_entry "res://addons/ziva_agent/ziva_agent.gdextension"
 
 echo ""
 echo "Setup complete. Open the project in Godot to verify."

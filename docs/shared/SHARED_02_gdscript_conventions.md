@@ -895,7 +895,6 @@ BurnBridgers follows this directory structure:
 BurnBridgers/
 ├── addons/
 │   ├── godotsteam/           # GodotSteam GDExtension (downloaded by setup)
-│   ├── limboai/              # LimboAI GDExtension (downloaded by setup)
 │   └── procedural_music/
 │       ├── music_manager.gd
 │       └── ...
@@ -1026,12 +1025,12 @@ BurnBridgers/
 
 | Directory | Purpose |
 |---|---|
-| `addons/` | External GDExtensions (GodotSteam, LimboAI) |
+| `addons/` | External add-ons and GDExtensions (GodotSteam, procedural music) |
 | `demo/` | Quick offline testing scenes |
 | `docs/` | All documentation (REQ files, guides) |
 | `scenes/screens/` | Home, Lobby UI scenes |
 | `scenes/game/[mode]/` | Per-game mode scenes & scripts |
-| `scenes/ai/trees/` | LimboAI behavior tree .tres files |
+| `scenes/ai/trees/` | Behavior tree `.tres` files |
 | `scripts/autoload/` | Global singletons (GameManager, SteamManager) |
 | `scripts/shared/` | Shared entity base classes (AgentBase, HealthComponent) |
 | `scripts/game_modes/` | Per-mode coordinator scripts |

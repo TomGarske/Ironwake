@@ -1,5 +1,5 @@
 # BurnBridgers — Windows addon setup
-# Downloads and installs GDExtension plugins (GodotSteam, LimboAI, Ziva).
+# Downloads and installs GDExtension plugins (GodotSteam).
 # Requires: PowerShell 5.1+, 7-Zip or Windows tar with xz support (for GodotSteam)
 
 param(
@@ -17,12 +17,6 @@ $GodotSteamVersion = "4.17.1"
 $GodotSteamGdeTag  = "v4.17.1-gde"
 $GodotSteamArchive = "godotsteam-4.17-gdextension-plugin-4.4.tar.xz"
 $GodotSteamBaseUrl = "https://codeberg.org/godotsteam/godotsteam/releases/download"
-
-# LimboAI GDExtension plugin (Behavior Trees & State Machines)
-$LimboVersion  = "1.7.0"
-$LimboTag      = "v1.7.0"
-$LimboArchive  = "limboai+v1.7.0.gdextension-4.6.zip"
-$LimboBaseUrl  = "https://github.com/limbonaut/limboai/releases/download"
 
 # Steam app ID — Fireteam MNG Playtest (App ID 4530870)
 $SteamAppId = "4530870"
@@ -43,14 +37,6 @@ function Get-AddonDir {
     $rel = $line -replace '^res://', ''
     $parts = $rel -split '/'
     return Join-Path $ScriptDir ($parts[0] + '\' + $parts[1])
-}
-
-function Ensure-ExtensionEntry {
-    param([string]$Entry)
-    $existing = Get-Content $ExtensionList | Where-Object { $_ -eq $Entry } | Select-Object -First 1
-    if (-not $existing) {
-        Add-Content -Path $ExtensionList -Value $Entry
-    }
 }
 
 function Should-Reinstall {
@@ -178,78 +164,6 @@ if (-not (Test-Path $AppIdFile)) {
     $SteamAppId | Out-File -FilePath $AppIdFile -Encoding ascii -NoNewline
     Write-Host "Created steam_appid.txt (app ID: $SteamAppId)"
 }
-
-# ── LimboAI GDExtension ──────────────────────────────────────────────
-$LimboUrl  = "$LimboBaseUrl/$LimboTag/$LimboArchive"
-$LimboDir  = Get-AddonDir "limboai"
-if (-not $LimboDir) {
-    $LimboDir = Join-Path $ScriptDir "addons\limboai"
-    Write-Host "limboai was not pre-registered; using default path: $LimboDir"
-}
-
-$installLimbo = $true
-if (Test-Path $LimboDir) {
-    Write-Host "LimboAI already installed at $LimboDir"
-    if (-not (Should-Reinstall "LimboAI")) {
-        Write-Host "Skipped LimboAI."
-        $installLimbo = $false
-    } else {
-        Remove-Item -Recurse -Force $LimboDir
-    }
-}
-
-if ($installLimbo) {
-    $LimboTmp = Join-Path $env:TEMP "limboai-$LimboVersion.zip"
-
-    try {
-        Write-Host "Downloading LimboAI GDExtension v$LimboVersion..."
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $LimboUrl -OutFile $LimboTmp -UseBasicParsing
-
-        Write-Host "Extracting to addons\limboai\..."
-        Expand-Archive -Path $LimboTmp -DestinationPath $ScriptDir -Force
-
-        Write-Host "LimboAI v$LimboVersion installed successfully."
-    }
-    finally {
-        if (Test-Path $LimboTmp) { Remove-Item $LimboTmp -Force }
-    }
-}
-
-# ── Ziva Agent GDExtension ───────────────────────────────────────────
-$ZivaDir = Get-AddonDir "ziva_agent"
-if (-not $ZivaDir) {
-    $ZivaDir = Join-Path $ScriptDir "addons\ziva_agent"
-    Write-Host "ziva_agent was not pre-registered; using default path: $ZivaDir"
-}
-
-$ZivaLibX64 = Join-Path $ZivaDir "bin\windows_x86_64\libziva_agent.windows.release.x86_64.dll"
-$ZivaLibArm64 = Join-Path $ZivaDir "bin\windows_arm64\libziva_agent.windows.release.arm64.dll"
-$hasZivaBinary = (Test-Path $ZivaLibX64) -or (Test-Path $ZivaLibArm64)
-$installZiva = $true
-
-if ($hasZivaBinary) {
-    Write-Host "Ziva Agent already installed at $ZivaDir"
-    if (-not (Should-Reinstall "Ziva Agent")) {
-        Write-Host "Skipped Ziva Agent."
-        $installZiva = $false
-    }
-} elseif ((Test-Path $ZivaDir -PathType Container) -and $Force) {
-    Remove-Item -Recurse -Force $ZivaDir
-}
-
-if ($installZiva) {
-    Write-Host "Installing Ziva Agent via official installer..."
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    irm https://ziva.sh/install.ps1 | iex
-    $hasZivaBinary = (Test-Path $ZivaLibX64) -or (Test-Path $ZivaLibArm64)
-    if (-not $hasZivaBinary) {
-        Write-Error "Ziva install completed, but Windows binary was not found under $ZivaDir\bin."
-        exit 1
-    }
-    Write-Host "Ziva Agent installed successfully."
-}
-Ensure-ExtensionEntry "res://addons/ziva_agent/ziva_agent.gdextension"
 
 Write-Host ""
 Write-Host "Setup complete. Open the project in Godot to verify."

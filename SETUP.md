@@ -13,7 +13,7 @@ cd BurnBridgers
 ```
 
 ## 2. Install Addons (Required — not in repo)
-Addon binaries (GodotSteam, LimboAI) are **not committed** to this repository due to their size and binary nature.
+Addon binaries (GodotSteam) are **not committed** to this repository due to their size and binary nature.
 
 The easiest way to install them is with the setup scripts:
 - **macOS:** `./setup-mac.sh`
@@ -30,12 +30,7 @@ If you prefer to install manually:
 2. Download the **GDExtension** archive matching your Godot Engine version.
 3. Extract into `addons/godotsteam/` at the project root.
 
-**LimboAI (Behavior Trees & State Machines):**
-1. Visit: https://github.com/limbonaut/limboai/releases
-2. Download the **GDExtension** zip for your Godot version (e.g. `limboai+v1.7.0.gdextension-4.6.zip`).
-3. Extract into the project root — files land in `addons/limboai/`.
-
-Both `addons/godotsteam/` and `addons/limboai/` are git-ignored — each developer must do this step.
+`addons/godotsteam/` is git-ignored — each developer must do this step.
 
 ## 3. Create steam_appid.txt
 The setup scripts create this file automatically. It lives at the project root and contains the Steam App ID.
