@@ -65,12 +65,19 @@ const _ZOOM_MIN: float = 0.001
 const _ZOOM_MAX: float = 1.0
 const _ZOOM_STEP: float = 0.1
 
+## Iso ship art: 8 directions N → NE → E → SE → S → SW → W → NW (screen-space, clockwise from north).
+## Cardinal placeholders (N,E,S,W) are copies of nearest diagonal art until unique assets exist.
 const _SHIP_TEXTURES: Array[Texture2D] = [
-	preload("res://assets/generated/pirate_ship_nw_frame_0_1773704184.png"),
+	preload("res://assets/generated/pirate_ship_n_frame_0.png"),
 	preload("res://assets/generated/pirate_ship_ne_frame_0_1773704192.png"),
+	preload("res://assets/generated/pirate_ship_e_frame_0.png"),
 	preload("res://assets/generated/pirate_ship_se_frame_0_1773704181.png"),
-	preload("res://assets/generated/pirate_ship_sw_frame_0_1773704182.png")
+	preload("res://assets/generated/pirate_ship_s_frame_0.png"),
+	preload("res://assets/generated/pirate_ship_sw_frame_0_1773704182.png"),
+	preload("res://assets/generated/pirate_ship_w_frame_0.png"),
+	preload("res://assets/generated/pirate_ship_nw_frame_0_1773704184.png"),
 ]
+const _SHIP_COMPASS_8: Array[String] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
 # ── Spawn positions (world units) — populated by _load_geo_map() ──────────────
 var _SPAWNS: Array = []
@@ -174,6 +181,28 @@ func _w2s(wx: float, wy: float) -> Vector2:
 func _dir_screen(dx: float, dy: float) -> Vector2:
 	var v := Vector2((dx - dy) * TILE_W * _zoom * 0.5, (dx + dy) * TILE_H * _zoom * 0.5)
 	return v.normalized() if v.length_squared() > 0.001 else Vector2.DOWN
+
+
+## Picks nearest of 8 compass sprites from iso screen projection of world heading (matches motion on the diamond).
+func compute_ship_sprite_for_world_heading(dx: float, dy: float) -> Dictionary:
+	if dx * dx + dy * dy < 0.000001:
+		dx = 1.0
+		dy = 0.0
+	var world_rad: float = atan2(dy, dx)
+	var screen_fwd: Vector2 = _dir_screen(dx, dy)
+	var screen_rad: float = screen_fwd.angle()
+	# Eight 45° sectors, clockwise from N (screen up): N=0 … NW=7
+	var shifted: float = fposmod(screen_rad + PI / 2.0 + PI / 8.0, TAU)
+	var frame_idx: int = int(floor(shifted / (PI / 4.0)))
+	frame_idx = clampi(frame_idx, 0, mini(_SHIP_TEXTURES.size(), _SHIP_COMPASS_8.size()) - 1)
+	var sprite_compass: String = _SHIP_COMPASS_8[frame_idx]
+	return {
+		"frame_idx": frame_idx,
+		"sprite_compass": sprite_compass,
+		"world_deg": rad_to_deg(world_rad),
+		"screen_deg": rad_to_deg(screen_rad),
+		"screen_norm_sector_deg": rad_to_deg(shifted),
+	}
 
 # ── Input registration ────────────────────────────────────────────────────────
 func _register_inputs() -> void:
@@ -613,19 +642,9 @@ func _draw_player(p: Dictionary) -> void:
 	var bob  := sin(p.walk_time * 5.0) * 1.5 if p.moving else 0.0
 	var lift := Vector2(0.0, -6.0 + bob)
 
-	# Draw ship sprite
-	var angle: float = p.dir.angle()
-	var norm_angle: float = fposmod(angle + PI/4, TAU)
-	var frame_idx: int = 0
-	if norm_angle < PI/2:
-		frame_idx = 2 # SE
-	elif norm_angle < PI:
-		frame_idx = 3 # SW
-	elif norm_angle < 3*PI/2:
-		frame_idx = 0 # NW
-	else:
-		frame_idx = 1 # NE
-	
+	# Draw ship sprite — 8-way iso-facing from screen-projected heading.
+	var spr: Dictionary = compute_ship_sprite_for_world_heading(float(p.dir.x), float(p.dir.y))
+	var frame_idx: int = clampi(int(spr.get("frame_idx", 0)), 0, _SHIP_TEXTURES.size() - 1)
 	var tex: Texture2D = _SHIP_TEXTURES[frame_idx]
 	var tex_size: Vector2 = tex.get_size()
 	var draw_scale: float = _zoom * 1.0
