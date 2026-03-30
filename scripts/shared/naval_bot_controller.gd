@@ -172,6 +172,7 @@ func update(delta: float) -> void:
 	if _bt_initialised and bt_player != null:
 		_sync_limbo_blackboard()
 		bt_player.call("update", delta)
+		_adjust_sail_for_turn()
 		if should_log:
 			print("[NavalBot %s] BT ticked — steer=L%.2f/R%.2f fire=P%s/S%s sail=%d state=%s dist=%.0f band=%d spd=%.1f bearing=%.0f" % [
 				name, steer_left, steer_right, fire_port_intent, fire_stbd_intent,
@@ -618,6 +619,23 @@ func _hold_pattern(_delta: float) -> void:
 	if debug_log_events:
 		print("[NavalBot %s] _hold_pattern: steerDir=%.1f L=%.2f R=%.2f sail=%d" % [
 			name, turn_commit_direction, steer_left, steer_right, desired_sail_state])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Sail adjustment for turns — reduce sail when turning hard to avoid
+#  bleeding too much speed and to improve turning radius.
+# ═══════════════════════════════════════════════════════════════════════
+
+func _adjust_sail_for_turn() -> void:
+	var steer_strength: float = maxf(steer_left, steer_right)
+	if steer_strength < 0.5:
+		return
+	# Hard turn: cap sail at HALF (2) to avoid bleeding all speed
+	if steer_strength > 0.8 and desired_sail_state > 2:
+		desired_sail_state = 2
+	# Medium turn at high speed: drop to HALF
+	elif steer_strength > 0.6 and agent != null and agent.get_speed() > 18.0 and desired_sail_state > 2:
+		desired_sail_state = 2
 
 
 # ═══════════════════════════════════════════════════════════════════════

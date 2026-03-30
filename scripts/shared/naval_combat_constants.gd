@@ -9,17 +9,17 @@ const MAP_TILES_WIDE: int = 800
 const MAP_TILES_HIGH: int = 800
 
 ## Movement tuning (higher top-end speed with same accel/decel feel).
-## Residual speed when sails furled: current + wind on bare hull/rigging (~1.5 kn).
-## Below MIN_SPEED_DRIFT so rudder loses authority — historically accurate.
-const SAILS_DOWN_DRIFT_SPEED: float = 1.5
-const MIN_SPEED_DRIFT: float = 2.8125
-const QUARTER_SPEED: float = 7.5
-const CRUISE_SPEED: float = 13.125
-const MAX_SPEED: float = 21.5625
+## Residual speed when sails furled: zero — ship comes to a full stop once momentum decays.
+const SAILS_DOWN_DRIFT_SPEED: float = 0.0
+const MIN_SPEED_DRIFT: float = 2.0
+const QUARTER_SPEED: float = 9.0
+const CRUISE_SPEED: float = 16.0
+const MAX_SPEED: float = 27.5
 
-## Time (s) to accelerate 0 → MAX_SPEED under sail thrust; lower = snappier accel (~1.5× faster ship ⇒ ~1.5× shorter time).
-const ACCEL_TIME_ZERO_TO_MAX: float = 14.67
-const DECEL_TIME_SAILS_DOWN: float = 18.04
+## Time (s) to accelerate 0 → MAX_SPEED under sail thrust.
+const ACCEL_TIME_ZERO_TO_MAX: float = 10.0
+## Decel is slower — heavy hull carries momentum.
+const DECEL_TIME_SAILS_DOWN: float = 22.0
 
 ## Derived linear accel (u/s²)
 static func accel_rate() -> float:
@@ -30,20 +30,21 @@ static func decel_rate_sails() -> float:
 	return MAX_SPEED / maxf(0.001, DECEL_TIME_SAILS_DOWN)
 
 
-## Turning — relaxed speed penalty so ships stay maneuverable at cruise/full sail.
+## Turning — rate is purely speed-dependent (not sail position).
+## Slow ships pivot well; fast ships have wide turning circles.
 ## Radius ≈ speed / deg_to_rad(rate).
 static func turn_rate_deg_for_speed(speed: float) -> float:
 	var s: float = clampf(speed, 0.0, MAX_SPEED * 1.1)
 	if s <= MIN_SPEED_DRIFT:
-		return 13.0
+		return 14.0
 	if s <= QUARTER_SPEED:
 		var t: float = (s - MIN_SPEED_DRIFT) / maxf(0.001, QUARTER_SPEED - MIN_SPEED_DRIFT)
-		return lerpf(13.0, 9.0, t)
+		return lerpf(14.0, 9.5, t)
 	if s <= CRUISE_SPEED:
 		var t: float = (s - QUARTER_SPEED) / maxf(0.001, CRUISE_SPEED - QUARTER_SPEED)
-		return lerpf(9.0, 5.5, t)
+		return lerpf(9.5, 5.0, t)
 	var t2: float = (s - CRUISE_SPEED) / maxf(0.001, MAX_SPEED - CRUISE_SPEED)
-	return lerpf(5.5, 3.0, clampf(t2, 0.0, 1.0))
+	return lerpf(5.0, 2.5, clampf(t2, 0.0, 1.0))
 
 
 ## Rudder / heading inertia (lower = heading catches rudder faster).
@@ -134,7 +135,7 @@ static func spread_deg_for_range(distance: float) -> float:
 
 const TURNING_SPREAD_MULT: float = 1.4
 const HIGH_SPEED_SPREAD_MULT: float = 1.25
-const HIGH_SPEED_THRESHOLD: float = 19.0
+const HIGH_SPEED_THRESHOLD: float = 24.0
 
 
 ## Ship footprint for collision / hits (world units).

@@ -39,6 +39,8 @@ var _zoom_out_button: Button = null
 var _camera_world_anchor: Vector2 = Vector2.ZERO
 ## When true, view follows local ship each frame. Default off until 1/Home/Tab.
 var _camera_locked: bool = false
+## Which player index the camera follows (separate from _my_index for spectating bots).
+var _camera_follow_index: int = 0
 var _middle_drag_active: bool = false
 var _middle_drag_prev: Vector2 = Vector2.ZERO
 ## Reused helm clone so ship arc preview runs identical process_steer() to gameplay.
@@ -84,14 +86,14 @@ const ELEV_DOWN_ACTION: String = "bf_elev_down"
 ## Min dot(aim, direction_to_opponent) to treat opponent as aim target for battery range (req-battery-fsm §6).
 const _BATTERY_AIM_ALIGN_DOT: float = 0.35
 
-## Forward motion — heavy hull: low drag so speed carries (momentum).
-const MOTION_PASSIVE_DRAG_K: float = 0.025
-const COAST_DRAG_MULT: float = 2.0
-const MOTION_ZERO_SAIL_DRAG: float = 0.04
-## Rudder bleeds forward speed (scaled for naval speeds).
-const MOTION_TURNING_SPEED_LOSS: float = 0.03
-const MOTION_HARD_TURN_SPEED_LOSS: float = 0.05
-const MOTION_HARD_TURN_RUDDER: float = 0.9
+## Forward motion — heavy hull: very low drag so speed carries (momentum).
+const MOTION_PASSIVE_DRAG_K: float = 0.012
+const COAST_DRAG_MULT: float = 1.6
+const MOTION_ZERO_SAIL_DRAG: float = 0.025
+## Rudder bleeds forward speed — sharper turns lose more speed.
+const MOTION_TURNING_SPEED_LOSS: float = 0.06
+const MOTION_HARD_TURN_SPEED_LOSS: float = 0.12
+const MOTION_HARD_TURN_RUDDER: float = 0.7
 ## Each cannonball impact removes this many hull points (structural hit model).
 const HULL_DAMAGE_PER_HIT: float = 1.0
 ## Hull integrity: total structural hits before sinking.
@@ -135,10 +137,7 @@ func _dir_screen(dx: float, dy: float) -> Vector2:
 
 ## Screen position of the drawn hull (deck lift + bob) — matches visible ship, not raw wx/wy waterline.
 func _hull_visual_screen_pos(p: Dictionary) -> Vector2:
-	var sp: Vector2 = _w2s(float(p.wx), float(p.wy))
-	var bob: float = sin(float(p.get("walk_time", 0.0)) * 3.0) * 1.4 if bool(p.get("moving", false)) else 0.0
-	var v_lift_px: float = NC.SHIP_DECK_HEIGHT_UNITS * _CannonBallistics.SCREEN_HEIGHT_PX_PER_UNIT * _zoom
-	return sp + Vector2(0.0, -v_lift_px + (-2.0 + bob) * _zoom)
+	return _w2s(float(p.wx), float(p.wy)) + _deck_lift_offset_for_screen(p)
 
 
 func _ready() -> void:
@@ -166,7 +165,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_middle_drag_active = true
 				_middle_drag_prev = event.position
 				if _camera_locked and not _players.is_empty():
-					var mp: Dictionary = _players[_my_index]
+					var cfi: int = clampi(_camera_follow_index, 0, _players.size() - 1)
+					var mp: Dictionary = _players[cfi]
 					_camera_world_anchor = Vector2(float(mp.wx), float(mp.wy))
 				_camera_locked = false
 				return
@@ -184,8 +184,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed:
 		if event.keycode == KEY_HOME or event.keycode == KEY_TAB or event.keycode == KEY_1:
+			_camera_follow_index = _my_index
 			_camera_locked = true
 			queue_redraw()
+			return
+		if event.keycode >= KEY_2 and event.keycode <= KEY_9:
+			var target_idx: int = int(event.keycode) - int(KEY_1)
+			if target_idx >= 0 and target_idx < _players.size():
+				_camera_follow_index = target_idx
+				_camera_locked = true
+				queue_redraw()
 			return
 		if OS.is_debug_build() and not event.echo:
 			if event.keycode == KEY_F3:
@@ -344,6 +352,9 @@ func _get_bot_controller_for_index(player_idx: int) -> Variant:
 
 
 ## Tick the bot ship: run AI decision, then apply intents through identical physics.
+## TODO(refactor): Extract shared physics (heading rotation, speed physics, motion FSM,
+## position update) into _tick_ship_physics() and call from both _tick_player() and _tick_bot().
+## Currently ~130 lines of physics code are duplicated between the two methods.
 func _tick_bot(p: Dictionary, player_idx: int, delta: float) -> void:
 	if not bool(p.get("alive", false)):
 		return
@@ -421,9 +432,12 @@ func _tick_bot(p: Dictionary, player_idx: int, delta: float) -> void:
 	if sail.current_sail_level < sail.coast_drag_threshold:
 		spd = maxf(drift_floor, spd - MOTION_ZERO_SAIL_DRAG * drag_mult * delta)
 
-	spd = maxf(drift_floor, spd - rud_abs * MOTION_TURNING_SPEED_LOSS * delta)
+	# Turning bleeds speed proportional to rudder angle; harder turns cost much more.
+	var turn_loss: float = rud_abs * MOTION_TURNING_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
+	spd = maxf(drift_floor, spd - turn_loss * delta)
 	if rud_abs > MOTION_HARD_TURN_RUDDER:
-		spd = maxf(drift_floor, spd - rud_abs * MOTION_HARD_TURN_SPEED_LOSS * delta)
+		var hard_loss: float = rud_abs * MOTION_HARD_TURN_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
+		spd = maxf(drift_floor, spd - hard_loss * delta)
 
 	spd = clampf(spd, 0.0, NC.MAX_SPEED * 1.05)
 	p["move_speed"] = spd
@@ -491,14 +505,14 @@ func _tick_bot(p: Dictionary, player_idx: int, delta: float) -> void:
 	var fired_any: bool = false
 
 	if port_bat != null:
-		var port_aim: Vector2 = hull_n.rotated(PI * 0.5)
-		for spread in port_bat.process_frame(delta, hull_n, port_aim, ship_pos, fire_port, target_dist_m):
-			_fire_projectile(p, spread, port_bat.damage_per_shot_for_current_mode(), port_aim, port_bat)
+		var eff_port_aim_b: Vector2 = _effective_broadside_aim_for_side(p, hull_n, true)
+		for cannon_slot in port_bat.process_frame(delta, hull_n, eff_port_aim_b, ship_pos, fire_port, target_dist_m):
+			_fire_projectile(p, int(cannon_slot), port_bat.damage_per_shot_for_current_mode(), eff_port_aim_b, port_bat)
 			fired_any = true
 	if stbd_bat != null:
-		var stbd_aim: Vector2 = hull_n.rotated(-PI * 0.5)
-		for spread in stbd_bat.process_frame(delta, hull_n, stbd_aim, ship_pos, fire_stbd, target_dist_m):
-			_fire_projectile(p, spread, stbd_bat.damage_per_shot_for_current_mode(), stbd_aim, stbd_bat)
+		var eff_stbd_aim_b: Vector2 = _effective_broadside_aim_for_side(p, hull_n, false)
+		for cannon_slot in stbd_bat.process_frame(delta, hull_n, eff_stbd_aim_b, ship_pos, fire_stbd, target_dist_m):
+			_fire_projectile(p, int(cannon_slot), stbd_bat.damage_per_shot_for_current_mode(), eff_stbd_aim_b, stbd_bat)
 			fired_any = true
 
 	if fired_any:
@@ -627,7 +641,8 @@ func _process(delta: float) -> void:
 		pan_dir.x += 1.0
 	if pan_dir.length_squared() > 0.001:
 		if _camera_locked and not _players.is_empty():
-			var ap: Dictionary = _players[_my_index]
+			var cfi: int = clampi(_camera_follow_index, 0, _players.size() - 1)
+			var ap: Dictionary = _players[cfi]
 			_camera_world_anchor = Vector2(float(ap.wx), float(ap.wy))
 		_camera_locked = false
 		var world_scale: float = _TD_SCALE * _zoom
@@ -807,9 +822,12 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 	if sail.current_sail_level < sail.coast_drag_threshold:
 		spd = maxf(drift_floor, spd - MOTION_ZERO_SAIL_DRAG * drag_mult * delta)
 
-	spd = maxf(drift_floor, spd - rud_abs * MOTION_TURNING_SPEED_LOSS * delta)
+	# Turning bleeds speed proportional to rudder angle; harder turns cost much more.
+	var turn_loss: float = rud_abs * MOTION_TURNING_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
+	spd = maxf(drift_floor, spd - turn_loss * delta)
 	if rud_abs > MOTION_HARD_TURN_RUDDER:
-		spd = maxf(drift_floor, spd - rud_abs * MOTION_HARD_TURN_SPEED_LOSS * delta)
+		var hard_loss: float = rud_abs * MOTION_HARD_TURN_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
+		spd = maxf(drift_floor, spd - hard_loss * delta)
 
 	spd = clampf(spd, 0.0, NC.MAX_SPEED * 1.05)
 	p["move_speed"] = spd
@@ -887,16 +905,16 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 	var fire_port_battery: bool = bool(p.get("aim_broadside_port", true))
 	var fired_any: bool = false
 	if port_b != null:
-		var port_aim: Vector2 = hull_n.rotated(PI * 0.5)
+		var eff_port_aim: Vector2 = _effective_broadside_aim_for_side(p, hull_n, true)
 		var port_fire: bool = fire_just_pressed and fire_port_battery
-		for spread in port_b.process_frame(delta, hull_n, port_aim, ship_pos, port_fire, target_dist_m):
-			_fire_projectile(p, spread, port_b.damage_per_shot_for_current_mode(), port_aim, port_b)
+		for cannon_slot in port_b.process_frame(delta, hull_n, eff_port_aim, ship_pos, port_fire, target_dist_m):
+			_fire_projectile(p, int(cannon_slot), port_b.damage_per_shot_for_current_mode(), eff_port_aim, port_b)
 			fired_any = true
 	if stbd_b != null:
-		var stbd_aim: Vector2 = hull_n.rotated(-PI * 0.5)
+		var eff_stbd_aim: Vector2 = _effective_broadside_aim_for_side(p, hull_n, false)
 		var stbd_fire: bool = fire_just_pressed and not fire_port_battery
-		for spread in stbd_b.process_frame(delta, hull_n, stbd_aim, ship_pos, stbd_fire, target_dist_m):
-			_fire_projectile(p, spread, stbd_b.damage_per_shot_for_current_mode(), stbd_aim, stbd_b)
+		for cannon_slot in stbd_b.process_frame(delta, hull_n, eff_stbd_aim, ship_pos, stbd_fire, target_dist_m):
+			_fire_projectile(p, int(cannon_slot), stbd_b.damage_per_shot_for_current_mode(), eff_stbd_aim, stbd_b)
 			fired_any = true
 
 	if fired_any:
@@ -1016,17 +1034,6 @@ func _check_hit(_attacker: Dictionary, _defender: Dictionary) -> void:
 	# Disable melee arc checks; combat in Blacksite is ranged projectile-driven.
 	return
 
-func _deterministic_spread_deg(distance: float, shooter_speed: float, is_turning: bool, shot_seq: int) -> float:
-	var base_deg: float = NC.spread_deg_for_range(distance)
-	if is_turning:
-		base_deg *= NC.TURNING_SPREAD_MULT
-	if shooter_speed >= NC.HIGH_SPEED_THRESHOLD:
-		base_deg *= NC.HIGH_SPEED_SPREAD_MULT
-	var pattern: Array[float] = [-1.0, -0.66, -0.33, 0.0, 0.33, 0.66, 1.0, 0.5, -0.5]
-	var idx: int = posmod(shot_seq, pattern.size())
-	return base_deg * float(pattern[idx])
-
-
 func _spawn_muzzle_fx(wx: float, wy: float, dir: Vector2) -> void:
 	_muzzle_flash_fx.append({"wx": wx, "wy": wy, "dirx": dir.x, "diry": dir.y, "t": 0.0})
 	_muzzle_smoke_fx.append({"wx": wx, "wy": wy, "t": 0.0})
@@ -1051,7 +1058,76 @@ func _nearest_enemy_dir(p: Dictionary) -> Vector2:
 	return best_dir
 
 
-func _fire_projectile(p: Dictionary, spread_bias: float = 0.0, shot_damage: float = 1.0, aim_override: Variant = null, battery: Variant = null) -> void:
+## Half-angle (deg) of the yaw spread cone — matches `_spread_yaw_deg_for_cannon` envelope (|pattern| ≤ 1).
+func _spread_cone_half_deg(p: Dictionary, aim_dist: float) -> float:
+	var base_deg: float = NC.spread_deg_for_range(aim_dist)
+	if bool(p.get("motion_is_turning", false)):
+		base_deg *= NC.TURNING_SPREAD_MULT
+	if float(p.get("_naval_spd", 0.0)) >= NC.HIGH_SPEED_THRESHOLD:
+		base_deg *= NC.HIGH_SPEED_SPREAD_MULT
+	var hull_n: Vector2 = Vector2(float(p.dir.x), float(p.dir.y))
+	if hull_n.length_squared() < 0.001:
+		hull_n = Vector2.RIGHT
+	hull_n = hull_n.normalized()
+	var to_enemy: Vector2 = _nearest_enemy_dir(p)
+	var quality: float = 1.0
+	if to_enemy.length_squared() > 0.001:
+		var angle_from_bow: float = rad_to_deg(acos(clampf(hull_n.dot(to_enemy), -1.0, 1.0)))
+		quality = NC.broadside_quality(angle_from_bow)
+	# Clamp quality floor to 0.5 so spread never exceeds 2x base — prevents
+	# sporadic shots that fly way outside the ballistic preview bands.
+	return base_deg / maxf(0.5, quality)
+
+
+func _spread_yaw_deg_for_cannon(p: Dictionary, aim_dist: float, cannon_index: int) -> float:
+	var half: float = _spread_cone_half_deg(p, aim_dist)
+	# Symmetric pattern: center cannon fires straight, others alternate ±.
+	var pattern: Array[float] = [0.0, -0.5, 0.5, -0.85, 0.85, -0.3, 0.3, -0.7, 0.7]
+	var idx: int = posmod(cannon_index, pattern.size())
+	# Add small random jitter within ±15% of the slot's spread for natural feel.
+	var jitter: float = randf_range(-0.15, 0.15)
+	return half * (pattern[idx] + jitter)
+
+
+## Prefer stored aim (auto-aim / lead) when it bears on the selected broadside; else pure port/starboard normal.
+func _effective_broadside_aim_for_side(p: Dictionary, hull_n: Vector2, is_port: bool) -> Vector2:
+	var perp: Vector2 = hull_n.rotated(PI * 0.5) if is_port else hull_n.rotated(-PI * 0.5)
+	var ad: Variant = p.get("aim_dir", null)
+	if ad is Vector2:
+		var av: Vector2 = ad as Vector2
+		if av.length_squared() > 0.0001:
+			av = av.normalized()
+			if av.dot(perp) > 0.12:
+				return av
+	return perp
+
+
+func _cannon_muzzle_world(p: Dictionary, battery: _BatteryController, cannon_index: int) -> Vector2:
+	var hull_n: Vector2 = Vector2(float(p.dir.x), float(p.dir.y))
+	if hull_n.length_squared() < 0.001:
+		hull_n = Vector2.RIGHT
+	hull_n = hull_n.normalized()
+	var perp: Vector2 = battery._broadside_perp(hull_n)
+	var n_g: int = maxi(1, battery.cannon_count)
+	var idx: int = clampi(cannon_index, 0, n_g - 1)
+	# Cannon spacing: 70% of hull length, centered amidships.
+	var half_span: float = NC.SHIP_LENGTH_UNITS * 0.5 * 0.70
+	var along_t: float = 0.0
+	if n_g > 1:
+		along_t = (float(idx) - float(n_g - 1) * 0.5) / float(n_g - 1)
+	var along: Vector2 = hull_n * (along_t * half_span * 2.0)
+	# Muzzle at hull edge — half-width of the ship (gunport in the hull side).
+	var out_m: float = NC.SHIP_WIDTH_UNITS * 0.5
+	return Vector2(float(p.wx), float(p.wy)) + along + perp * out_m
+
+
+func _deck_lift_offset_for_screen(p: Dictionary) -> Vector2:
+	var bob: float = sin(float(p.get("walk_time", 0.0)) * 3.0) * 1.4 if bool(p.get("moving", false)) else 0.0
+	var v_lift_px: float = NC.SHIP_DECK_HEIGHT_UNITS * _CannonBallistics.SCREEN_HEIGHT_PX_PER_UNIT * _zoom
+	return Vector2(0.0, -v_lift_px + (-2.0 + bob) * _zoom)
+
+
+func _fire_projectile(p: Dictionary, cannon_index: int = 0, shot_damage: float = 1.0, aim_override: Variant = null, battery: Variant = null) -> void:
 	var dir: Vector2
 	if aim_override is Vector2 and aim_override.length_squared() > 0.001:
 		dir = aim_override.normalized()
@@ -1068,24 +1144,19 @@ func _fire_projectile(p: Dictionary, spread_bias: float = 0.0, shot_damage: floa
 	var aim_dist: float = float(p.get("_naval_acc_dist", 200.0))
 	if aim_dist < 0.0 or aim_dist > 1e9:
 		aim_dist = 200.0
-	var aim_spd: float = float(p.get("_naval_spd", 0.0))
-	var turning: bool = bool(p.get("motion_is_turning", false))
-	var shot_seq: int = int(p.get("shot_seq", 0))
-	var spread_deg: float = _deterministic_spread_deg(aim_dist, aim_spd, turning, shot_seq)
-	var hull_n: Vector2 = Vector2(float(p.dir.x), float(p.dir.y)).normalized()
-	if hull_n.length_squared() < 0.001:
-		hull_n = Vector2.RIGHT
-	var to_enemy: Vector2 = _nearest_enemy_dir(p)
-	var quality: float = 1.0
-	if to_enemy.length_squared() > 0.001:
-		var angle_from_bow: float = rad_to_deg(acos(clampf(hull_n.dot(to_enemy), -1.0, 1.0)))
-		quality = NC.broadside_quality(angle_from_bow)
-	spread_deg *= (1.0 / maxf(0.1, quality))
-	p["shot_seq"] = shot_seq + 1
-	var shot_dir: Vector2 = dir.rotated(spread_bias + deg_to_rad(spread_deg)).normalized()
-	var muzzle: float = 6.5
-	var start_x: float = float(p.wx) + shot_dir.x * muzzle
-	var start_y: float = float(p.wy) + shot_dir.y * muzzle
+	var spread_deg: float = _spread_yaw_deg_for_cannon(p, aim_dist, cannon_index)
+	var shot_dir: Vector2 = dir.rotated(deg_to_rad(spread_deg)).normalized()
+	var start_x: float
+	var start_y: float
+	if battery != null:
+		var bat: _BatteryController = battery as _BatteryController
+		var mw: Vector2 = _cannon_muzzle_world(p, bat, cannon_index)
+		start_x = mw.x
+		start_y = mw.y
+	else:
+		var muzzle: float = 6.5
+		start_x = float(p.wx) + shot_dir.x * muzzle
+		start_y = float(p.wy) + shot_dir.y * muzzle
 	_spawn_muzzle_fx(start_x, start_y, shot_dir)
 	var mass: float = _CannonBallistics.mass_from_damage(shot_damage)
 	var elev_deg: float = _CannonBallistics.DEFAULT_ELEVATION_DEG
@@ -1544,19 +1615,58 @@ func _draw_player(p: Dictionary) -> void:
 	var right: Vector2 = Vector2(-fwd.y, fwd.x)
 	var px_len: float = maxf(14.0 * _zoom, (_w2s(p.wx + hull.x * NC.SHIP_LENGTH_UNITS, p.wy + hull.y * NC.SHIP_LENGTH_UNITS) - sp).length() * 0.55)
 	var px_wid: float = maxf(8.0 * _zoom, (_w2s(p.wx + right.x * NC.SHIP_WIDTH_UNITS, p.wy + right.y * NC.SHIP_WIDTH_UNITS) - sp).length() * 0.9)
-	var nose: Vector2 = draw_pos + fwd * px_len * 0.68
-	var tail_l: Vector2 = draw_pos - fwd * px_len * 0.42 + right * px_wid * 0.52
-	var tail_r: Vector2 = draw_pos - fwd * px_len * 0.42 - right * px_wid * 0.52
-	var notch: Vector2 = draw_pos - fwd * px_len * 0.12
+	var h_len: float = px_len * 1.18
+	var h_wid: float = px_wid * 0.95
+	# FTL-style schematic hull (same proportions as _draw_ftl_ship_hud), oriented with bow = fwd.
+	var bow_tip: Vector2 = draw_pos + fwd * h_len * 0.44
+	var bow_l: Vector2 = draw_pos + fwd * h_len * 0.32 - right * h_wid * 0.35
+	var bow_r: Vector2 = draw_pos + fwd * h_len * 0.32 + right * h_wid * 0.35
+	var fwd_l: Vector2 = draw_pos + fwd * h_len * 0.15 - right * h_wid * 0.62
+	var fwd_r: Vector2 = draw_pos + fwd * h_len * 0.15 + right * h_wid * 0.62
+	var mid_l: Vector2 = draw_pos - fwd * h_len * 0.02 - right * h_wid * 0.72
+	var mid_r: Vector2 = draw_pos - fwd * h_len * 0.02 + right * h_wid * 0.72
+	var aft_l: Vector2 = draw_pos - fwd * h_len * 0.22 - right * h_wid * 0.65
+	var aft_r: Vector2 = draw_pos - fwd * h_len * 0.22 + right * h_wid * 0.65
+	var stern_l: Vector2 = draw_pos - fwd * h_len * 0.38 - right * h_wid * 0.48
+	var stern_r: Vector2 = draw_pos - fwd * h_len * 0.38 + right * h_wid * 0.48
+	var transom: Vector2 = draw_pos - fwd * h_len * 0.35
 	var mod_color: Color = p.palette[0]
 	var edge_col: Color = Color(0.08, 0.09, 0.12, 0.92)
-	var hull_poly := PackedVector2Array([nose, tail_l, notch, tail_r])
-	if px_len > 1.0 and px_wid > 1.0:
-		draw_colored_polygon(hull_poly, mod_color)
-	draw_polyline(PackedVector2Array([nose, tail_l, notch, tail_r, nose]), edge_col, 2.0 * _zoom, true)
-	draw_circle(draw_pos + Vector2(0.0, 12.0 * _zoom), 4.0 * _zoom, mod_color)
+	var hull_dark: Color = Color(mod_color.r * 0.55, mod_color.g * 0.55, mod_color.b * 0.58, 0.96)
+	var hull_mid: Color = Color(mod_color.r * 0.78, mod_color.g * 0.78, mod_color.b * 0.82, 0.94)
+	var hull_poly := PackedVector2Array([
+		bow_tip, bow_r, fwd_r, mid_r, aft_r, stern_r, transom, stern_l, aft_l, mid_l, fwd_l, bow_l])
+	if h_len > 1.0 and h_wid > 1.0:
+		draw_colored_polygon(hull_poly, hull_dark)
+	draw_polyline(PackedVector2Array([
+		bow_tip, bow_r, fwd_r, mid_r, aft_r, stern_r, transom, stern_l, aft_l, mid_l, fwd_l, bow_l, bow_tip]),
+		hull_mid, 2.0 * _zoom, true)
+	draw_line(draw_pos + fwd * h_len * 0.40, draw_pos + fwd * h_len * 0.52, Color(0.55, 0.45, 0.30, 0.75), 1.6 * _zoom, true)
+	draw_line(draw_pos + fwd * h_len * 0.06, draw_pos + fwd * h_len * 0.28, Color(0.48, 0.40, 0.28, 0.55), 1.2 * _zoom, true)
+	var ctr_w: Vector2 = Vector2(float(p.wx), float(p.wy))
+	var sc_w: float = _TD_SCALE * _zoom
+	var barrel_col: Color = Color(0.22, 0.20, 0.18, 0.95)
+	var mzl_col: Color = Color(0.42, 0.38, 0.32, 0.9)
+	var zc: float = _zoom
+	for bat_var in [p.get("battery_port"), p.get("battery_stbd")]:
+		if bat_var == null:
+			continue
+		var bat_c: _BatteryController = bat_var as _BatteryController
+		var perp_w: Vector2 = bat_c._broadside_perp(hull)
+		var out_scr: Vector2 = _dir_screen(perp_w.x, perp_w.y)
+		for gi in range(bat_c.cannon_count):
+			var mw: Vector2 = _cannon_muzzle_world(p, bat_c, gi)
+			var gun_sp: Vector2 = draw_pos + (mw - ctr_w) * sc_w
+			# Barrel: breech inside hull, muzzle poking out at gunport.
+			var breech: Vector2 = gun_sp - out_scr * (4.0 * zc)
+			draw_line(breech, gun_sp + out_scr * (3.0 * zc), barrel_col, 2.4 * zc, true)
+			draw_circle(gun_sp + out_scr * (3.5 * zc), 1.3 * zc, mzl_col)
 	var font := ThemeDB.fallback_font
 	draw_string(font, draw_pos + Vector2(0.0, -42.0 * _zoom), str(p.get("label", "Ship")), HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1.0, 1.0, 1.0, 0.88))
+
+	# Direction indicator — bow line for all ships, arcs only for local player.
+	var c_bow_bot: Color = Color(mod_color.r, mod_color.g, mod_color.b, 0.5)
+	draw_line(draw_pos, draw_pos + fwd * (h_len * 0.7), c_bow_bot, 1.8 * _zoom)
 
 	if _players.is_empty():
 		return
@@ -1707,9 +1817,11 @@ func _draw_accuracy_bands(center: Vector2, screen_y_offset_px: float = 0.0, alph
 func _draw() -> void:
 	var vp := get_viewport_rect().size
 	var me: Dictionary = _players[_my_index] if not _players.is_empty() else {}
+	var cam_target_idx: int = clampi(_camera_follow_index, 0, maxi(0, _players.size() - 1))
+	var cam_target: Dictionary = _players[cam_target_idx] if not _players.is_empty() else {}
 	var cam_focus: Vector2
-	if _camera_locked and not me.is_empty():
-		cam_focus = Vector2(float(me.wx), float(me.wy))
+	if _camera_locked and not cam_target.is_empty():
+		cam_focus = Vector2(float(cam_target.wx), float(cam_target.wy))
 	else:
 		cam_focus = _camera_world_anchor
 	_origin = vp * 0.5 - cam_focus * _TD_SCALE * _zoom
@@ -1831,17 +1943,27 @@ func _draw_offscreen_indicators(vp: Vector2) -> void:
 		var t: float = minf(t_x, t_y)
 		var ap: Vector2 = screen_center + dir * t
 		var pa: Color = p.palette[0]
-		var tip: Vector2 = ap + dir * ARROW_R
-		var perp: Vector2 = Vector2(-dir.y, dir.x) * ARROW_R * 0.6
-		var base1: Vector2 = ap - dir * (ARROW_R * 0.4) + perp
-		var base2: Vector2 = ap - dir * (ARROW_R * 0.4) - perp
+		var R: float = ARROW_R
+		var side: Vector2 = Vector2(-dir.y, dir.x)
+		# Ship silhouette: pointed bow, widest at midship, tapered stern.
+		var bow: Vector2 = ap + dir * R * 1.1
+		var bow_l: Vector2 = ap + dir * R * 0.7 - side * R * 0.3
+		var bow_r: Vector2 = ap + dir * R * 0.7 + side * R * 0.3
+		var mid_l: Vector2 = ap + dir * R * 0.1 - side * R * 0.52
+		var mid_r: Vector2 = ap + dir * R * 0.1 + side * R * 0.52
+		var aft_l: Vector2 = ap - dir * R * 0.6 - side * R * 0.42
+		var aft_r: Vector2 = ap - dir * R * 0.6 + side * R * 0.42
+		var stern_l: Vector2 = ap - dir * R * 0.85 - side * R * 0.28
+		var stern_r: Vector2 = ap - dir * R * 0.85 + side * R * 0.28
+		var stern: Vector2 = ap - dir * R * 0.75
+		var ship_poly := PackedVector2Array([bow, bow_r, mid_r, aft_r, stern_r, stern, stern_l, aft_l, mid_l, bow_l])
 		const S := 1.18
-		var stip: Vector2 = ap + dir * ARROW_R * S
-		var sperp: Vector2 = Vector2(-dir.y, dir.x) * ARROW_R * 0.6 * S
-		var sbase1: Vector2 = ap - dir * (ARROW_R * 0.4 * S) + sperp
-		var sbase2: Vector2 = ap - dir * (ARROW_R * 0.4 * S) - sperp
-		draw_colored_polygon(PackedVector2Array([stip, sbase1, sbase2]), Color(0.0, 0.0, 0.0, 0.55))
-		draw_colored_polygon(PackedVector2Array([tip, base1, base2]), pa)
+		var shadow_poly := PackedVector2Array()
+		var center: Vector2 = ap
+		for pt in ship_poly:
+			shadow_poly.append(center + (pt - center) * S)
+		draw_colored_polygon(shadow_poly, Color(0.0, 0.0, 0.0, 0.55))
+		draw_colored_polygon(ship_poly, pa)
 		var label_pos: Vector2 = ap - dir * (ARROW_R + 10.0)
 		draw_string(font, label_pos, p.label, HORIZONTAL_ALIGNMENT_CENTER, -1, 8, Color(pa.r, pa.g, pa.b, 0.90))
 
@@ -1952,9 +2074,11 @@ func _draw_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 	var stbd_b: Variant = p.get("battery_stbd")
 	var sel_port_arc: bool = bool(p.get("aim_broadside_port", true))
 	if port_b != null and sel_port_arc:
-		batteries.append({"bat": port_b, "aim": hull_n.rotated(PI * 0.5), "col": Color(1.0, 0.28, 0.22, 0.82 * alpha_mult)})
+		var aim_p: Vector2 = _effective_broadside_aim_for_side(p, hull_n, true)
+		batteries.append({"bat": port_b, "aim": aim_p, "col": Color(1.0, 0.28, 0.22, 0.82 * alpha_mult)})
 	if stbd_b != null and not sel_port_arc:
-		batteries.append({"bat": stbd_b, "aim": hull_n.rotated(-PI * 0.5), "col": Color(1.0, 0.45, 0.18, 0.82 * alpha_mult)})
+		var aim_s: Vector2 = _effective_broadside_aim_for_side(p, hull_n, false)
+		batteries.append({"bat": stbd_b, "aim": aim_s, "col": Color(1.0, 0.45, 0.18, 0.82 * alpha_mult)})
 	for bd in batteries:
 		_draw_single_battery_arc(p, bd.aim, bd.bat, bd.col, alpha_mult)
 
@@ -1965,11 +2089,15 @@ func _draw_single_battery_arc(p: Dictionary, aim_dir: Vector2, bat: _BatteryCont
 	var est_range: float = float(p.get("_naval_acc_dist", NC.OPTIMAL_RANGE))
 	if est_range < 0.0 or est_range > NC.MAX_CANNON_RANGE:
 		est_range = NC.OPTIMAL_RANGE
-	var spread_deg: float = NC.spread_deg_for_range(est_range)
-	if bool(p.get("motion_is_turning", false)):
-		spread_deg *= NC.TURNING_SPREAD_MULT
-	var dirs: Array[Vector2] = [aim_dir, aim_dir.rotated(deg_to_rad(spread_deg)), aim_dir.rotated(deg_to_rad(-spread_deg))]
+	var spread_half: float = _spread_cone_half_deg(p, est_range)
+	var dirs: Array[Vector2] = [
+		aim_dir,
+		aim_dir.rotated(deg_to_rad(spread_half)),
+		aim_dir.rotated(deg_to_rad(-spread_half)),
+	]
 	var elev_deg_arc: float = bat.elevation_degrees()
+	var mid_gun: int = maxi(0, (bat.cannon_count - 1) / 2)
+	var muzzle_w: Vector2 = _cannon_muzzle_world(p, bat, mid_gun)
 	for idx in range(dirs.size()):
 		var d: Vector2 = dirs[idx].normalized()
 		var vel: Dictionary = _CannonBallistics.initial_velocity(d, mass, NC.CANNON_LINE_SPEED_SCALE, elev_deg_arc)
@@ -1983,9 +2111,8 @@ func _draw_single_battery_arc(p: Dictionary, aim_dir: Vector2, bat: _BatteryCont
 			vx *= s
 			vy *= s
 			vz *= s
-		var muzzle: float = 6.5
-		var wx0: float = float(p.wx) + d.x * muzzle
-		var wy0: float = float(p.wy) + d.y * muzzle
+		var wx0: float = muzzle_w.x
+		var wy0: float = muzzle_w.y
 		var h0: float = _CannonBallistics.MUZZLE_HEIGHT
 		var grav: float = _CannonBallistics.GRAVITY * NC.PROJECTILE_GRAVITY_SCALE
 		var hs_px: float = _CannonBallistics.SCREEN_HEIGHT_PX_PER_UNIT * _zoom
@@ -2115,12 +2242,13 @@ func _draw_aim_cursor() -> void:
 		hull_n = Vector2.RIGHT
 	hull_n = hull_n.normalized()
 	var sel_port: bool = bool(p.get("aim_broadside_port", true))
-	var aim_dir: Vector2 = hull_n.rotated(PI * 0.5) if sel_port else hull_n.rotated(-PI * 0.5)
 	var bat: Variant = p.get("battery_port") if sel_port else p.get("battery_stbd")
 	if bat == null:
 		return
-	var elev_deg: float = bat.elevation_degrees()
-	var shot_damage: float = bat.damage_per_shot_for_current_mode()
+	var bat_br: _BatteryController = bat as _BatteryController
+	var aim_dir: Vector2 = _effective_broadside_aim_for_side(p, hull_n, sel_port)
+	var elev_deg: float = bat_br.elevation_degrees()
+	var shot_damage: float = bat_br.damage_per_shot_for_current_mode()
 	var mass: float = _CannonBallistics.mass_from_damage(shot_damage)
 	var vel: Dictionary = _CannonBallistics.initial_velocity(aim_dir, mass, NC.CANNON_LINE_SPEED_SCALE, elev_deg)
 	var vx: float = float(vel.vx)
@@ -2133,9 +2261,10 @@ func _draw_aim_cursor() -> void:
 		vx *= s
 		vy *= s
 		vz *= s
-	var muzzle: float = 6.5
-	var wx0: float = float(p.wx) + aim_dir.x * muzzle
-	var wy0: float = float(p.wy) + aim_dir.y * muzzle
+	var mid_gun: int = maxi(0, (bat_br.cannon_count - 1) / 2)
+	var muzzle_w: Vector2 = _cannon_muzzle_world(p, bat_br, mid_gun)
+	var wx0: float = muzzle_w.x
+	var wy0: float = muzzle_w.y
 	var h0: float = _CannonBallistics.MUZZLE_HEIGHT
 	var grav: float = _CannonBallistics.GRAVITY * NC.PROJECTILE_GRAVITY_SCALE
 	var disc: float = vz * vz + 2.0 * grav * h0
@@ -2145,11 +2274,9 @@ func _draw_aim_cursor() -> void:
 	var impact_wy: float = wy0 + vy * impact_t
 	var sp: Vector2 = _w2s(impact_wx, impact_wy)
 
-	var impact_dist: float = Vector2(impact_wx - float(p.wx), impact_wy - float(p.wy)).length()
-	var spread_deg: float = NC.spread_deg_for_range(minf(impact_dist, NC.MAX_CANNON_RANGE))
-	if bool(p.get("motion_is_turning", false)):
-		spread_deg *= NC.TURNING_SPREAD_MULT
-	var spread_world: float = impact_dist * tan(deg_to_rad(spread_deg))
+	var impact_dist: float = Vector2(impact_wx - muzzle_w.x, impact_wy - muzzle_w.y).length()
+	var spread_half: float = _spread_cone_half_deg(p, minf(impact_dist, NC.MAX_CANNON_RANGE))
+	var spread_world: float = impact_dist * tan(deg_to_rad(spread_half))
 	var r: float = maxf(8.0, spread_world) * _zoom
 	var col: Color = Color(1.0, 0.35, 0.15, 0.85)
 	draw_arc(sp, r, 0.0, TAU, 32, col, 1.8 * _zoom, true)

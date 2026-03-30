@@ -165,7 +165,7 @@ func _enter_firing(out: Array) -> void:
 		volley_fired.emit(side)
 		var n: int = maxi(1, cannon_count)
 		for i in range(n):
-			out.append(randf_range(-0.08, 0.08))
+			out.append(float(i))
 			cannon_fired.emit(side, i)
 		reload_timer = reload_time
 		reload_started.emit(side)
@@ -174,7 +174,7 @@ func _enter_firing(out: Array) -> void:
 
 	shots_remaining_in_sequence = cannon_count
 	sequence_timer = 0.0
-	out.append(randf_range(-0.06, 0.06))
+	out.append(0.0)
 	cannon_fired.emit(side, 0)
 	shots_remaining_in_sequence -= 1
 	if shots_remaining_in_sequence <= 0:
@@ -191,7 +191,7 @@ func _process_ripple(delta: float, out: Array) -> void:
 		return
 	if shots_remaining_in_sequence > 0:
 		var idx: int = cannon_count - shots_remaining_in_sequence
-		out.append(randf_range(-0.06, 0.06))
+		out.append(float(idx))
 		cannon_fired.emit(side, idx)
 		shots_remaining_in_sequence -= 1
 		if shots_remaining_in_sequence <= 0:
