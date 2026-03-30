@@ -205,6 +205,15 @@ func get_tile_at(wx: float, wy: float) -> int:
 		return T_SAND
 	return _get_tile(floori(wx), floori(wy))
 
+
+## When world coords pack multiple units per logical tile (req-naval-combat-prototype-v1 §2.1).
+func get_tile_at_world_units(wx: float, wy: float, units_per_tile: float) -> int:
+	if units_per_tile <= 1.0001:
+		return get_tile_at(wx, wy)
+	if _elev_noise == null and not _static_mode:
+		return T_SAND
+	return _get_tile(floori(wx / units_per_tile), floori(wy / units_per_tile))
+
 func _draw_fallback_tiles(canvas: CanvasItem, origin: Vector2, viewport: Vector2, tile_w: float, tile_h: float) -> void:
 	var tex: Texture2D = _TEXTURES[T_SAND]
 	var dw := float(_SP_W) * _SP_SCALE

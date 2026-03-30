@@ -40,6 +40,9 @@ var _pending_host_request: bool = false
 var _host_retry_count: int = 0
 var _next_init_retry_at_ms: int = 0
 var _next_host_retry_at_ms: int = 0
+var _init_retry_count: int = 0
+var _steam_init_permanently_failed: bool = false
+var _steam_hint_emitted: bool = false
 var _cached_public_lobbies: Array[Dictionary] = []
 
 const _RESULT_OK: int = 1
@@ -49,7 +52,8 @@ const _FRIEND_FLAG_IMMEDIATE: int = 4
 const _PERSONA_STATE_OFFLINE: int = 0
 const _AVATAR_MEDIUM: int = 2
 const _INVITE_TIMEOUT_SECONDS: int = 45
-const _INIT_RETRY_MS: int = 2500
+const _INIT_RETRY_MS: int = 8000
+const _MAX_INIT_RETRIES: int = 4
 const _HOST_RETRY_MS: int = 3000
 const _MAX_HOST_RETRIES: int = 3
 const _MAX_DEBUG_HISTORY: int = 300
@@ -78,8 +82,10 @@ func _process(_delta: float) -> void:
 				_emit_debug("[SteamManager] Retrying host lobby (attempt %d/%d)..." % [_host_retry_count + 1, _MAX_HOST_RETRIES], false)
 				_attempt_create_lobby()
 		return
+	if _steam_init_permanently_failed:
+		return
 	var now_ms: int = Time.get_ticks_msec()
-	if now_ms >= _next_init_retry_at_ms:
+	if now_ms >= _next_init_retry_at_ms and _init_retry_count < _MAX_INIT_RETRIES:
 		_try_initialize_steam()
 
 # ---------------------------------------------------------------------------
@@ -87,6 +93,9 @@ func _process(_delta: float) -> void:
 # ---------------------------------------------------------------------------
 func host_lobby() -> void:
 	if not steam_ready:
+		if _steam_init_permanently_failed:
+			_emit_debug("[SteamManager] Steam is unavailable in this run. Hosting is disabled; continue offline/test mode.", false)
+			return
 		_pending_host_request = true
 		_host_retry_count = 0
 		_emit_debug("[SteamManager] Steam not initialized yet. Queueing host request and retrying init...", false)
@@ -123,8 +132,11 @@ func _attempt_create_lobby() -> void:
 
 func join_lobby(target_lobby_id: int) -> void:
 	if not steam_ready:
+		if _steam_init_permanently_failed:
+			_emit_debug("[SteamManager] Steam is unavailable in this run. Join is disabled.", false)
+			return
 		_pending_join_lobby_id = target_lobby_id
-		_emit_debug("[SteamManager] Steam not initialized yet. Queueing join for lobby %d and retrying init..." % target_lobby_id, true)
+		_emit_debug("[SteamManager] Steam not initialized yet. Queueing join for lobby %d and retrying init..." % target_lobby_id, false)
 		_try_initialize_steam()
 		return
 
@@ -150,10 +162,11 @@ func leave_lobby() -> void:
 
 func request_burnbridgers_lobby_list() -> void:
 	if not steam_ready or _steam == null:
-		_emit_debug("[SteamManager] Cannot request lobby list yet: Steam is not initialized.", true)
+		_emit_debug("[SteamManager] Cannot request lobby list yet: Steam is not initialized.", false)
 		_cached_public_lobbies = []
 		lobby_list_updated.emit(_cached_public_lobbies.duplicate(true))
-		_try_initialize_steam()
+		if not _steam_init_permanently_failed:
+			_try_initialize_steam()
 		return
 
 	# Ask Steam for public lobbies then filter to this game by lobby data.
@@ -592,6 +605,13 @@ func _join_requested_lobby(target_lobby_id: int) -> void:
 func _try_initialize_steam() -> void:
 	if steam_ready and _steam != null:
 		return
+	if _steam_init_permanently_failed:
+		return
+	if _init_retry_count >= _MAX_INIT_RETRIES:
+		_steam_init_permanently_failed = true
+		_emit_debug("[SteamManager] Steam initialization unavailable after %d attempts. Online features disabled for this session." % _MAX_INIT_RETRIES, false)
+		return
+	_init_retry_count += 1
 	_next_init_retry_at_ms = Time.get_ticks_msec() + _INIT_RETRY_MS
 
 	if not Engine.has_singleton("Steam"):
@@ -600,10 +620,10 @@ func _try_initialize_steam() -> void:
 			var load_status: GDExtensionManager.LoadStatus = GDExtensionManager.load_extension(extension_path)
 			_emit_debug("[SteamManager] Attempted to load GodotSteam extension (%s). Status: %d" % [extension_path, load_status], false)
 		else:
-			_emit_debug("[SteamManager] GodotSteam extension file missing. Checked: %s" % ", ".join(_STEAM_EXTENSION_CANDIDATES), true)
+			_emit_debug("[SteamManager] GodotSteam extension file missing. Checked: %s" % ", ".join(_STEAM_EXTENSION_CANDIDATES), false)
 			return
 	if not Engine.has_singleton("Steam"):
-		_emit_debug("[SteamManager] Steam singleton not available after loading extension. Will retry.", true)
+		_emit_debug("[SteamManager] Steam singleton not available after loading extension. Will retry (%d/%d)." % [_init_retry_count, _MAX_INIT_RETRIES], false)
 		_emit_steam_environment_hints()
 		return
 
@@ -625,13 +645,15 @@ func _try_initialize_steam() -> void:
 	else:
 		verbal = "Unexpected steamInit() response type: %s" % [typeof(init_response)]
 	if not init_ok:
-		_emit_debug("[SteamManager] Steam failed to init: " + verbal + " (status=" + str(status) + "). Will retry.", true)
+		_emit_debug("[SteamManager] Steam failed to init: " + verbal + " (status=" + str(status) + "). Will retry (%d/%d)." % [_init_retry_count, _MAX_INIT_RETRIES], false)
 		_emit_steam_environment_hints()
 		return
 
 	steam_id = int(_steam.call("getSteamID"))
 	steam_username = str(_steam.call("getPersonaName"))
 	steam_ready = true
+	_init_retry_count = 0
+	_steam_init_permanently_failed = false
 	_emit_debug("[SteamManager] Initialized. User: %s (%d)" % [steam_username, steam_id], false)
 	_emit_debug("[SteamManager] Runtime platform: %s, App ID: %d" % [OS.get_name(), get_current_app_id()], false)
 
@@ -675,11 +697,14 @@ func _find_steam_extension_path() -> String:
 	return _STEAM_EXTENSION_CANDIDATES[0]
 
 func _emit_steam_environment_hints() -> void:
+	if _steam_hint_emitted:
+		return
+	_steam_hint_emitted = true
 	var steam_app_id: String = OS.get_environment("SteamAppId")
 	var steam_game_id: String = OS.get_environment("SteamGameId")
-	_emit_debug("[SteamManager] Env SteamAppId=%s SteamGameId=%s" % [steam_app_id, steam_game_id], true)
+	_emit_debug("[SteamManager] Env SteamAppId=%s SteamGameId=%s" % [steam_app_id, steam_game_id], false)
 	if OS.get_name() == "Linux":
-		_emit_debug("[SteamManager] Linux/Steam Deck hint: launch from Steam client OR ensure steam_appid.txt exists next to the game binary when launching outside Steam.", true)
+		_emit_debug("[SteamManager] Linux/Steam Deck hint: launch from Steam client OR ensure steam_appid.txt exists next to the game binary when launching outside Steam.", false)
 
 func _get_steam_result_error(result_code: int) -> String:
 	# Common Steam API result codes (EResult enum)

@@ -49,7 +49,6 @@ const TERRAIN_RENDERER_SCRIPT := preload("res://scripts/shared/iso_terrain_rende
 @onready var pause_backdrop: ColorRect = $UILayer/PauseBackdrop
 @onready var pause_menu_panel: PanelContainer = $UILayer/PauseMenuPanel
 @onready var pause_resume_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseResumeButton
-@onready var pause_music_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseMusicButton
 @onready var pause_quit_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseQuitButton
 @onready var quit_confirm_dialog: ConfirmationDialog = $UILayer/QuitConfirmDialog
 
@@ -65,12 +64,19 @@ const _ZOOM_MIN: float = 0.001
 const _ZOOM_MAX: float = 1.0
 const _ZOOM_STEP: float = 0.1
 
+## Iso ship art: 8 directions N → NE → E → SE → S → SW → W → NW (screen-space, clockwise from north).
+## Cardinal placeholders (N,E,S,W) are copies of nearest diagonal art until unique assets exist.
 const _SHIP_TEXTURES: Array[Texture2D] = [
-	preload("res://assets/generated/pirate_ship_nw_frame_0_1773704184.png"),
+	preload("res://assets/generated/pirate_ship_n_frame_0.png"),
 	preload("res://assets/generated/pirate_ship_ne_frame_0_1773704192.png"),
+	preload("res://assets/generated/pirate_ship_e_frame_0.png"),
 	preload("res://assets/generated/pirate_ship_se_frame_0_1773704181.png"),
-	preload("res://assets/generated/pirate_ship_sw_frame_0_1773704182.png")
+	preload("res://assets/generated/pirate_ship_s_frame_0.png"),
+	preload("res://assets/generated/pirate_ship_sw_frame_0_1773704182.png"),
+	preload("res://assets/generated/pirate_ship_w_frame_0.png"),
+	preload("res://assets/generated/pirate_ship_nw_frame_0_1773704184.png"),
 ]
+const _SHIP_COMPASS_8: Array[String] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
 # ── Spawn positions (world units) — populated by _load_geo_map() ──────────────
 var _SPAWNS: Array = []
@@ -86,7 +92,6 @@ func _ready() -> void:
 	_load_geo_map()
 	_origin = get_viewport_rect().size * 0.5
 	_spawn_players()
-	_setup_game_music()
 	if quit_game_button != null:
 		quit_game_button.visible = false
 	if pause_menu_panel != null:
@@ -95,21 +100,15 @@ func _ready() -> void:
 		pause_backdrop.visible = false
 	UiStyleScript.style_panel(pause_menu_panel)
 	UiStyleScript.style_button(pause_resume_button)
-	UiStyleScript.style_button(pause_music_button)
 	UiStyleScript.style_button(pause_quit_button)
-	if pause_resume_button != null and pause_music_button != null and pause_quit_button != null:
-		pause_resume_button.focus_neighbor_bottom = pause_resume_button.get_path_to(pause_music_button)
-		pause_music_button.focus_neighbor_top = pause_music_button.get_path_to(pause_resume_button)
-		pause_music_button.focus_neighbor_bottom = pause_music_button.get_path_to(pause_quit_button)
-		pause_quit_button.focus_neighbor_top = pause_quit_button.get_path_to(pause_music_button)
+	if pause_resume_button != null and pause_quit_button != null:
+		pause_resume_button.focus_neighbor_bottom = pause_resume_button.get_path_to(pause_quit_button)
+		pause_quit_button.focus_neighbor_top = pause_quit_button.get_path_to(pause_resume_button)
 		pause_quit_button.focus_neighbor_bottom = pause_quit_button.get_path_to(pause_resume_button)
 	if pause_resume_button != null and not pause_resume_button.pressed.is_connected(_on_pause_resume_pressed):
 		pause_resume_button.pressed.connect(_on_pause_resume_pressed)
-	if pause_music_button != null and not pause_music_button.pressed.is_connected(_on_pause_music_pressed):
-		pause_music_button.pressed.connect(_on_pause_music_pressed)
 	if pause_quit_button != null and not pause_quit_button.pressed.is_connected(_on_pause_quit_pressed):
 		pause_quit_button.pressed.connect(_on_pause_quit_pressed)
-	_update_pause_music_button_label()
 	if quit_game_button != null and not quit_game_button.pressed.is_connected(_on_quit_game_button_pressed):
 		quit_game_button.pressed.connect(_on_quit_game_button_pressed)
 	if quit_confirm_dialog != null and not quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
@@ -118,8 +117,6 @@ func _ready() -> void:
 		quit_confirm_dialog.title = "Leave Match"
 		quit_confirm_dialog.ok_button_text = "Quit Match"
 		_apply_quit_dialog_theme()
-	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
-		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
 	if multiplayer.has_multiplayer_peer():
 		if not multiplayer.peer_connected.is_connected(_on_peer_connected):
 			multiplayer.peer_connected.connect(_on_peer_connected)
@@ -128,8 +125,7 @@ func _ready() -> void:
 	queue_redraw()
 
 func _exit_tree() -> void:
-	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
-		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
+	pass
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -174,6 +170,28 @@ func _w2s(wx: float, wy: float) -> Vector2:
 func _dir_screen(dx: float, dy: float) -> Vector2:
 	var v := Vector2((dx - dy) * TILE_W * _zoom * 0.5, (dx + dy) * TILE_H * _zoom * 0.5)
 	return v.normalized() if v.length_squared() > 0.001 else Vector2.DOWN
+
+
+## Picks nearest of 8 compass sprites from iso screen projection of world heading (matches motion on the diamond).
+func compute_ship_sprite_for_world_heading(dx: float, dy: float) -> Dictionary:
+	if dx * dx + dy * dy < 0.000001:
+		dx = 1.0
+		dy = 0.0
+	var world_rad: float = atan2(dy, dx)
+	var screen_fwd: Vector2 = _dir_screen(dx, dy)
+	var screen_rad: float = screen_fwd.angle()
+	# Eight 45° sectors, clockwise from N (screen up): N=0 … NW=7
+	var shifted: float = fposmod(screen_rad + PI / 2.0 + PI / 8.0, TAU)
+	var frame_idx: int = int(floor(shifted / (PI / 4.0)))
+	frame_idx = clampi(frame_idx, 0, mini(_SHIP_TEXTURES.size(), _SHIP_COMPASS_8.size()) - 1)
+	var sprite_compass: String = _SHIP_COMPASS_8[frame_idx]
+	return {
+		"frame_idx": frame_idx,
+		"sprite_compass": sprite_compass,
+		"world_deg": rad_to_deg(world_rad),
+		"screen_deg": rad_to_deg(screen_rad),
+		"screen_norm_sector_deg": rad_to_deg(shifted),
+	}
 
 # ── Input registration ────────────────────────────────────────────────────────
 func _register_inputs() -> void:
@@ -225,37 +243,6 @@ func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: fl
 	motion_event.axis_value = axis_value
 	motion_event.device = device
 	InputMap.action_add_event(action, motion_event)
-
-func _setup_game_music() -> void:
-	if MusicManager == null:
-		return
-	MusicManager.seek_to_phase("build1")
-	if GameManager != null:
-		MusicManager.set_volume(GameManager.music_volume)
-		MusicManager.set_profile(GameManager.music_intensity, GameManager.music_speed, GameManager.music_tone)
-	else:
-		MusicManager.set_volume(0.52)
-	if GameManager != null and GameManager.music_enabled:
-		MusicManager.play()
-	else:
-		MusicManager.stop()
-
-func _on_music_enabled_changed(enabled: bool) -> void:
-	if MusicManager == null:
-		return
-	if GameManager != null:
-		MusicManager.set_volume(GameManager.music_volume)
-		MusicManager.set_profile(GameManager.music_intensity, GameManager.music_speed, GameManager.music_tone)
-	if enabled:
-		MusicManager.play()
-	else:
-		MusicManager.stop()
-	_update_pause_music_button_label()
-
-func _update_pause_music_button_label() -> void:
-	if pause_music_button == null or GameManager == null:
-		return
-	pause_music_button.text = "Music: %s" % ("On" if GameManager.music_enabled else "Off")
 
 # ── Player spawning ───────────────────────────────────────────────────────────
 func _spawn_players() -> void:
@@ -313,12 +300,6 @@ func _on_quit_game_button_pressed() -> void:
 func _on_pause_resume_pressed() -> void:
 	_close_pause_menu()
 
-func _on_pause_music_pressed() -> void:
-	if GameManager == null:
-		return
-	GameManager.set_music_enabled(not GameManager.music_enabled)
-	_update_pause_music_button_label()
-
 func _on_pause_quit_pressed() -> void:
 	_request_quit_to_menu()
 
@@ -336,7 +317,6 @@ func _open_pause_menu() -> void:
 	pause_menu_panel.visible = true
 	if pause_backdrop != null:
 		pause_backdrop.visible = true
-	_update_pause_music_button_label()
 	if pause_resume_button != null:
 		pause_resume_button.grab_focus()
 
@@ -407,8 +387,9 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 
-	# Only tick and send input for the character this peer owns
-	_tick_player(_players[_my_index], delta)
+	# Only tick and send input for the character this peer owns.
+	# Use call() so derived arenas (e.g. naval Blacksite) get their overridden _tick_player / _check_hit.
+	call("_tick_player", _players[_my_index], delta)
 	_broadcast_my_state()
 	_resolve_collisions()
 	var run_authoritative_logic: bool = not multiplayer.has_multiplayer_peer() or multiplayer.is_server()
@@ -416,7 +397,7 @@ func _process(delta: float) -> void:
 		for i in range(_players.size()):
 			for j in range(_players.size()):
 				if i != j:
-					_check_hit(_players[i], _players[j])
+					call("_check_hit", _players[i], _players[j])
 		_check_win()
 	_tick_status_messages(delta)
 	queue_redraw()
@@ -553,9 +534,15 @@ func _check_win() -> void:
 			alive_count += 1
 			last_alive   = i
 	if alive_count == 0:
-		_set_winner.rpc(-1)
+		if multiplayer.has_multiplayer_peer():
+			_set_winner.rpc(-1)
+		else:
+			_set_winner(-1)
 	elif alive_count == 1:
-		_set_winner.rpc(last_alive)
+		if multiplayer.has_multiplayer_peer():
+			_set_winner.rpc(last_alive)
+		else:
+			_set_winner(last_alive)
 
 @rpc("authority", "call_local", "reliable")
 func _set_winner(next_winner: int) -> void:
@@ -613,19 +600,9 @@ func _draw_player(p: Dictionary) -> void:
 	var bob  := sin(p.walk_time * 5.0) * 1.5 if p.moving else 0.0
 	var lift := Vector2(0.0, -6.0 + bob)
 
-	# Draw ship sprite
-	var angle: float = p.dir.angle()
-	var norm_angle: float = fposmod(angle + PI/4, TAU)
-	var frame_idx: int = 0
-	if norm_angle < PI/2:
-		frame_idx = 2 # SE
-	elif norm_angle < PI:
-		frame_idx = 3 # SW
-	elif norm_angle < 3*PI/2:
-		frame_idx = 0 # NW
-	else:
-		frame_idx = 1 # NE
-	
+	# Draw ship sprite — 8-way iso-facing from screen-projected heading.
+	var spr: Dictionary = compute_ship_sprite_for_world_heading(float(p.dir.x), float(p.dir.y))
+	var frame_idx: int = clampi(int(spr.get("frame_idx", 0)), 0, _SHIP_TEXTURES.size() - 1)
 	var tex: Texture2D = _SHIP_TEXTURES[frame_idx]
 	var tex_size: Vector2 = tex.get_size()
 	var draw_scale: float = _zoom * 1.0

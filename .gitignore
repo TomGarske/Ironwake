@@ -19,6 +19,9 @@ logs/
 Thumbs.db
 desktop.ini
 
+# Claude Code local settings
+.claude/
+
 # Editor / IDE
 .cursor/*
 !.cursor/rules/

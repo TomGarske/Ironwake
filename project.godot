@@ -23,7 +23,6 @@ GameConstants="*res://scripts/autoload/game_constants.gd"
 DebugOverlay="*res://scripts/autoload/debug_overlay.gd"
 SteamManager="*res://scripts/autoload/steam_manager.gd"
 GameManager="*res://scripts/autoload/game_manager.gd"
-MusicManager="*res://addons/procedural_music/music_manager.gd"
 
 [display]
 
@@ -35,6 +34,12 @@ window/stretch/aspect="expand"
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
+
+[limbo_ai]
+
+behavior_tree/favorite_tasks=PackedStringArray("BTSequence", "BTSelector", "BTComment")
+behavior_tree/user_task_dirs=PackedStringArray("res://ai/tasks/naval")
+behavior_tree/user_task_dir_1="res://ai/tasks/naval"
 
 [rendering]
 

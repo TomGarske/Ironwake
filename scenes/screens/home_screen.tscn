@@ -385,7 +385,4 @@ value = 1.0
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/SettingsButton" to="." method="_on_settings_button_pressed"]
 [connection signal="pressed" from="LeftMenuPanel/VBoxContainer/ExitButton" to="." method="_on_exit_button_pressed"]
 [connection signal="pressed" from="RightLobbyPanel/VBoxContainer/ConfirmJoinButton" to="." method="_on_confirm_join_button_pressed"]
-[connection signal="value_changed" from="SettingsPopup/SettingsMargin/VBoxContainer/MusicVolumeRow/MusicVolumeSlider" to="." method="_on_music_volume_slider_changed"]
 [connection signal="value_changed" from="SettingsPopup/SettingsMargin/VBoxContainer/SfxVolumeRow/SfxVolumeSlider" to="." method="_on_sfx_volume_slider_changed"]
-[connection signal="value_changed" from="SettingsPopup/SettingsMargin/VBoxContainer/MusicIntensityRow/MusicIntensitySlider" to="." method="_on_music_intensity_slider_changed"]
-[connection signal="value_changed" from="SettingsPopup/SettingsMargin/VBoxContainer/MusicSpeedRow/MusicSpeedSlider" to="." method="_on_music_speed_slider_changed"]

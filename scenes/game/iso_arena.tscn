@@ -78,10 +78,6 @@ horizontal_alignment = 1
 layout_mode = 2
 text = "Resume"
 
-[node name="PauseMusicButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox" unique_id=1440651011]
-layout_mode = 2
-text = "Music: On"
-
 [node name="PauseQuitButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox" unique_id=587535979]
 layout_mode = 2
 text = "Quit Match"
@@ -95,4 +91,3 @@ The bridge is still burning.
 
 Quit the match anyway?"
 
-[node name="GameMusicPlayer" type="AudioStreamPlayer" parent="UILayer" unique_id=2122353253]

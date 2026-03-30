@@ -17,10 +17,10 @@ const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 @onready var version_label: Label = $VersionLabel
 @onready var quit_confirm_dialog: ConfirmationDialog = $QuitConfirmDialog
 @onready var settings_popup: PopupPanel = $SettingsPopup
-@onready var music_volume_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/MusicVolumeRow/MusicVolumeSlider
 @onready var sfx_volume_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/SfxVolumeRow/SfxVolumeSlider
-@onready var music_intensity_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/MusicIntensityRow/MusicIntensitySlider
-@onready var music_speed_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/MusicSpeedRow/MusicSpeedSlider
+@onready var music_volume_row: HBoxContainer = $SettingsPopup/SettingsMargin/VBoxContainer/MusicVolumeRow
+@onready var music_intensity_row: HBoxContainer = $SettingsPopup/SettingsMargin/VBoxContainer/MusicIntensityRow
+@onready var music_speed_row: HBoxContainer = $SettingsPopup/SettingsMargin/VBoxContainer/MusicSpeedRow
 
 var _menu_index: int = 0
 var _menu_up_prev: bool = false
@@ -37,9 +37,8 @@ func _ready() -> void:
 	_apply_warm_tactical_theme()
 	_setup_menu_navigation()
 	_setup_controller_debug_line()
-	_setup_menu_music()
 	_sync_audio_settings_ui()
-	_apply_music_runtime_settings()
+	_hide_music_settings_ui()
 	_apply_dialog_theme()
 
 	if SteamManager == null:
@@ -60,12 +59,8 @@ func _ready() -> void:
 	refresh_lobbies_button.pressed.connect(_on_refresh_lobbies_pressed)
 	if not quit_confirm_dialog.confirmed.is_connected(_on_quit_confirmed):
 		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
-	if GameManager != null and not GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
-		GameManager.music_enabled_changed.connect(_on_music_enabled_changed)
 	if GameManager != null and not GameManager.audio_volume_changed.is_connected(_on_audio_volume_changed):
 		GameManager.audio_volume_changed.connect(_on_audio_volume_changed)
-	if GameManager != null and not GameManager.music_profile_changed.is_connected(_on_music_profile_changed):
-		GameManager.music_profile_changed.connect(_on_music_profile_changed)
 	_refresh_menu_selection()
 
 	DebugOverlay.log_message("[HomeScreen] Ready.")
@@ -85,10 +80,7 @@ func _apply_warm_tactical_theme() -> void:
 	UiStyleScript.style_button(refresh_lobbies_button)
 	UiStyleScript.style_line_edit(join_input)
 	var slider_rows := [
-		$SettingsPopup/SettingsMargin/VBoxContainer/MusicVolumeRow/Label,
-		$SettingsPopup/SettingsMargin/VBoxContainer/SfxVolumeRow/Label,
-		$SettingsPopup/SettingsMargin/VBoxContainer/MusicIntensityRow/Label,
-		$SettingsPopup/SettingsMargin/VBoxContainer/MusicSpeedRow/Label
+		$SettingsPopup/SettingsMargin/VBoxContainer/SfxVolumeRow/Label
 	]
 	for row_label in slider_rows:
 		row_label.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
@@ -125,10 +117,7 @@ func _setup_menu_navigation() -> void:
 	confirm_join_button.focus_mode = Control.FOCUS_ALL
 	refresh_lobbies_button.focus_mode = Control.FOCUS_ALL
 	join_input.focus_mode = Control.FOCUS_ALL
-	music_volume_slider.focus_mode = Control.FOCUS_ALL
 	sfx_volume_slider.focus_mode = Control.FOCUS_ALL
-	music_intensity_slider.focus_mode = Control.FOCUS_ALL
-	music_speed_slider.focus_mode = Control.FOCUS_ALL
 	host_button.focus_neighbor_bottom = host_button.get_path_to(test_button)
 	test_button.focus_neighbor_top = test_button.get_path_to(host_button)
 	test_button.focus_neighbor_bottom = test_button.get_path_to(settings_button)
@@ -266,12 +255,6 @@ func _update_controller_debug_line() -> void:
 		id_text, pad_id, a, b, x, y, up, down, left, right, start, back, lx, ly, ui_up, ui_down, ui_accept, ui_cancel
 	]
 
-func _setup_menu_music() -> void:
-	if MusicManager == null:
-		return
-	MusicManager.seek_to_phase("intro")
-	_apply_music_runtime_settings()
-
 func _exit_tree() -> void:
 	if SteamManager != null:
 		if SteamManager.lobby_created.is_connected(_on_lobby_ready):
@@ -282,12 +265,8 @@ func _exit_tree() -> void:
 			SteamManager.invite_join_requested.disconnect(_on_invite_join_requested)
 		if SteamManager.lobby_list_updated.is_connected(_on_lobby_list_updated):
 			SteamManager.lobby_list_updated.disconnect(_on_lobby_list_updated)
-	if GameManager != null and GameManager.music_enabled_changed.is_connected(_on_music_enabled_changed):
-		GameManager.music_enabled_changed.disconnect(_on_music_enabled_changed)
 	if GameManager != null and GameManager.audio_volume_changed.is_connected(_on_audio_volume_changed):
 		GameManager.audio_volume_changed.disconnect(_on_audio_volume_changed)
-	if GameManager != null and GameManager.music_profile_changed.is_connected(_on_music_profile_changed):
-		GameManager.music_profile_changed.disconnect(_on_music_profile_changed)
 
 # ---------------------------------------------------------------------------
 # Button handlers
@@ -327,50 +306,25 @@ func _on_settings_button_pressed() -> void:
 	_sync_audio_settings_ui()
 	settings_popup.popup_centered()
 
-func _on_music_volume_slider_changed(value: float) -> void:
-	if GameManager != null:
-		GameManager.set_audio_volumes(value, GameManager.sfx_volume)
-
 func _on_sfx_volume_slider_changed(value: float) -> void:
 	if GameManager != null:
 		GameManager.set_audio_volumes(GameManager.music_volume, value)
 
-func _on_music_intensity_slider_changed(value: float) -> void:
-	if GameManager != null:
-		GameManager.set_music_profile(value, GameManager.music_speed, 1.0)
-
-func _on_music_speed_slider_changed(value: float) -> void:
-	if GameManager != null:
-		GameManager.set_music_profile(GameManager.music_intensity, value, 1.0)
-
-func _on_music_enabled_changed(_enabled: bool) -> void:
-	_apply_music_runtime_settings()
-
 func _on_audio_volume_changed(_music_volume: float, _sfx_volume: float) -> void:
 	_sync_audio_settings_ui()
-	_apply_music_runtime_settings()
-
-func _on_music_profile_changed(_intensity: float, _speed: float, _tone: float) -> void:
-	_sync_audio_settings_ui()
-	_apply_music_runtime_settings()
 
 func _sync_audio_settings_ui() -> void:
 	if GameManager == null:
 		return
-	music_volume_slider.set_value_no_signal(GameManager.music_volume)
 	sfx_volume_slider.set_value_no_signal(GameManager.sfx_volume)
-	music_intensity_slider.set_value_no_signal(GameManager.music_intensity)
-	music_speed_slider.set_value_no_signal(GameManager.music_speed)
 
-func _apply_music_runtime_settings() -> void:
-	if GameManager == null or MusicManager == null:
-		return
-	MusicManager.set_volume(GameManager.music_volume)
-	MusicManager.set_profile(GameManager.music_intensity, GameManager.music_speed, 1.0)
-	if GameManager.music_enabled:
-		MusicManager.play()
-	else:
-		MusicManager.stop()
+func _hide_music_settings_ui() -> void:
+	if music_volume_row != null:
+		music_volume_row.visible = false
+	if music_intensity_row != null:
+		music_intensity_row.visible = false
+	if music_speed_row != null:
+		music_speed_row.visible = false
 
 func _on_quit_confirmed() -> void:
 	get_tree().quit()
