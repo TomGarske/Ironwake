@@ -383,7 +383,7 @@ func _process(delta: float) -> void:
 		return
 
 	# Only tick and send input for the character this peer owns.
-	# Use call() so derived arenas (e.g. naval Blacksite) get their overridden _tick_player / _check_hit.
+	# Use call() so derived arenas (e.g. naval Ironwake) get their overridden _tick_player / _check_hit.
 	call("_tick_player", _players[_my_index], delta)
 	_broadcast_my_state()
 	_resolve_collisions()

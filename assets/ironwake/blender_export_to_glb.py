@@ -1,7 +1,7 @@
 """
 blender_export_to_glb.py
 ========================
-Blacksite Containment — BlenderKit batch downloader + GLB exporter
+Ironwake — BlenderKit batch downloader + GLB exporter
 
 USAGE (two ways):
   A) Blender Scripting tab: open this file, click Run Script.
@@ -102,7 +102,7 @@ ASSETS = [
     {
         "out":  "arena_corridor",
         "id":   "7e8ce7fe-855a-4af0-a48a-853b203b90bd",
-        "note": "Containment lane strip — Sci fi Corridor by Yasin Gohary"
+        "note": "Corridor lane strip — Sci fi Corridor by Yasin Gohary"
     },
     {
         "out":  "arena_staging_platform",
@@ -292,7 +292,7 @@ def run():
     ensure_dirs()
 
     print("\n" + "="*60)
-    print("  Blacksite Containment — BlenderKit Exporter")
+    print("  Ironwake — BlenderKit Exporter")
     print("="*60)
 
     # Check BlenderKit is available

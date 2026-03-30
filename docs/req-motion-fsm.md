@@ -261,4 +261,4 @@ The motion FSM logic is identical across ship classes. Class differences are exp
 - Sail damage capping `max_speed`
 - Rudder damage reducing `rudder_follow_rate`
 - Reverse motion (`current_speed` below zero)
-- Ship-to-ship collision response
+- Ship-to-ship collision response (basic ramming is now implemented with server-authoritative damage; advanced collision physics remain out of scope)

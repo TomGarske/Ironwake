@@ -43,6 +43,8 @@ Deliver **deliberate, position-driven naval combat** with:
 | Collision footprint | Elliptical (centered)     |
 | Cannon positions    | Port / Starboard mid-body |
 
+> **Ironwake implementation:** Based on a 74-gun third rate (HMS Bellona): `SHIP_LENGTH_UNITS = 52.0` (168 ft), `SHIP_WIDTH_UNITS = 14.5` (47 ft). 1 world unit = 1 meter.
+
 ### Interpretation
 
 - Ships occupy meaningful space (not point objects)
@@ -56,6 +58,8 @@ Deliver **deliberate, position-driven naval combat** with:
 | Engagement visibility   | 10–30 tiles typical                     |
 | Max engagement distance | ~40–45 tiles                            |
 
+> **Ironwake implementation:** Map size increased to **800 × 800 tiles (8000 × 8000 units)** to accommodate the larger ship scale and realistic ballistic ranges (see `naval_combat_constants.gd`).
+
 ---
 
 ## 3. Movement System Requirements
@@ -68,6 +72,8 @@ Deliver **deliberate, position-driven naval combat** with:
 | Cruise speed          | **6 units/sec (~0.6 tiles/sec)** |
 | Maximum speed         | **9 units/sec (~0.9 tiles/sec)** |
 
+> **Ironwake implementation note:** After map-scale and ballistics tuning, the implemented speeds are higher: `MIN_SPEED_DRIFT = 2.0`, `QUARTER_SPEED = 9.0`, `CRUISE_SPEED = 16.0`, `MAX_SPEED = 27.5` game units/sec (see `naval_combat_constants.gd`). At the display scale of `_KNOTS_PER_GAME_UNIT = 0.4727`, max speed reads as ~13 knots (HMS Bellona, 74-gun third rate). 1 world unit = 1 meter.
+
 ### 3.2 Acceleration / Deceleration
 
 | Parameter                 | Value         |
@@ -75,6 +81,8 @@ Deliver **deliberate, position-driven naval combat** with:
 | Acceleration (0 → max)    | **14 seconds** |
 | Deceleration (sails down) | **18 seconds** |
 | Passive drift             | Always present |
+
+> **Ironwake implementation:** `ACCEL_TIME_ZERO_TO_MAX = 10.0` sec, `DECEL_TIME_SAILS_DOWN = 22.0` sec, `SAILS_DOWN_DRIFT_SPEED = 0.0` (ship comes to full stop once momentum decays).
 
 ### Requirements
 
@@ -220,7 +228,7 @@ Combat loop must be:
 | -------------- | ----------------------- |
 | Ship collision | Soft (glancing)         |
 | Hard stop      | Avoid (no instant halt) |
-| Ramming        | Optional future feature |
+| Ramming        | Implemented — server-authoritative damage on hull contact |
 
 ---
 
@@ -255,7 +263,7 @@ Prototype is successful if:
 - No fleet control
 - No wind simulation (optional later)
 - No damage falloff curves
-- No advanced ballistics modeling
+- ~~No advanced ballistics modeling~~ — Now implemented: `CannonBallistics` with real muzzle velocity (410 m/s), gravity, and elevation-based launch vectors
 - No crew management
 
 ---

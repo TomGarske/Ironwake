@@ -37,6 +37,6 @@ desktop.ini
 /Ironwake.pck
 /steam_api64.dll
 /libgodotsteam.windows.*.dll
-/assets/blacksite/audio
-/assets/blacksite/models
-/assets/blacksite/ui
+/assets/ironwake/audio
+/assets/ironwake/models
+/assets/ironwake/ui

@@ -137,12 +137,25 @@ Behavioral consequences:
 
 | Parameter | Recommended Starting Value | Notes |
 |-----------|---------------------------|-------|
-| `wheel_turn_rate` | `1.5` – `2.5` units/sec | Active steering speed |
-| `wheel_return_rate` | `0.75` – `1.5` units/sec | Must be less than turn rate |
+| `wheel_turn_rate` | `1.5` – `2.5` units/sec | Active steering speed (conceptual) |
+| `wheel_return_rate` | `0.75` – `1.5` units/sec | Must be less than turn rate (conceptual) |
 | `rudder_follow_rate` | `1.0` – `2.0` units/sec | Rudder lag behind wheel |
 | `center_threshold` | `0.05` | Deadzone for CENTER state detection |
 | `turn_acceleration` | TBD per ship class | Angular response rate |
 | `turn_damping` | `0.85` – `0.95` per frame | Angular momentum bleed |
+
+### 8.1 Ironwake Implementation — Acceleration-Based Wheel Model
+
+The Ironwake `HelmController` replaces the simple `wheel_turn_rate` / `wheel_return_rate` model above with a momentum-based system using velocity and acceleration:
+
+| Parameter | HelmController Default | Player Override (Arena) | Notes |
+|-----------|----------------------|------------------------|-------|
+| `wheel_spin_accel` | `1.4` | `1.2` | How fast input accelerates the wheel (norm/sec^2) |
+| `wheel_max_spin` | `0.45` | `0.45` | Terminal wheel velocity under continuous input (norm/sec) |
+| `wheel_friction` | `3.0` | `2.5` | Friction deceleration when input is released (norm/sec^2) |
+| `rudder_follow_rate` | `0.275` | `0.35` | Rudder chases wheel at this rate (norm/sec) |
+
+The wheel now has velocity (`wheel_velocity`) that accelerates toward `wheel_max_spin` under input and decelerates via `wheel_friction` on release, with exponential spring return toward center. Counter-steer damping slows reversal when the wheel is displaced past the opposing side.
 
 Key tuning principle: **active input must feel faster than release**. If return rate equals turn rate, the wheel feels artificial. The asymmetry is what creates the sense of weight.
 

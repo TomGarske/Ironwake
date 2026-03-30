@@ -13,7 +13,7 @@ Shots are deliberate, readable, and earned through positioning, not spam or luck
 
 ## Cannon elevation (quoin)
 
-- **Barrel elevation** is continuous from **−5°** (max depression) to **+10°** (max elevation) relative to the horizontal plane, exposed on `BatteryController` as normalized `cannon_elevation` (0 → −5°, 1 → +10°). **0° bore** corresponds to normalized **≈ 0.333** (linear map between the two limits).
+- **Barrel elevation** is continuous from **−3°** (max depression) to **+5°** (max elevation) relative to the horizontal plane, exposed on `BatteryController` as normalized `cannon_elevation` (0 → −3°, 1 → +5°). **0° bore** corresponds to normalized **≈ 0.375** (`CANNON_ELEVATION_ZERO_DEG`, linear map between the two limits).
 - **Ballistics:** `CannonBallistics.initial_velocity(..., elevation_deg)` uses **`cos(elevation)` / `sin(elevation)`** to split muzzle speed into horizontal **(wx, wy)** and vertical **(vz)** components so the quoin angle matches the simulated launch vector. The arena then applies a uniform scale to match target horizontal speed (`naval_combat_constants.gd` / ship tuning). A separate “vz-only” multiplier is **not** used once elevation is applied this way.
 - UI / key bindings adjust `cannon_elevation` over time (`adjust_elevation`); see `req-battery-fsm.md` for fields.
 

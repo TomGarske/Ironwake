@@ -6,27 +6,27 @@ extends Node
 # GAME_OVER is set when the match ends (currently only win/draw is handled via TurnManager signal).
 # TODO: assign GAME_OVER in _on_match_over handler once end-match UI flow is implemented.
 enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
-const MATCH_SCENE_PATH: String = "res://scenes/game/blacksite/blacksite_containment_arena.tscn"
-const BLACKSITE_CONTAINMENT_SCENE_PATH: String = "res://scenes/game/blacksite/blacksite_containment_arena.tscn"
+const MATCH_SCENE_PATH: String = "res://scenes/game/ironwake/ironwake_arena.tscn"
+const IRONWAKE_SCENE_PATH: String = "res://scenes/game/ironwake/ironwake_arena.tscn"
 const HOME_SCREEN_SCENE_PATH: String = "res://scenes/screens/home_screen.tscn"
 const LOBBY_SCENE_PATH: String = "res://scenes/screens/lobby.tscn"
-const DEFAULT_GAME_MODE_ID: String = "blacksite_containment"
+const DEFAULT_GAME_MODE_ID: String = "ironwake"
 const DEFAULT_MUSIC_PROFILE: Dictionary = {
 	"intensity": 1.0,
 	"speed": 1.0,
 	"tone": 1.0,
 }
 const MODE_MUSIC_PROFILES: Dictionary = {
-	"blacksite_containment": {"intensity": 1.05, "speed": 0.95, "tone": 0.96},
+	"ironwake": {"intensity": 1.05, "speed": 0.95, "tone": 0.96},
 }
 const GAME_MODES: Array[Dictionary] = [
 	{
-		"id": "blacksite_containment",
-		"label": "Blacksite Containment",
-		"subtitle": "Blacksite Containment",
-		"badge": "[CONTAIN]",
-		"scene_path": BLACKSITE_CONTAINMENT_SCENE_PATH,
-		"description": "Pilot floating containment drones with a directional charge laser, orbital strikes, burst speed, and framerate control to intercept escapees.",
+		"id": "ironwake",
+		"label": "Ironwake",
+		"subtitle": "Age of Sail Naval Combat",
+		"badge": "[NAVAL]",
+		"scene_path": IRONWAKE_SCENE_PATH,
+		"description": "Command a 74-gun third-rate warship in age-of-sail naval combat. Helm, sail, and battery controls with realistic ballistics.",
 		"enabled": true,
 	},
 ]
@@ -213,7 +213,7 @@ func start_match() -> void:
 	if target_scene_path.is_empty():
 		target_scene_path = MATCH_SCENE_PATH
 	match_phase = MatchPhase.IN_MATCH
-	print("[GameManager] Starting '%s' with %d players." % [str(mode.get("label", "Blacksite Containment")), players.size()])
+	print("[GameManager] Starting '%s' with %d players." % [str(mode.get("label", "Ironwake")), players.size()])
 	_load_match_scene.rpc(target_scene_path)
 
 @rpc("authority", "call_local", "reliable")

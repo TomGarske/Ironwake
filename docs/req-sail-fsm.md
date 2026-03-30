@@ -36,19 +36,17 @@ Sail level is represented as a stepped enum with three v1 states. Additional sta
 | State | `target_sail_level` | Description |
 |-------|---------------------|-------------|
 | `STOP` | `0.0` | Sails furled. No propulsion. |
+| `QUARTER` | `0.25` | Quarter sail. Low speed, fine maneuvering. |
 | `HALF` | `0.5` | Half sail deployed. Moderate speed. |
 | `FULL` | `1.0` | Full sail deployed. Maximum speed. |
 
-### Blacksite / naval prototype (`SailController`)
+Four sail states are implemented in the Ironwake `SailController` (STOP, QUARTER, HALF, FULL).
 
-The prototype `SailController` also defines **`QUARTER`** (`0.25`) between `STOP` and `HALF` for finer speed steps. That is an **implementation extension** beyond the minimal three-state table above.
-
-**Spawn default (Blacksite arena):** Player and locally spawned bots start with **`SailState.HALF`** and **`current_sail_level = 0.5`** (“half mast”) after `_init_blacksite_movement_state()` / `_init_bot_controllers()`. The AI’s default desired sail state matches **HALF** so behavior does not immediately fight the spawn state.
+**Spawn default (Ironwake arena):** Player and locally spawned bots start with **`SailState.HALF`** and **`current_sail_level = 0.5`** (“half mast”) after `_init_ironwake_movement_state()` / `_init_bot_controllers()`. The AI’s default desired sail state matches **HALF** so behavior does not immediately fight the spawn state.
 
 ### Future Expansion States (out of scope for v1)
 
 - `BACK_SAIL` — reverse propulsion
-- `QUARTER_SAIL` — fine speed control
 - `BATTLE_SAIL` — combat-optimized deployment
 - `FULL_WIND` — above full, situational bonus speed
 
@@ -58,11 +56,13 @@ The prototype `SailController` also defines **`QUARTER`** (`0.25`) between `STOP
 
 | Current State | Input | Next State | Notes |
 |---------------|-------|------------|-------|
-| `STOP` | W | `HALF` | Begin raising sails |
+| `STOP` | W | `QUARTER` | Begin raising sails |
+| `QUARTER` | W | `HALF` | Continue raising |
 | `HALF` | W | `FULL` | Continue raising |
 | `FULL` | W | `FULL` | No change, already at max |
 | `FULL` | S | `HALF` | Begin lowering sails |
-| `HALF` | S | `STOP` | Lower sails fully |
+| `HALF` | S | `QUARTER` | Continue lowering |
+| `QUARTER` | S | `STOP` | Lower sails fully |
 | `STOP` | S | `STOP` | No change, already stopped |
 
 ---

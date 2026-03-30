@@ -1,4 +1,4 @@
-## Tunables for req-naval-combat-prototype-v1 (Blacksite naval mode).
+## Tunables for req-naval-combat-prototype-v1 (Ironwake naval mode).
 ## World coordinates use UNITS_PER_LOGIC_TILE world units per terrain grid cell.
 ## 1 world unit = 1 meter.
 extends Object

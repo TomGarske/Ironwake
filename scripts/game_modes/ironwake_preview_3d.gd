@@ -1,6 +1,6 @@
 extends Node3D
 
-const MapProfile := preload("res://scripts/shared/blacksite_map_profile.gd")
+const MapProfile := preload("res://scripts/shared/ironwake_map_profile.gd")
 
 const CELL_SIZE: float = 2.0
 

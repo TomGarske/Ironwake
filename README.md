@@ -4,7 +4,7 @@ Ironwake is a Godot 4 multiplayer naval combat game. Command sailing warships â€
 
 The project uses [GodotSteam](https://godotsteam.com/) for Steam lobbies and peer-to-peer multiplayer. One player hosts and acts as authority for match start and mode selection.
 
-> **Status:** Active prototype. Core lobby and navigation systems are implemented; combat and AI systems are in progress.
+> **Status:** Active prototype. Core lobby, navigation, combat, AI (LimboAI behavior trees), scoreboard, and multiplayer sync are implemented. Polishing and balancing in progress.
 
 ---
 
@@ -58,6 +58,9 @@ Short version:
 
 - Main scene: `res://scenes/screens/home_screen.tscn`
 - Lobby scene: `res://scenes/screens/lobby.tscn`
+- Ironwake arena: `res://scenes/game/ironwake/ironwake_arena.tscn` (game mode ID: `"ironwake"`)
+- Arena script: `scripts/game_modes/ironwake_arena.gd`
+- Map profile: `scripts/shared/ironwake_map_profile.gd` (`class_name IronwakeMapProfile`)
 - Mode metadata and routing: `scripts/autoload/game_manager.gd`
 - Ship system architecture: `docs/req-master-architecture.md`
 

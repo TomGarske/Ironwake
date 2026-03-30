@@ -3,7 +3,7 @@ extends "res://scripts/iso_arena.gd"
 # Open-sea sailing mode on the iso arena baseline (pirate ship sprites, helm + sail).
 
 const NC := preload("res://scripts/shared/naval_combat_constants.gd")
-const MapProfile := preload("res://scripts/shared/blacksite_map_profile.gd")
+const MapProfile := preload("res://scripts/shared/ironwake_map_profile.gd")
 const _SailController := preload("res://scripts/shared/sail_controller.gd")
 const _HelmController := preload("res://scripts/shared/helm_controller.gd")
 const _MotionStateResolver := preload("res://scripts/shared/motion_state_resolver.gd")
@@ -48,6 +48,12 @@ var _bot_indices: Array[int] = []  # indices into _players
 var _is_local_sim: bool = false
 ## Tracks cooldown between ram damage events: key = "i_j" (sorted indices), value = seconds remaining.
 var _ram_cooldowns: Dictionary = {}
+## Per-player scoreboard stats: peer_id -> {kills, deaths, shots_fired, shots_hit, damage_dealt, damage_taken}
+var _scoreboard: Dictionary = {}
+## Set true when match ends — gates post-match HUD and return flow.
+var _match_over: bool = false
+## Post-match: after END_DELAY, accept any key to return to menu.
+var _post_match_ready: bool = false
 ## Smooth zoom target — lerped toward each frame when auto-zoom is active.
 var _zoom_target: float = NC.NAVAL_DEFAULT_ZOOM
 
@@ -74,6 +80,7 @@ var _prev_elev_adjusting: bool = false
 @export var combat_debug_log: bool = true
 
 const CAMERA_LOCK_ACTION: String = "bf_camera_lock"
+const SCOREBOARD_ACTION: String = "bf_scoreboard"
 
 const SAIL_RAISE_ACTION: String = "bf_sail_raise"
 const SAIL_LOWER_ACTION: String = "bf_sail_lower"
@@ -168,7 +175,7 @@ func _hull_visual_screen_pos(p: Dictionary) -> Vector2:
 
 func _ready() -> void:
 	super._ready()
-	_init_blacksite_movement_state()
+	_init_ironwake_movement_state()
 	_spawn_local_sim_bot_if_needed()
 	# Set spawn zoom to match the ballistic range at default 0° elevation.
 	# This is the same zoom level the player sees when adjusting cannons at 0°.
@@ -192,6 +199,16 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Post-match: any key/button press returns to menu.
+	if _post_match_ready and event.is_pressed() and not event.is_echo():
+		# Ignore mouse motion and scroll wheel.
+		if event is InputEventMouseMotion:
+			pass
+		elif event is InputEventMouseButton and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+			pass
+		else:
+			_return_to_menu()
+			return
 	if event is InputEventMouseButton:
 		# Consume scroll wheel — zoom is driven entirely by battery ballistics.
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -219,7 +236,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		queue_redraw()
 		return
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_HOME or event.keycode == KEY_TAB or event.keycode == KEY_1:
+		if event.keycode == KEY_HOME or event.keycode == KEY_1:
 			_camera_follow_index = _my_index
 			_camera_locked = true
 			queue_redraw()
@@ -246,11 +263,18 @@ func _unhandled_input(event: InputEvent) -> void:
 	super._unhandled_input(event)
 
 
-func _init_blacksite_movement_state() -> void:
+func _init_ironwake_movement_state() -> void:
 	for p in _players:
 		p["health"] = HULL_HITS_MAX
 		p.erase("respawn_timer")
 		_apply_naval_controllers_to_ship(p)
+		var pid: int = int(p.get("peer_id", 0))
+		if not _scoreboard.has(pid):
+			_scoreboard[pid] = {
+				"kills": 0, "deaths": 0,
+				"shots_fired": 0, "shots_hit": 0,
+				"damage_dealt": 0.0, "damage_taken": 0.0,
+			}
 
 
 ## Sail/helm/batteries/motion — quarter sail deployed at max quarter speed.
@@ -358,6 +382,14 @@ func _spawn_local_sim_bot_if_needed() -> void:
 		# Initialize movement controllers on the bot — same as player init.
 		var p: Dictionary = _players[idx]
 		_init_bot_controllers(p)
+		# Initialize scoreboard entry for the bot.
+		var bot_pid: int = int(p.get("peer_id", 0))
+		if not _scoreboard.has(bot_pid):
+			_scoreboard[bot_pid] = {
+				"kills": 0, "deaths": 0,
+				"shots_fired": 0, "shots_hit": 0,
+				"damage_dealt": 0.0, "damage_taken": 0.0,
+			}
 
 		# Create the BotShipAgent wrapper and NavalBotController.
 		var agent := BotShipAgent.new()
@@ -648,6 +680,8 @@ func _register_inputs() -> void:
 	_ensure_joy_button_for_action(SAIL_RAISE_ACTION, JOY_BUTTON_RIGHT_STICK)
 	_ensure_joy_button_for_action(SAIL_LOWER_ACTION, JOY_BUTTON_LEFT_STICK)
 
+	_set_action_keys(SCOREBOARD_ACTION, [KEY_TAB])
+
 
 func _clear_action_input_events(action: String) -> void:
 	if not InputMap.has_action(action):
@@ -681,7 +715,18 @@ func _set_action_mouse_buttons(action: String, buttons: Array[MouseButton]) -> v
 const _CAM_PAN_SPEED: float = 900.0
 
 func _process(delta: float) -> void:
-	super._process(delta)
+	# Post-match: once the delay has elapsed, show "press any key" instead of
+	# auto-returning to the menu (the parent would call change_scene_to_file).
+	if _match_over and _winner != -2:
+		if Input.is_action_just_pressed("ui_cancel"):
+			_toggle_pause_menu()
+			return
+		_end_timer += delta
+		if _end_timer >= END_DELAY:
+			_post_match_ready = true
+		queue_redraw()
+	else:
+		super._process(delta)
 	for bi in _bot_indices:
 		if bi >= 0 and bi < _players.size():
 			_tick_bot(_players[bi], bi, delta)
@@ -1188,7 +1233,7 @@ func _resolve_collisions() -> void:
 
 
 func _check_hit(_attacker: Dictionary, _defender: Dictionary) -> void:
-	# Disable melee arc checks; combat in Blacksite is ranged projectile-driven.
+	# Disable melee arc checks; combat in Ironwake is ranged projectile-driven.
 	return
 
 func _spawn_muzzle_fx(wx: float, wy: float, dir: Vector2) -> void:
@@ -1264,6 +1309,9 @@ func _deck_lift_offset_for_screen(p: Dictionary) -> Vector2:
 
 
 func _fire_projectile(p: Dictionary, cannon_index: int = 0, _shot_damage: float = 1.0, aim_override: Variant = null, battery: Variant = null) -> void:
+	var fire_peer: int = int(p.get("peer_id", 1))
+	if _scoreboard.has(fire_peer):
+		_scoreboard[fire_peer]["shots_fired"] += 1
 	var dir: Vector2
 	if aim_override is Vector2 and aim_override.length_squared() > 0.001:
 		dir = aim_override.normalized()
@@ -1572,8 +1620,19 @@ func _apply_cannon_hit_impl(attacker_peer_id: int, defender_peer_id: int, damage
 	var defender_alive: bool = new_health > 0.0
 	d.health = new_health
 	d.alive = defender_alive
+	# Scoreboard: track hit stats.
+	if _scoreboard.has(attacker_peer_id):
+		_scoreboard[attacker_peer_id]["shots_hit"] += 1
+		_scoreboard[attacker_peer_id]["damage_dealt"] += damage
+	if _scoreboard.has(defender_peer_id):
+		_scoreboard[defender_peer_id]["damage_taken"] += damage
 	if not defender_alive:
 		d["respawn_timer"] = RESPAWN_DELAY_SEC
+		# Scoreboard: track kill/death.
+		if _scoreboard.has(attacker_peer_id):
+			_scoreboard[attacker_peer_id]["kills"] += 1
+		if _scoreboard.has(defender_peer_id):
+			_scoreboard[defender_peer_id]["deaths"] += 1
 	if bool(d.get("is_bot", false)):
 		var bc: Variant = _get_bot_controller_for_index(defender_idx)
 		if bc != null:
@@ -1589,6 +1648,63 @@ func _apply_cannon_hit(attacker_peer_id: int, defender_peer_id: int, damage: flo
 
 func _tick_local_timers(_delta: float) -> void:
 	pass
+
+
+# ── Naval state broadcast (overrides base iso_arena) ─────────────────────────
+func _broadcast_my_state() -> void:
+	if not multiplayer.has_multiplayer_peer():
+		return
+	var p: Dictionary = _players[_my_index]
+	var sail_obj: Variant = p.get("sail")
+	var helm_obj: Variant = p.get("helm")
+	var sail_level: float = sail_obj.current_sail_level if sail_obj != null else 0.0
+	var sail_state: int = int(sail_obj.sail_state) if sail_obj != null else 0
+	var rudder: float = helm_obj.rudder_angle if helm_obj != null else 0.0
+	_receive_naval_state.rpc(
+		int(p.peer_id),
+		float(p.wx), float(p.wy),
+		float(p.dir.x), float(p.dir.y),
+		float(p.atk_time), bool(p.moving), float(p.walk_time),
+		float(p.get("move_speed", 0.0)),
+		float(p.get("angular_velocity", 0.0)),
+		float(p.get("health", HULL_HITS_MAX)),
+		bool(p.get("alive", true)),
+		sail_level, sail_state, rudder
+	)
+
+
+@rpc("any_peer", "unreliable")
+func _receive_naval_state(
+		peer_id: int,
+		wx: float, wy: float,
+		dir_x: float, dir_y: float,
+		atk_time: float, moving: bool, walk_time: float,
+		move_speed: float, angular_velocity: float,
+		health: float, alive: bool,
+		sail_level: float, sail_state: int, rudder: float) -> void:
+	if peer_id == multiplayer.get_unique_id():
+		return
+	var idx: int = _find_player_index_by_peer_id(peer_id)
+	if idx < 0:
+		return
+	var p: Dictionary = _players[idx]
+	p.wx        = wx
+	p.wy        = wy
+	p.dir       = Vector2(dir_x, dir_y)
+	p.atk_time  = atk_time
+	p.moving    = moving
+	p.walk_time = walk_time
+	p["move_speed"]        = move_speed
+	p["angular_velocity"]  = angular_velocity
+	p["health"]            = health
+	p["alive"]             = alive
+	var sail_obj: Variant = p.get("sail")
+	if sail_obj != null:
+		sail_obj.current_sail_level = sail_level
+		sail_obj.sail_state = sail_state
+	var helm_obj: Variant = p.get("helm")
+	if helm_obj != null:
+		helm_obj.rudder_angle = rudder
 
 
 func _tick_ramming(delta: float) -> void:
@@ -1670,11 +1786,14 @@ func _tick_ramming(delta: float) -> void:
 			var a_mult: float = lerpf(1.0, RAM_BOW_STERN_DAMAGE_MULT, a_bow_factor)
 			var b_mult: float = lerpf(1.0, RAM_BOW_STERN_DAMAGE_MULT, b_bow_factor)
 
-			# Apply damage.
+			# Apply damage — server authoritative; clients only see visual FX.
 			var dmg_a: float = base_damage * a_mult
 			var dmg_b: float = base_damage * b_mult
-			_apply_ram_damage(a, dmg_a, i)
-			_apply_ram_damage(b, dmg_b, j)
+			if not multiplayer.has_multiplayer_peer() or multiplayer.is_server():
+				_apply_ram_damage(a, dmg_a, i, j)
+				_apply_ram_damage(b, dmg_b, j, i)
+				if multiplayer.has_multiplayer_peer():
+					_rpc_apply_ram_damage.rpc(i, dmg_a, j, dmg_b)
 
 			# Speed loss — both ships lose momentum proportional to closing velocity.
 			var speed_bleed: float = closing * RAM_SPEED_LOSS_MULT
@@ -1701,14 +1820,29 @@ func _tick_ramming(delta: float) -> void:
 					a_lbl, b_lbl, closing, dmg_a, dmg_b, speed_bleed])
 
 
-func _apply_ram_damage(p: Dictionary, damage: float, idx: int) -> void:
+func _apply_ram_damage(p: Dictionary, damage: float, idx: int, other_idx: int = -1) -> void:
 	if not bool(p.get("alive", true)):
 		return
 	var new_health: float = maxf(float(p.health) - damage, 0.0)
 	p.health = new_health
+	# Scoreboard: track ramming damage.
+	var def_pid: int = int(p.get("peer_id", 0))
+	if _scoreboard.has(def_pid):
+		_scoreboard[def_pid]["damage_taken"] += damage
+	if other_idx >= 0 and other_idx < _players.size():
+		var atk_pid: int = int(_players[other_idx].get("peer_id", 0))
+		if _scoreboard.has(atk_pid):
+			_scoreboard[atk_pid]["damage_dealt"] += damage
 	if new_health <= 0.0:
 		p.alive = false
 		p["respawn_timer"] = RESPAWN_DELAY_SEC
+		# Scoreboard: track ram kill/death.
+		if _scoreboard.has(def_pid):
+			_scoreboard[def_pid]["deaths"] += 1
+		if other_idx >= 0 and other_idx < _players.size():
+			var atk_pid2: int = int(_players[other_idx].get("peer_id", 0))
+			if _scoreboard.has(atk_pid2):
+				_scoreboard[atk_pid2]["kills"] += 1
 		if bool(p.get("is_bot", false)):
 			var bc: Variant = _get_bot_controller_for_index(idx)
 			if bc != null:
@@ -1723,7 +1857,17 @@ func _apply_ram_damage(p: Dictionary, damage: float, idx: int) -> void:
 		_check_win()
 
 
+@rpc("authority", "call_remote", "reliable")
+func _rpc_apply_ram_damage(idx_a: int, dmg_a: float, idx_b: int, dmg_b: float) -> void:
+	if idx_a >= 0 and idx_a < _players.size():
+		_apply_ram_damage(_players[idx_a], dmg_a, idx_a, idx_b)
+	if idx_b >= 0 and idx_b < _players.size():
+		_apply_ram_damage(_players[idx_b], dmg_b, idx_b, idx_a)
+
+
 func _tick_respawn(delta: float) -> void:
+	# Only the server (or offline host) decrements respawn timers and triggers respawns.
+	var is_authority: bool = not multiplayer.has_multiplayer_peer() or multiplayer.is_server()
 	for i in range(_players.size()):
 		var p: Dictionary = _players[i]
 		if bool(p.get("alive", true)):
@@ -1731,10 +1875,13 @@ func _tick_respawn(delta: float) -> void:
 		var t: float = float(p.get("respawn_timer", 0.0))
 		if t <= 0.0:
 			continue
-		t = maxf(0.0, t - delta)
-		p["respawn_timer"] = t
-		if t <= 0.0:
-			_respawn_ship(i)
+		if is_authority:
+			t = maxf(0.0, t - delta)
+			p["respawn_timer"] = t
+			if t <= 0.0:
+				_respawn_ship(i)
+				if multiplayer.has_multiplayer_peer():
+					_rpc_respawn_ship.rpc(i)
 
 
 func _respawn_ship(idx: int) -> void:
@@ -1760,15 +1907,63 @@ func _respawn_ship(idx: int) -> void:
 		bc.reset_combat_state()
 
 
-## Naval sandbox: deaths respawn — do not end the match on last standing ship.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_respawn_ship(idx: int) -> void:
+	_respawn_ship(idx)
+
+
+## Naval arena: use the base win condition (last ship standing).
 func _check_win() -> void:
-	pass
+	super._check_win()
+
+
+func _set_winner(next_winner: int) -> void:
+	super._set_winner(next_winner)
+	_match_over = true
+
+
+func _draw_win_screen(vp: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0, 0.0, 0.0, 0.58))
+	var font: Font = ThemeDB.fallback_font
+	var cx: float = vp.x * 0.5
+	var cy: float = vp.y * 0.28
+
+	var msg: String
+	if _winner == -1:
+		msg = "DRAW!"
+	else:
+		msg = "%s WINS!" % _players[_winner].label
+	draw_string(font, Vector2(cx, cy), msg,
+		HORIZONTAL_ALIGNMENT_CENTER, -1, 52, Color(0.95, 0.75, 0.35, 1.0))
+
+	# Scoreboard is drawn separately by the _draw() caller when _match_over is true.
+
+	if _post_match_ready:
+		draw_string(font, Vector2(cx, vp.y * 0.88),
+			"Press any key to continue...",
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 20, _HUD_TEXT)
+	else:
+		var remaining: int = ceili(END_DELAY - _end_timer)
+		draw_string(font, Vector2(cx, vp.y * 0.88),
+			"Returning to menu in %d..." % remaining,
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 20, _HUD_TEXT_MUTED)
+
+
+func _return_to_menu() -> void:
+	GameManager.match_phase = GameManager.MatchPhase.LOBBY
+	# Clean up Steam lobby (this also closes multiplayer peer).
+	if SteamManager != null:
+		SteamManager.leave_lobby()
+	elif multiplayer.has_multiplayer_peer():
+		multiplayer.multiplayer_peer.close()
+	get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
+
 
 func _ensure_audio_player() -> void:
 	if _sfx_player != null:
 		return
 	_sfx_player = AudioStreamPlayer.new()
-	_sfx_player.name = "BlacksiteSfxPlayer"
+	_sfx_player.name = "IronwakeSfxPlayer"
 	add_child(_sfx_player)
 
 func _play_cannon_hit_sound() -> void:
@@ -1974,6 +2169,81 @@ func _draw_hud(vp: Vector2) -> void:
 		draw_string(font, Vector2(bx + 5.0, by + bar_h - 5.0), bar_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, _HUD_TEXT)
 
 
+func _draw_scoreboard(vp: Vector2) -> void:
+	var font: Font = ThemeDB.fallback_font
+	# Panel dimensions.
+	var col_widths: Array[float] = [140.0, 60.0, 60.0, 55.0, 60.0, 55.0, 75.0, 75.0]
+	var total_w: float = 0.0
+	for w in col_widths:
+		total_w += w
+	var row_h: float = 26.0
+	var header_h: float = 30.0
+	var pad: float = 16.0
+	var n_rows: int = _players.size()
+	var total_h: float = header_h + float(n_rows) * row_h + pad * 2.0
+	var panel_x: float = (vp.x - total_w - pad * 2.0) * 0.5
+	var panel_y: float = (vp.y - total_h) * 0.5
+
+	# Background panel.
+	draw_rect(Rect2(panel_x, panel_y, total_w + pad * 2.0, total_h), Color(0.05, 0.05, 0.08, 0.88))
+	draw_rect(Rect2(panel_x, panel_y, total_w + pad * 2.0, total_h), _HUD_BORDER, false, 2.0)
+
+	# Column headers.
+	var headers: Array[String] = ["Player", "Kills", "Deaths", "K/D", "Shots", "Hits", "Accuracy", "Damage"]
+	var hx: float = panel_x + pad
+	var hy: float = panel_y + pad + 14.0
+	for ci in range(headers.size()):
+		draw_string(font, Vector2(hx, hy), headers[ci], HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[ci]), 13, _HUD_TEXT_MUTED)
+		hx += col_widths[ci]
+
+	# Header separator line.
+	draw_line(
+		Vector2(panel_x + pad, panel_y + pad + header_h - 6.0),
+		Vector2(panel_x + pad + total_w, panel_y + pad + header_h - 6.0),
+		_HUD_BORDER, 1.0)
+
+	# Sort players by kills descending.
+	var sorted_players: Array = _players.duplicate()
+	sorted_players.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_pid: int = int(a.get("peer_id", 0))
+		var b_pid: int = int(b.get("peer_id", 0))
+		var a_kills: int = int(_scoreboard.get(a_pid, {}).get("kills", 0))
+		var b_kills: int = int(_scoreboard.get(b_pid, {}).get("kills", 0))
+		return a_kills > b_kills)
+
+	# Rows.
+	var ry: float = panel_y + pad + header_h + 12.0
+	for p in sorted_players:
+		var pid: int = int(p.get("peer_id", 0))
+		var stats: Dictionary = _scoreboard.get(pid, {})
+		var kills: int = int(stats.get("kills", 0))
+		var deaths: int = int(stats.get("deaths", 0))
+		var shots_fired: int = int(stats.get("shots_fired", 0))
+		var shots_hit: int = int(stats.get("shots_hit", 0))
+		var dmg_dealt: float = float(stats.get("damage_dealt", 0.0))
+		var kd: float = float(kills) / float(maxi(deaths, 1))
+		var accuracy: float = (float(shots_hit) / float(shots_fired) * 100.0) if shots_fired > 0 else 0.0
+		var row_col: Color = Color(p.palette[0], 0.9)
+
+		var rx: float = panel_x + pad
+		draw_string(font, Vector2(rx, ry), str(p.get("label", "?")), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[0]), 13, row_col)
+		rx += col_widths[0]
+		draw_string(font, Vector2(rx, ry), str(kills), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[1]), 13, row_col)
+		rx += col_widths[1]
+		draw_string(font, Vector2(rx, ry), str(deaths), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[2]), 13, row_col)
+		rx += col_widths[2]
+		draw_string(font, Vector2(rx, ry), "%.1f" % kd, HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[3]), 13, row_col)
+		rx += col_widths[3]
+		draw_string(font, Vector2(rx, ry), str(shots_fired), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[4]), 13, row_col)
+		rx += col_widths[4]
+		draw_string(font, Vector2(rx, ry), str(shots_hit), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[5]), 13, row_col)
+		rx += col_widths[5]
+		draw_string(font, Vector2(rx, ry), "%.0f%%" % accuracy, HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[6]), 13, row_col)
+		rx += col_widths[6]
+		draw_string(font, Vector2(rx, ry), "%.1f" % dmg_dealt, HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[7]), 13, row_col)
+		ry += row_h
+
+
 func _ballistic_splash_range_for_player(p: Dictionary) -> float:
 	var port_on: bool = bool(p.get("aim_port_active", true))
 	var bat: Variant = p.get("battery_port") if port_on else p.get("battery_stbd")
@@ -2130,6 +2400,8 @@ func _draw() -> void:
 	_draw_bot_debug_hud(vp)
 	if _winner != -2:
 		_draw_win_screen(vp)
+	if Input.is_action_pressed(SCOREBOARD_ACTION) or _match_over:
+		_draw_scoreboard(vp)
 
 
 func _draw_combat_debug_world_overlays() -> void:

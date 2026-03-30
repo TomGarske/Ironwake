@@ -1,6 +1,6 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://scripts/game_modes/blacksite_containment_arena.gd" id="1_blacksite_iso"]
+[ext_resource type="Script" path="res://scripts/game_modes/ironwake_arena.gd" id="1_ironwake"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pause_panel"]
 bg_color = Color(0.14, 0.11, 0.09, 0.95)
@@ -16,9 +16,9 @@ corner_radius_bottom_left = 14
 shadow_color = Color(0, 0, 0, 0.45)
 shadow_size = 18
 
-[node name="BlacksiteContainmentArena" type="Node2D" unique_id=1122283763]
+[node name="IronwakeArena" type="Node2D" unique_id=1122283763]
 y_sort_enabled = true
-script = ExtResource("1_blacksite_iso")
+script = ExtResource("1_ironwake")
 
 [node name="UILayer" type="CanvasLayer" parent="." unique_id=819313691]
 

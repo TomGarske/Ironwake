@@ -1,13 +1,13 @@
 ﻿# =============================================================================
-# Blacksite Containment - Kenney Asset Downloader
+# Ironwake - Kenney Asset Downloader
 # =============================================================================
 # Run this script from PowerShell on your Windows machine.
 # It will download the required Kenney asset packs and extract them into the
-# correct subfolders under assets/blacksite/ in this project.
+# correct subfolders under assets/ironwake/ in this project.
 #
 # Usage: Right-click this file → "Run with PowerShell"
 #    OR: In PowerShell, cd to the project root and run:
-#        .\assets\blacksite\download_kenney_assets.ps1
+#        .\assets\ironwake\download_kenney_assets.ps1
 # =============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -15,14 +15,14 @@ $ErrorActionPreference = "Stop"
 # Resolve to the project root (two levels up from this script)
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Resolve-Path (Join-Path $scriptDir "..\..")
-$blacksiteAssets = Join-Path $projectRoot "assets\blacksite"
+$ironwakeAssets = Join-Path $projectRoot "assets\ironwake"
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  Blacksite Containment - Kenney Downloader" -ForegroundColor Cyan
+Write-Host "  Ironwake - Kenney Downloader" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "Project root : $projectRoot"
-Write-Host "Asset target : $blacksiteAssets"
+Write-Host "Asset target : $ironwakeAssets"
 Write-Host ""
 
 # ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ $packs = @(
         Name        = "UI Pack: Sci-Fi"
         Slug        = "ui-pack-sci-fi"
         Dest        = "ui\_kenney_ui-pack-sci-fi"
-        Description = "2D sci-fi UI panels, buttons, bars, icons - BLACKSITE HUD base layer"
+        Description = "2D sci-fi UI panels, buttons, bars, icons - IRONWAKE HUD base layer"
     },
     @{
         Name        = "Sci-Fi Sounds"
@@ -147,7 +147,7 @@ foreach ($pack in $packs) {
     Write-Host "[$($pack.Name)]" -ForegroundColor White
     Write-Host "  $($pack.Description)" -ForegroundColor Gray
 
-    $destPath = Join-Path $blacksiteAssets $pack.Dest
+    $destPath = Join-Path $ironwakeAssets $pack.Dest
 
     if (Test-Path $destPath) {
         Write-Host "  Already downloaded - skipping. (Delete '$($pack.Dest)' to re-download.)" -ForegroundColor Yellow
@@ -186,7 +186,7 @@ if ($failed.Count -gt 0) {
 }
 
 Write-Host ""
-Write-Host "Assets landed in: $blacksiteAssets" -ForegroundColor Cyan
+Write-Host "Assets landed in: $ironwakeAssets" -ForegroundColor Cyan
 Write-Host "See ASSET_MAPPING.md for how each pack maps to game elements." -ForegroundColor Cyan
 Write-Host ""
 

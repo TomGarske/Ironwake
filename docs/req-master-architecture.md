@@ -145,15 +145,19 @@ The complete prototype is built from the following state systems. Each system ru
 
 ### Tier 2 — High Value
 
-| System | Purpose |
-|--------|---------|
-| Repair / Recovery FSM | Crew assignment for hull, rigging, weapon, flood repair |
-| Crew / Station Readiness | Reload speed modifiers, manning penalties |
-| AI Captain FSM | Patrol → Approach → Broadside → Evade → Disengage (see `req-ai-naval-bot-v1.md`) |
-| Combat Evaluator | Broadside quality scoring, engagement bands (see `req-combat-loop-v1.md`) |
-| Local Sim Controller | Bot spawning for local testing (see `req-local-sim-v1.md`) |
-| Combat Debug | HUD, draw overlays, logging (see `req-debug-combat-v1.md`) |
-| Camera State | Follow → CombatBroadside → AimMode → CinematicImpact |
+| System | Purpose | Status |
+|--------|---------|--------|
+| Repair / Recovery FSM | Crew assignment for hull, rigging, weapon, flood repair | Future |
+| Crew / Station Readiness | Reload speed modifiers, manning penalties | Future |
+| AI Captain FSM | Patrol → Approach → Broadside → Evade → Disengage (see `req-ai-naval-bot-v1.md`) | **Implemented** — `NavalBotController` + LimboAI BT |
+| Combat Evaluator | Broadside quality scoring, engagement bands (see `req-combat-loop-v1.md`) | **Implemented** — `NavalCombatEvaluator` |
+| Local Sim Controller | Bot spawning for local testing (see `req-local-sim-v1.md`) | **Implemented** — `LocalSimController` |
+| Combat Debug | HUD, draw overlays, logging (see `req-debug-combat-v1.md`) | **Implemented** — arena debug draw |
+| Camera State | Follow → CombatBroadside → AimMode → CinematicImpact | Partial |
+| Scoreboard | Per-player kills, deaths, shots_fired, shots_hit, damage_dealt, damage_taken (Tab key) | **Implemented** |
+| Multiplayer Sync | SteamMultiplayerPeer, host-authority, 15-field naval state RPC | **Implemented** |
+| Ramming | Server-authoritative hull contact damage with cooldowns | **Implemented** |
+| Respawn | Server-authoritative ship respawn after destruction | **Implemented** |
 
 ### Tier 3 — Polish / Depth
 

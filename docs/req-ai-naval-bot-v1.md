@@ -117,7 +117,7 @@ At minimum, expose these on the LimboAI blackboard:
 | `stuck_timer` | float | Time without meaningful progress |
 | `last_maneuver` | String | Debug label for current maneuver |
 | `fire_block_reason` | String | Why firing is blocked (debug) |
-| `desired_speed_state` | enum | STOP, HALF, FULL |
+| `desired_speed_state` | enum | STOP, QUARTER, HALF, FULL |
 | `desired_turn_direction` | float | -1.0 to 1.0 wheel intent |
 | `bot_enabled` | bool | Master toggle |
 

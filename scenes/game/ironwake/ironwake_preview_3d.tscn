@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://co5ekixxtll7p"]
 
-[ext_resource type="Script" path="res://scripts/game_modes/blacksite_containment_preview_3d.gd" id="1_preview"]
+[ext_resource type="Script" path="res://scripts/game_modes/ironwake_preview_3d.gd" id="1_preview"]
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 2
@@ -14,7 +14,7 @@ fog_light_energy = 0.55
 fog_sun_scatter = 0.22
 fog_density = 0.0028
 
-[node name="BlacksiteContainmentPreview3D" type="Node3D"]
+[node name="IronwakePreview3D" type="Node3D"]
 script = ExtResource("1_preview")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]

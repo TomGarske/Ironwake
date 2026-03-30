@@ -34,7 +34,7 @@ When running in local simulation mode:
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| `local_sim_bot_count` | `3` | `@export` on `blacksite_containment_arena.gd`, clamped **1–4** |
+| `local_sim_bot_count` | `3` | `@export` on `ironwake_arena.gd`, clamped **1–4** |
 | `spawn_distance_min` / `spawn_distance_max` | `220` / `320` world units | On `LocalSimController`; used to set corner distance (see §2.3) |
 | `local_sim_enabled` | `true` | `@export` on arena; when false, no bots spawn |
 
@@ -71,7 +71,7 @@ Bot spawning logic must be isolated from future multiplayer logic.
 ### 3.2 Recommended Architecture
 
 ```text
-Arena (blacksite_containment_arena)
+Arena (ironwake_arena)
 ├── LocalSimController.create_bot_entry(...) per bot
 ├── _init_bot_controllers per bot
 ├── BotShipAgent + NavalBotController per bot
@@ -90,4 +90,4 @@ Spawn distance endpoints and bot count are **`@export`** on the arena (`local_si
 
 - Multiplayer networking
 - Bot difficulty selection (future phase)
-- Respawning after destruction
+- ~~Respawning after destruction~~ — Now implemented: server-authoritative respawn with `RESPAWN_DELAY_SEC` cooldown

@@ -1,5 +1,5 @@
 extends RefCounted
-class_name BlacksiteMapProfile
+class_name IronwakeMapProfile
 
 const NC := preload("res://scripts/shared/naval_combat_constants.gd")
 
