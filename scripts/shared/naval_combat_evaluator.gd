@@ -8,15 +8,15 @@ const NC := preload("res://scripts/shared/naval_combat_constants.gd")
 # ── Engagement-band enum ───────────────────────────────────────────────
 enum RangeBand { TOO_CLOSE, PREFERRED, TOO_FAR, BEYOND_MAX }
 
-# ── Tunable band boundaries (calibrated to code's actual ranges) ──────
+# ── Tunable band boundaries (calibrated to 24-pdr ballistic ranges) ───
 ## Below this → breakaway.  Matches NC.CLOSE_RANGE.
 const BAND_TOO_CLOSE: float        = 120.0
 ## Centre of preferred band.  Matches NC.OPTIMAL_RANGE.
-const BAND_PREFERRED_CENTER: float  = 250.0
+const BAND_PREFERRED_CENTER: float  = 400.0
 ## Half-width of preferred band.
-const BAND_PREFERRED_TOLERANCE: float = 70.0
-## Beyond this, shots are impractical.  Matches NC.MAX_CANNON_RANGE.
-const BAND_MAX_PRACTICAL: float     = 450.0
+const BAND_PREFERRED_TOLERANCE: float = 120.0
+## Beyond this, shots are impractical for bots.
+const BAND_MAX_PRACTICAL: float     = 1000.0
 ## Hysteresis buffer at each boundary to prevent oscillation.
 const BAND_HYSTERESIS: float        = 15.0
 
@@ -99,7 +99,6 @@ static func evaluate_range_band(distance: float, prev_band: int = -1) -> Diction
 	var hyst: float = BAND_HYSTERESIS if prev_band >= 0 else 0.0
 
 	var close_threshold: float = BAND_TOO_CLOSE
-	var pref_lo: float = BAND_PREFERRED_CENTER - BAND_PREFERRED_TOLERANCE
 	var pref_hi: float = BAND_PREFERRED_CENTER + BAND_PREFERRED_TOLERANCE
 	var max_threshold: float = BAND_MAX_PRACTICAL
 
@@ -107,7 +106,6 @@ static func evaluate_range_band(distance: float, prev_band: int = -1) -> Diction
 	if prev_band == RangeBand.TOO_CLOSE:
 		close_threshold += hyst
 	elif prev_band == RangeBand.PREFERRED:
-		pref_lo -= hyst
 		pref_hi += hyst
 	elif prev_band == RangeBand.TOO_FAR:
 		pref_hi -= hyst
@@ -250,7 +248,7 @@ static func _side_quality(
 		stability: float,
 		dir_n: Vector2,
 		to_tgt_n: Vector2,
-		dist: float,
+		_dist: float,
 		battery: Variant,
 		is_port: bool,
 	) -> float:

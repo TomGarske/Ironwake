@@ -23,18 +23,6 @@ enum FireMode {
 	RIPPLE,
 }
 
-enum WeaponType {
-	LIGHT,
-	MEDIUM,
-	HEAVY,
-}
-
-enum AmmoType {
-	ROUND_SHOT,
-	CHAIN_SHOT,
-	GRAPESHOT,
-}
-
 signal battery_state_changed(side: BatterySide, new_state: BatteryState)
 signal cannon_fired(side: BatterySide, shot_index: int)
 signal volley_fired(side: BatterySide)
@@ -44,8 +32,6 @@ signal battery_disabled(side: BatterySide)
 
 var side: BatterySide = BatterySide.PORT
 var cannon_count: int = 3
-var weapon_type: WeaponType = WeaponType.MEDIUM
-var ammo_type: AmmoType = AmmoType.ROUND_SHOT
 var state: BatteryState = BatteryState.IDLE
 var fire_mode: FireMode = FireMode.RIPPLE
 var reload_time: float = 2.8
@@ -55,13 +41,17 @@ var max_range: float = 14.0
 var auto_fire_enabled: bool = false
 ## Continuous quoin: 0.0 → −5° depression, 1.0 → +10° elevation (linear).
 ## Used directly by CannonBallistics.initial_velocity(elevation_deg).
-const ELEV_MIN_DEG: float = -5.0
-const ELEV_MAX_DEG: float = 10.0
+const ELEV_MIN_DEG: float = -3.0
+const ELEV_MAX_DEG: float = 5.0
 ## Normalized `cannon_elevation` that yields 0° horizontal bore (default for new batteries).
 const CANNON_ELEVATION_ZERO_DEG: float = (0.0 - ELEV_MIN_DEG) / (ELEV_MAX_DEG - ELEV_MIN_DEG)
 var cannon_elevation: float = CANNON_ELEVATION_ZERO_DEG
-## How fast the gun crew can adjust the quoin per second (normalized 0–1 units).
-const ELEVATION_ADJUST_RATE: float = 0.35
+## Quoin adjustment speed ramps from slow (precise) to fast the longer the input is held.
+const ELEVATION_RATE_MIN: float = 0.04
+const ELEVATION_RATE_MAX: float = 0.40
+## Seconds of held input to reach full speed.
+const ELEVATION_RAMP_TIME: float = 1.8
+var _elevation_hold_time: float = 0.0
 var battery_damage: float = 75.0
 var fire_sequence_duration: float = 0.2
 var shots_remaining_in_sequence: int = 0
@@ -246,7 +236,14 @@ func elevation_degrees() -> float:
 
 
 func adjust_elevation(delta: float, direction: float) -> void:
-	cannon_elevation = clampf(cannon_elevation + direction * ELEVATION_ADJUST_RATE * delta, 0.0, 1.0)
+	_elevation_hold_time += delta
+	var t: float = clampf(_elevation_hold_time / ELEVATION_RAMP_TIME, 0.0, 1.0)
+	var rate: float = lerpf(ELEVATION_RATE_MIN, ELEVATION_RATE_MAX, t * t)
+	cannon_elevation = clampf(cannon_elevation + direction * rate * delta, 0.0, 1.0)
+
+
+func reset_elevation_hold() -> void:
+	_elevation_hold_time = 0.0
 
 
 func elevation_label() -> String:

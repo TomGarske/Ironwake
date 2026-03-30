@@ -72,11 +72,16 @@ var _pending_fire_side: String = ""
 var hit_reaction_timer: float = 0.0
 var last_hit_attacker_peer_id: int = 0
 
+# ── Shot tracking — error if no shot within 15 s of gameplay ────────────
+var _game_time_elapsed: float = 0.0
+var _has_fired_at_least_once: bool = false
+var _no_shot_error_emitted: bool = false
+
 # ── Debug (req-debug-combat-v1) ─────────────────────────────────────────
 ## When false, arena skips this bot’s text panel.
 var show_debug_hud_panel: bool = false
-## Verbose print() for pass / reposition / stuck / side switch (off by default).
-var debug_log_events: bool = false
+## Verbose print() for fire decision logging.
+var debug_log_events: bool = true
 var current_bt_state: String = "init"
 
 
@@ -161,6 +166,7 @@ func update(delta: float) -> void:
 		fire_stbd_intent = false
 		return
 
+	_game_time_elapsed += delta
 	_tick_timers(delta)
 	_update_combat_context()
 
@@ -168,6 +174,11 @@ func update(delta: float) -> void:
 	steer_right = 0.0
 	fire_port_intent = false
 	fire_stbd_intent = false
+
+	# 15-second shot watchdog — disabled (bots behaving correctly now).
+	# if _game_time_elapsed >= 15.0 and not _has_fired_at_least_once and not _no_shot_error_emitted:
+	# 	_no_shot_error_emitted = true
+	# 	push_error(...)
 
 	if _bt_initialised and bt_player != null:
 		_sync_limbo_blackboard()
@@ -297,6 +308,9 @@ func reset_combat_state() -> void:
 	broadside_result = {}
 	range_band = _Evaluator.RangeBand.BEYOND_MAX
 	distance_to_target = 9999.0
+	_game_time_elapsed = 0.0
+	_has_fired_at_least_once = false
+	_no_shot_error_emitted = false
 	bearing_to_target_deg = 0.0
 	_update_log_count = 0
 	_periodic_log_timer = 0.0
@@ -325,54 +339,50 @@ func limbo_tick_recover(_delta: float) -> int:
 	return _ST_SUCCESS if _try_recover_if_stuck(_delta) else _ST_FAILURE
 
 
-func limbo_tick_fire(delta: float) -> int:
-	if _pending_fire_delay > 0.0:
-		_pending_fire_delay -= delta
-		if range_band == _Evaluator.RangeBand.TOO_CLOSE \
-				or float(broadside_result.get("best_quality", 0.0)) < float(_Evaluator.FIRE_SOFT_THRESHOLD):
-			_pending_fire_delay = 0.0
-			_pending_fire_side = ""
-			fire_block_reason = "fire_delay_cancelled"
-			return _ST_FAILURE
-		current_bt_state = "fire_commit"
-		last_maneuver = "fire_delay"
-		fire_block_reason = "reaction_delay"
-		_steer_for_broadside_on_side(_pending_fire_side)
-		if _pending_fire_delay > 0.0:
-			return _ST_RUNNING
-		if _commit_broadside_volley(str(_pending_fire_side)):
-			return _ST_SUCCESS
+func limbo_tick_fire(_delta: float) -> int:
+	## Aggressive fire: shoot whenever ANY battery is READY (target in arc + loaded).
+	## No quality gate, no stability timer, no reaction delay.
+	if agent == null:
+		fire_block_reason = "no_agent"
 		return _ST_FAILURE
 
-	if currently_repositioning or recently_fired:
-		fire_block_reason = "repositioning"
-		return _ST_FAILURE
-	if post_fire_lockout_timer > 0.0:
-		fire_block_reason = "post_fire_lockout"
-		return _ST_FAILURE
+	var port_b: Variant = agent.get_battery_port()
+	var stbd_b: Variant = agent.get_battery_stbd()
+	var port_ready: bool = port_b != null and int(port_b.state) == int(_BatteryController.BatteryState.READY)
+	var stbd_ready: bool = stbd_b != null and int(stbd_b.state) == int(_BatteryController.BatteryState.READY)
 
-	var best_q: float = float(broadside_result.get("best_quality", 0.0))
-	var best_side_str: String = str(broadside_result.get("best_side", "none"))
-	if best_q < _Evaluator.FIRE_THRESHOLD:
-		fire_block_reason = "quality_%.2f_below_threshold" % best_q
-		return _ST_FAILURE
-	if fire_stability_timer < _Evaluator.FIRE_STABILITY_TIME:
-		fire_block_reason = "stability_timer_%.2f" % fire_stability_timer
-		return _ST_FAILURE
-	if best_side_str == "none":
-		return _ST_FAILURE
-
-	_pending_fire_delay = randf_range(_Evaluator.FIRE_REACTION_DELAY_MIN, _Evaluator.FIRE_REACTION_DELAY_MAX)
-	_pending_fire_side = best_side_str
-	current_bt_state = "fire_commit"
-	last_maneuver = "fire_delay"
-	fire_block_reason = "reaction_delay"
 	if debug_log_events:
-		print("[NavalBot] pass_fire_prepare side=%s q=%.2f delay=%.2fs dist=%.0f" % [
-			best_side_str, best_q, _pending_fire_delay, distance_to_target,
-		])
-	_steer_for_broadside_on_side(best_side_str)
-	return _ST_RUNNING
+		var p_state: String = port_b.state_display() if port_b != null else "null"
+		var s_state: String = stbd_b.state_display() if stbd_b != null else "null"
+		var best_q: float = float(broadside_result.get("best_quality", 0.0))
+		print("[NavalBot %s] fire_check: port=%s stbd=%s dist=%.0f bearing=%.1f best_q=%.2f band=%s block=%s" % [
+			name, p_state, s_state, distance_to_target, bearing_to_target_deg,
+			best_q, _Evaluator.band_name(range_band), fire_block_reason])
+
+	if not port_ready and not stbd_ready:
+		if port_b != null and int(port_b.state) == int(_BatteryController.BatteryState.AIMING):
+			fire_block_reason = "port_aiming_not_in_arc"
+		elif port_b != null and int(port_b.state) == int(_BatteryController.BatteryState.RELOADING):
+			fire_block_reason = "reloading"
+		else:
+			fire_block_reason = "no_battery_ready"
+		return _ST_FAILURE
+
+	# Pick the better side if both ready; otherwise fire whichever is ready.
+	var side: String
+	if port_ready and stbd_ready:
+		var pq: float = float(broadside_result.get("quality_port", 0.0))
+		var sq: float = float(broadside_result.get("quality_stbd", 0.0))
+		side = "port" if pq >= sq else "starboard"
+	elif port_ready:
+		side = "port"
+	else:
+		side = "starboard"
+
+	if _commit_broadside_volley(side):
+		return _ST_SUCCESS
+	fire_block_reason = "commit_failed"
+	return _ST_FAILURE
 
 
 func limbo_tick_breakaway(delta: float) -> int:
@@ -465,32 +475,19 @@ func _commit_broadside_volley(best_side_str: String) -> bool:
 	else:
 		return false
 
-	print("[NavalBot %s] FIRE %s broadside — dist=%.0f quality=%.2f" % [
+	_has_fired_at_least_once = true
+
+	print("[NavalBot %s] FIRE %s broadside — dist=%.0f quality=%.2f bearing=%.1f" % [
 		name, best_side_str, distance_to_target,
-		float(broadside_result.get("best_quality", 0.0))])
+		float(broadside_result.get("best_quality", 0.0)), bearing_to_target_deg])
 
-	recently_fired = true
-	currently_repositioning = true
-	reposition_timer = randf_range(_Evaluator.REPOSITION_DURATION_MIN, _Evaluator.REPOSITION_DURATION_MAX)
-	post_fire_lockout_timer = _Evaluator.POST_FIRE_LOCKOUT
-
-	var away: float = -1.0 if bearing_to_target_deg >= 0.0 else 1.0
-	reposition_turn_dir = away
-	_commit_turn(away, reposition_timer)
-	if debug_log_events:
-		print("[NavalBot] reposition_start dir=%.0f dur=%.2fs" % [away, reposition_timer])
+	# Short post-fire lockout only — no repositioning block so bot can fire again ASAP.
+	post_fire_lockout_timer = 0.25
 
 	if side_switch_cooldown_timer <= 0.0:
-		var prev: String = preferred_side
 		preferred_side = best_side_str
 		side_switch_cooldown_timer = _Evaluator.SIDE_SWITCH_COOLDOWN
-		if debug_log_events and prev != best_side_str and prev != "none":
-			print("[NavalBot] side_switch %s -> %s (fired)" % [prev, best_side_str])
 
-	if debug_log_events:
-		print("[NavalBot] FIRE %s  quality=%.2f  dist=%.0f  bearing=%.1f" % [
-			best_side_str, float(broadside_result.get("best_quality", 0.0)), distance_to_target, bearing_to_target_deg,
-		])
 	return true
 
 
@@ -514,10 +511,13 @@ func _steer_for_broadside_on_side(side_to_use: String) -> void:
 	if absf(steer_dir) < 0.38 and absf(cross_val) > 1e-4:
 		steer_dir = signf(cross_val) * 0.38
 	_commit_turn(steer_dir, 0.22)
-	if range_band == _Evaluator.RangeBand.PREFERRED:
+	var abs_bear_s: float = absf(bearing_to_target_deg)
+	if abs_bear_s > 60.0:
+		desired_sail_state = 1  # QUARTER — large correction, peak turn rate
+	elif range_band == _Evaluator.RangeBand.PREFERRED:
 		desired_sail_state = 2
 	else:
-		desired_sail_state = 3
+		desired_sail_state = 2
 
 
 func _try_reposition(_delta: float) -> bool:
@@ -568,11 +568,15 @@ func _try_establish_broadside(_delta: float) -> bool:
 		steer_dir = signf(cross_val) * 0.4
 	_commit_turn(steer_dir, 0.22)
 
-	# Speed: HALF in preferred range, FULL if far.
-	if range_band == _Evaluator.RangeBand.PREFERRED:
-		desired_sail_state = 2  # HALF
+	# Speed: depends on bearing correction needed.
+	# Large bearing → QUARTER for best turn rate; moderate → HALF; small → FULL to close.
+	var abs_bear: float = absf(bearing_to_target_deg)
+	if abs_bear > 60.0:
+		desired_sail_state = 1  # QUARTER — peak turning rate
+	elif range_band == _Evaluator.RangeBand.PREFERRED:
+		desired_sail_state = 2  # HALF — maintain engagement distance
 	else:
-		desired_sail_state = 3  # FULL
+		desired_sail_state = 2  # HALF — don't overrun at full speed
 
 	fire_block_reason = "aligning"
 	return true
@@ -603,7 +607,14 @@ func _try_approach(_delta: float) -> bool:
 		steer_dir = signf(cross_val) * 0.4
 	_commit_turn(steer_dir, 0.22)
 
-	desired_sail_state = 3  # FULL
+	# Sail depends on how much course correction is needed.
+	var abs_bear: float = absf(bearing_to_target_deg)
+	if abs_bear > 90.0:
+		desired_sail_state = 1  # QUARTER — need to come about, max turn rate
+	elif abs_bear > 45.0:
+		desired_sail_state = 2  # HALF — moderate correction
+	else:
+		desired_sail_state = 3  # FULL — roughly on course, close the distance
 	fire_block_reason = "approaching"
 	return true
 
@@ -628,12 +639,20 @@ func _hold_pattern(_delta: float) -> void:
 
 func _adjust_sail_for_turn() -> void:
 	var steer_strength: float = maxf(steer_left, steer_right)
-	if steer_strength < 0.5:
+	var abs_bearing: float = absf(bearing_to_target_deg)
+	# Target is behind us (>90°) — drop to QUARTER for peak turn rate.
+	# The turn curve peaks at quarter speed (~3.8°/s); higher speeds turn slower.
+	if abs_bearing > 90.0 and desired_sail_state > 1:
+		desired_sail_state = 1  # QUARTER — best turning
 		return
-	# Hard turn: cap sail at HALF (2) to avoid bleeding all speed
+	# Large bearing correction (>60°) with hard steer — QUARTER for tighter turn.
+	if abs_bearing > 60.0 and steer_strength > 0.7 and desired_sail_state > 1:
+		desired_sail_state = 1
+		return
+	# Hard turn: cap sail at HALF to avoid bleeding all speed at high velocity.
 	if steer_strength > 0.8 and desired_sail_state > 2:
 		desired_sail_state = 2
-	# Medium turn at high speed: drop to HALF
+	# Medium turn at high speed: drop to HALF.
 	elif steer_strength > 0.6 and agent != null and agent.get_speed() > 18.0 and desired_sail_state > 2:
 		desired_sail_state = 2
 

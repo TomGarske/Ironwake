@@ -30,30 +30,39 @@ static func decel_rate_sails() -> float:
 	return MAX_SPEED / maxf(0.001, DECEL_TIME_SAILS_DOWN)
 
 
-## Turning — rate is purely speed-dependent (not sail position).
-## Slow ships pivot well; fast ships have wide turning circles.
-## Radius ≈ speed / deg_to_rad(rate).
+## Turning — rate depends on water flow over the rudder (speed).
+## Near-zero speed: almost no turn (no hydrodynamic force on rudder).
+## Peaks at moderate speed (quarter–cruise) where flow is strong and
+## momentum is manageable, then the turning circle widens at high speed.
+## Historical: a 74-gun 3rd rate manages ~2–3 deg/s at best.
 static func turn_rate_deg_for_speed(speed: float) -> float:
 	var s: float = clampf(speed, 0.0, MAX_SPEED * 1.1)
+	# Near-standstill: barely any rudder authority — ship is a floating log.
 	if s <= MIN_SPEED_DRIFT:
-		return 14.0
+		var t: float = s / maxf(0.001, MIN_SPEED_DRIFT)
+		return lerpf(0.4, 2.0, t)
+	# Low speed → peak turn authority around quarter sail.
 	if s <= QUARTER_SPEED:
 		var t: float = (s - MIN_SPEED_DRIFT) / maxf(0.001, QUARTER_SPEED - MIN_SPEED_DRIFT)
-		return lerpf(14.0, 9.5, t)
+		return lerpf(2.0, 3.8, t)
+	# Moderate speed: still decent, slight decline as momentum builds.
 	if s <= CRUISE_SPEED:
 		var t: float = (s - QUARTER_SPEED) / maxf(0.001, CRUISE_SPEED - QUARTER_SPEED)
-		return lerpf(9.5, 5.0, t)
+		return lerpf(3.8, 2.8, t)
+	# High speed: turning circle widens — heavy hull carries forward.
 	var t2: float = (s - CRUISE_SPEED) / maxf(0.001, MAX_SPEED - CRUISE_SPEED)
-	return lerpf(5.0, 2.5, clampf(t2, 0.0, 1.0))
+	return lerpf(2.8, 1.8, clampf(t2, 0.0, 1.0))
 
 
 ## Rudder / heading inertia (lower = heading catches rudder faster).
-const HELM_TURN_LAG_SEC: float = 0.65
+## 1,600-ton hull has enormous rotational inertia — heading changes lag rudder by seconds.
+const HELM_TURN_LAG_SEC: float = 1.8
 
 ## Speed at which rudder reaches full steering authority (linear ramp MIN→1).
-const RUDDER_AUTHORITY_SPEED: float = 5.0
-## Minimum rudder authority at zero speed (warping/kedging — slow pivot at anchor).
-const RUDDER_AUTHORITY_MIN: float = 0.25
+## Need ~5 knots (≈12 u/s) of way on before rudder bites fully.
+const RUDDER_AUTHORITY_SPEED: float = 12.0
+## Minimum rudder authority at zero speed (warping/kedging — nearly zero at anchor).
+const RUDDER_AUTHORITY_MIN: float = 0.08
 
 ## §4 Firing — half-angle from broadside normal (total arc per side ≈ 90°).
 ## Cannons can only traverse ±6° at the gunport; the arc represents the combined
@@ -76,83 +85,66 @@ static func broadside_quality(angle_from_bow_deg: float) -> float:
 	var t: float = (off_beam - BROADSIDE_QUALITY_FALLOFF_START_DEG) / (BROADSIDE_QUALITY_FALLOFF_END_DEG - BROADSIDE_QUALITY_FALLOFF_START_DEG)
 	return lerpf(1.0, 0.3, t)
 
-const RELOAD_TIME_SEC: float = 18.0
+const RELOAD_TIME_SEC: float = 12.0
 
 ## §4.1 Max engagement (same unit space as wx, wy)
-const OPTIMAL_RANGE: float = 250.0
-const MAX_CANNON_RANGE: float = 450.0
+## Calibrated to 24-pounder long gun ballistics (410 m/s muzzle velocity, 9.81 g).
+## Flat shot (0° elev) ≈ 307 m; +1° ≈ 726 m; +2° ≈ 1269 m; +3° ≈ 1846 m.
+const OPTIMAL_RANGE: float = 400.0
+const MAX_CANNON_RANGE: float = 2000.0
 const CLOSE_RANGE: float = 120.0
 
-## Projectile horizontal speed scale (req-weapons-layer-v1 suggests ~55 u/s; raised here so
-## arc + lifetime still reach MAX_CANNON_RANGE on this map).
-const PROJECTILE_SPEED: float = 165.0
-const PROJECTILE_LIFETIME: float = 6.0
-const PROJECTILE_GRAVITY_SCALE: float = 0.32
+## Max flight time before projectile is removed.
+## Must exceed flight time at max elevation (+10° ≈ 14.6 s) to avoid clipping arcs.
+const PROJECTILE_LIFETIME: float = 16.0
 
-## Historical accuracy model (age of sail, manned broadsides).
-## Bands now aligned to the actual cannon engagement envelope:
-##   depressed quoin  → ~125u   (point-blank)
-##   flat quoin       → ~250u   (optimal combat)
-##   max quoin        → ~450u   (extreme range)
-##   pistol shot  (0–40u):   ~90%
-##   point blank  (40–125u): ~75%
-##   effective    (125–250u): ~50%
-##   long         (250–370u): ~25%
-##   extreme      (370–450u): ~10%
-const ACC_PISTOL_RANGE: float = 40.0
-const ACC_CLOSE_RANGE: float = 125.0
-const ACC_MUSKET_RANGE: float = 250.0
-const ACC_MEDIUM_RANGE: float = 370.0
-const ACC_LONG_RANGE: float = 450.0
+## Range band labels for HUD display.  No artificial hit probability —
+## accuracy is purely physical (elevation, positioning, slight yaw variance).
+## Bands calibrated to real ballistic reach at practical elevations.
+const ACC_PISTOL_RANGE: float = 100.0     ## depression angles — point blank
+const ACC_CLOSE_RANGE: float = 300.0      ## near-flat, very reliable
+const ACC_MUSKET_RANGE: float = 600.0     ## flat to +1°, good accuracy
+const ACC_MEDIUM_RANGE: float = 1000.0    ## +1° to +2°, moderate accuracy
+const ACC_LONG_RANGE: float = 1800.0      ## +2° to +3°, marginal accuracy
 
-static func hit_probability(distance: float) -> float:
-	if distance <= ACC_PISTOL_RANGE:
-		return lerpf(0.92, 0.85, clampf(distance / ACC_PISTOL_RANGE, 0.0, 1.0))
-	if distance <= ACC_CLOSE_RANGE:
-		var t: float = (distance - ACC_PISTOL_RANGE) / (ACC_CLOSE_RANGE - ACC_PISTOL_RANGE)
-		return lerpf(0.85, 0.65, t)
-	if distance <= ACC_MUSKET_RANGE:
-		var t: float = (distance - ACC_CLOSE_RANGE) / (ACC_MUSKET_RANGE - ACC_CLOSE_RANGE)
-		return lerpf(0.65, 0.40, t)
-	if distance <= ACC_MEDIUM_RANGE:
-		var t: float = (distance - ACC_MUSKET_RANGE) / (ACC_MEDIUM_RANGE - ACC_MUSKET_RANGE)
-		return lerpf(0.40, 0.15, t)
-	if distance <= ACC_LONG_RANGE:
-		var t: float = (distance - ACC_MEDIUM_RANGE) / (ACC_LONG_RANGE - ACC_MEDIUM_RANGE)
-		return lerpf(0.15, 0.02, t)
-	return 0.02
-
-## Base half-spread (degrees) before pattern offsets — req-weapons-layer-v1 §Accuracy Model.
-## Tightened 10% vs original values.
+## Base half-spread (degrees) — historical age-of-sail dispersion.
+## Gunport tolerances, powder variance, and crew timing.
+## Grows with range as crew estimation and environmental factors compound.
 static func spread_deg_for_range(distance: float) -> float:
 	var d: float = maxf(0.0, distance)
 	if d < 100.0:
-		return lerpf(1.8, 3.6, clampf(d / 100.0, 0.0, 1.0))
-	if d < 200.0:
-		return lerpf(4.5, 7.2, (d - 100.0) / 100.0)
-	var t_far: float = clampf((d - 200.0) / maxf(1.0, ACC_LONG_RANGE - 200.0), 0.0, 1.0)
-	return lerpf(9.0, 13.5, t_far)
+		return lerpf(0.4, 0.8, clampf(d / 100.0, 0.0, 1.0))
+	if d < 300.0:
+		return lerpf(0.8, 1.5, (d - 100.0) / 200.0)
+	if d < 600.0:
+		return lerpf(1.5, 2.5, (d - 300.0) / 300.0)
+	if d < 1000.0:
+		return lerpf(2.5, 3.5, (d - 600.0) / 400.0)
+	if d < 1800.0:
+		return lerpf(3.5, 5.0, (d - 1000.0) / 800.0)
+	var t_far: float = clampf((d - 1800.0) / 700.0, 0.0, 1.0)
+	return lerpf(5.0, 7.0, t_far)
 
-const TURNING_SPREAD_MULT: float = 1.4
-const HIGH_SPEED_SPREAD_MULT: float = 1.25
+const TURNING_SPREAD_MULT: float = 1.3
+const HIGH_SPEED_SPREAD_MULT: float = 1.15
 const HIGH_SPEED_THRESHOLD: float = 24.0
 
 
-## Ship footprint for collision / hits (world units).
-const SHIP_LENGTH_UNITS: float = 75.0
-const SHIP_WIDTH_UNITS: float = 26.0
-## Main gun deck / freeboard above the water plane (world units ≈ m) — vertical extent for drawing & ballistics.
-const SHIP_DECK_HEIGHT_UNITS: float = 2.35
-## Muzzle height above water for broadside shots (gunport on the raised deck).
-const CANNON_MUZZLE_HEIGHT_UNITS: float = 2.75
+## Ship footprint for collision / hits (world units ≈ metres).
+## Based on a 74-gun 3rd rate (e.g. HMS Bellona): 168 ft × 47 ft ≈ 52 m × 14.5 m.
+const SHIP_LENGTH_UNITS: float = 52.0
+const SHIP_WIDTH_UNITS: float = 14.5
+## Lower gun deck port sill above the waterline (~5 ft 6 in on a 74).
+const SHIP_DECK_HEIGHT_UNITS: float = 1.7
+## Muzzle height above water — lower gun deck 24-pounders (~6–7 ft).
+const CANNON_MUZZLE_HEIGHT_UNITS: float = 2.0
 ## Altitude band (above water) for counting cannon hits on the hull silhouette.
+## Min ≈ waterline; max ≈ top of upper works / bulwarks (~20 ft).
 const SHIP_HULL_HIT_H_MIN: float = 0.06
-const SHIP_HULL_HIT_H_MAX: float = 4.25
+const SHIP_HULL_HIT_H_MAX: float = 6.0
 ## Ellipse hit test tolerance: k <= this value counts as a hull hit (1.0 = exact ellipse).
 const ELLIPSE_HIT_SLACK: float = 1.15
 
-## Ballistics scale vs legacy iso tuning (line speed)
-const CANNON_LINE_SPEED_SCALE: float = 2.6
 
 ## Camera: zoom baseline so ~20–40 tiles visible (tune with iso TILE_W)
-const NAVAL_DEFAULT_ZOOM: float = 0.22
+const NAVAL_DEFAULT_ZOOM: float = 0.12

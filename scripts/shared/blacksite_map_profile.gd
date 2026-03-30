@@ -73,16 +73,16 @@ static func build_drone_spawns(data: Dictionary) -> Array:
 	var u: float = NC.UNITS_PER_LOGIC_TILE
 	var cx: float = width * 0.5 * u
 	var cy: float = height * 0.5 * u
-	# Wide separation so large hull footprints do not overlap at start.
+	# Wide separation — ships are large and need room to manoeuvre at spawn.
 	return [
-		Vector2(cx - 220.0, cy + 140.0),
-		Vector2(cx - 220.0, cy - 140.0),
-		Vector2(cx + 220.0, cy + 140.0),
-		Vector2(cx + 220.0, cy - 140.0),
-		Vector2(cx - 90.0, cy + 230.0),
-		Vector2(cx + 90.0, cy + 230.0),
-		Vector2(cx - 90.0, cy - 230.0),
-		Vector2(cx + 90.0, cy - 230.0),
+		Vector2(cx - 500.0, cy + 350.0),
+		Vector2(cx - 500.0, cy - 350.0),
+		Vector2(cx + 500.0, cy + 350.0),
+		Vector2(cx + 500.0, cy - 350.0),
+		Vector2(cx - 250.0, cy + 550.0),
+		Vector2(cx + 250.0, cy + 550.0),
+		Vector2(cx - 250.0, cy - 550.0),
+		Vector2(cx + 250.0, cy - 550.0),
 	]
 
 

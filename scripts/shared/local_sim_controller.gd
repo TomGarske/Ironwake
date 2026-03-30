@@ -7,9 +7,8 @@ const NC := preload("res://scripts/shared/naval_combat_constants.gd")
 
 ## Master toggle — when false, arena skips bot spawning entirely.
 var local_sim_enabled: bool = true
-## Distance from player to each bot (corner of square = this distance from center).
-var spawn_distance_min: float = 220.0
-var spawn_distance_max: float = 320.0
+## Radius of the spawn circle (all ships — player included — are placed on this circle).
+var spawn_circle_radius: float = 800.0
 
 ## Distinct bot palettes — visually different from player blue.
 const BOT_PALETTES: Array = [
@@ -21,49 +20,39 @@ const BOT_PALETTES: Array = [
 const BOT_LABELS: Array = ["Red", "Gold", "Prpl"]
 
 
-## Build a bot ship dictionary entry matching the arena's player format.
-## Bots are placed on corners of an axis-aligned square around the player (index 0–3 → 4 corners).
-## player_dict: the existing player's ship dictionary for position reference.
-## bot_index: 0-based index used for unique peer_id, palette, label, and square corner.
-func create_bot_entry(player_dict: Dictionary, bot_index: int = 0) -> Dictionary:
-	var px: float = float(player_dict.get("wx", 400.0))
-	var py: float = float(player_dict.get("wy", 400.0))
-
-	# Mean range from player to each bot; half_side of axis-aligned square so corner distance ≈ dist.
-	var dist: float = (spawn_distance_min + spawn_distance_max) * 0.5
-	var half_side: float = dist / sqrt(2.0)
-	var corners: Array[Vector2] = [
-		Vector2(half_side, half_side),
-		Vector2(-half_side, half_side),
-		Vector2(-half_side, -half_side),
-		Vector2(half_side, -half_side),
-	]
-	var ci: int = posmod(bot_index, corners.size())
-	var off: Vector2 = corners[ci]
-
-	var bot_x: float = px + off.x
-	var bot_y: float = py + off.y
-
-	# Clamp to map bounds.
+## Compute spawn positions for all ships (player + bots) on a circle facing the center.
+## Returns an array of { "wx", "wy", "dir" } dictionaries, one per ship.
+## Index 0 is the player; indices 1..bot_count are bots.
+static func compute_spawn_ring(center: Vector2, radius: float, total_ships: int) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
 	var map_max: float = float(NC.MAP_TILES_WIDE) * NC.UNITS_PER_LOGIC_TILE - 50.0
-	bot_x = clampf(bot_x, 50.0, map_max)
-	bot_y = clampf(bot_y, 50.0, map_max)
+	for i in range(total_ships):
+		var angle: float = float(i) / float(total_ships) * TAU
+		var wx: float = center.x + cos(angle) * radius
+		var wy: float = center.y + sin(angle) * radius
+		wx = clampf(wx, 50.0, map_max)
+		wy = clampf(wy, 50.0, map_max)
+		# Face toward center with slight jitter.
+		var to_center: Vector2 = (center - Vector2(wx, wy))
+		if to_center.length_squared() < 0.01:
+			to_center = Vector2.RIGHT
+		var heading: Vector2 = to_center.normalized().rotated(randf_range(-0.15, 0.15))
+		result.append({"wx": wx, "wy": wy, "dir": heading})
+	return result
 
-	# Face toward player with slight yaw jitter.
-	var to_player: Vector2 = (Vector2(px, py) - Vector2(bot_x, bot_y))
-	if to_player.length_squared() < 0.01:
-		to_player = Vector2.RIGHT
-	var bot_heading: Vector2 = to_player.normalized().rotated(randf_range(-0.2, 0.2))
 
+## Build a bot ship dictionary entry matching the arena's player format.
+## spawn_info: one element from compute_spawn_ring (has wx, wy, dir).
+func create_bot_entry(spawn_info: Dictionary, bot_index: int = 0) -> Dictionary:
 	var bot_peer_id: int = -(10 + bot_index)
 	var palette: Array = BOT_PALETTES[bot_index % BOT_PALETTES.size()]
 	var label: String = BOT_LABELS[bot_index % BOT_LABELS.size()]
 
 	return {
 		"peer_id": bot_peer_id,
-		"wx": bot_x,
-		"wy": bot_y,
-		"dir": bot_heading,
+		"wx": float(spawn_info.get("wx", 0.0)),
+		"wy": float(spawn_info.get("wy", 0.0)),
+		"dir": spawn_info.get("dir", Vector2.RIGHT),
 		"health": 6.0,
 		"alive": true,
 		"atk_time": 0.0,
