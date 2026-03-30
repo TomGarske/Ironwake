@@ -289,11 +289,11 @@ func _apply_naval_controllers_to_ship(p: Dictionary) -> void:
 	sail.current_sail_level = 0.25
 	p["sail"] = sail
 	var helm := _HelmController.new()
-	helm.wheel_spin_accel = 1.2
-	helm.wheel_max_spin = 0.45
+	helm.wheel_spin_accel = 2.0
+	helm.wheel_max_spin = 0.55
 	helm.wheel_friction = 2.5
-	## Rudder follow rate: ~3 seconds center-to-full deflection (crew working the wheel).
-	helm.rudder_follow_rate = 0.35
+	## Rudder follow rate: ~2 seconds center-to-full deflection (responsive gameplay).
+	helm.rudder_follow_rate = 0.5
 	p["helm"] = helm
 	p["move_speed"] = NC.QUARTER_SPEED
 	p["angular_velocity"] = 0.0
@@ -495,15 +495,16 @@ func _tick_bot(p: Dictionary, player_idx: int, delta: float) -> void:
 	p["angular_velocity"] = ang_vel
 
 	# --- Speed physics (identical to _tick_player) ---
+	var bot_sail_eff: float = lerpf(1.0, _SailController.MIN_EFFICIENCY, sail.damage)
 	var target_cap: float = 0.0
 	var sails_provide_thrust: bool = true
 	match sail.sail_state:
 		_SailController.SailState.FULL:
-			target_cap = NC.MAX_SPEED
+			target_cap = NC.MAX_SPEED * bot_sail_eff
 		_SailController.SailState.HALF:
-			target_cap = NC.CRUISE_SPEED
+			target_cap = NC.CRUISE_SPEED * bot_sail_eff
 		_SailController.SailState.QUARTER:
-			target_cap = NC.QUARTER_SPEED
+			target_cap = NC.QUARTER_SPEED * bot_sail_eff
 		_:
 			target_cap = NC.SAILS_DOWN_DRIFT_SPEED
 			sails_provide_thrust = false
@@ -930,15 +931,16 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 		sail.lower_step()
 		_play_tone(175.0, 0.04, 0.12)
 
+	var player_sail_eff: float = lerpf(1.0, _SailController.MIN_EFFICIENCY, sail.damage)
 	var target_cap: float = 0.0
 	var sails_provide_thrust: bool = true
 	match sail.sail_state:
 		_SailController.SailState.FULL:
-			target_cap = NC.MAX_SPEED
+			target_cap = NC.MAX_SPEED * player_sail_eff
 		_SailController.SailState.HALF:
-			target_cap = NC.CRUISE_SPEED
+			target_cap = NC.CRUISE_SPEED * player_sail_eff
 		_SailController.SailState.QUARTER:
-			target_cap = NC.QUARTER_SPEED
+			target_cap = NC.QUARTER_SPEED * player_sail_eff
 		_:
 			target_cap = NC.SAILS_DOWN_DRIFT_SPEED
 			sails_provide_thrust = false
@@ -1452,9 +1454,9 @@ func _tick_projectiles(delta: float) -> void:
 				if can_apply_hits:
 					var def_peer: int = int(q.get("peer_id", -1))
 					if multiplayer.has_multiplayer_peer():
-						_apply_cannon_hit.rpc(owner_peer, def_peer, dmg)
+						_apply_cannon_hit.rpc(owner_peer, def_peer, dmg, h)
 					else:
-						_apply_cannon_hit_impl(owner_peer, def_peer, dmg)
+						_apply_cannon_hit_impl(owner_peer, def_peer, dmg, h)
 				remove_proj = true
 				break
 
@@ -1609,7 +1611,13 @@ func _draw_muzzle_fx() -> void:
 		draw_circle(sp, rr, Color(0.22, 0.22, 0.24, 0.28 * fade))
 
 
-func _apply_cannon_hit_impl(attacker_peer_id: int, defender_peer_id: int, damage: float) -> void:
+## Height zones for component damage routing.
+## Upper hull / rigging (masts, yards, sails) — shots above the gun deck.
+const _SAIL_HIT_H_MIN: float = 3.5
+## Lower hull near waterline — tiller, rudder post, steering gear.
+const _HELM_HIT_H_MAX: float = 1.5
+
+func _apply_cannon_hit_impl(attacker_peer_id: int, defender_peer_id: int, damage: float, hit_h: float = 3.0) -> void:
 	var defender_idx: int = _find_player_index_by_peer_id(defender_peer_id)
 	if defender_idx < 0:
 		return
@@ -1620,6 +1628,18 @@ func _apply_cannon_hit_impl(attacker_peer_id: int, defender_peer_id: int, damage
 	var defender_alive: bool = new_health > 0.0
 	d.health = new_health
 	d.alive = defender_alive
+	# --- Component damage based on hit height ---
+	# Upper hull → sail rigging (masts, yards, canvas).
+	if hit_h >= _SAIL_HIT_H_MIN:
+		var sail_obj = d.get("sail")
+		if sail_obj != null:
+			sail_obj.apply_hit()
+	# Lower hull → helm / rudder / tiller.
+	elif hit_h <= _HELM_HIT_H_MAX:
+		var helm_obj = d.get("helm")
+		if helm_obj != null:
+			helm_obj.apply_hit()
+	# Mid-hull hits deal structural damage only (already applied above).
 	# Scoreboard: track hit stats.
 	if _scoreboard.has(attacker_peer_id):
 		_scoreboard[attacker_peer_id]["shots_hit"] += 1
@@ -1643,8 +1663,8 @@ func _apply_cannon_hit_impl(attacker_peer_id: int, defender_peer_id: int, damage
 
 
 @rpc("authority", "call_local", "reliable")
-func _apply_cannon_hit(attacker_peer_id: int, defender_peer_id: int, damage: float) -> void:
-	_apply_cannon_hit_impl(attacker_peer_id, defender_peer_id, damage)
+func _apply_cannon_hit(attacker_peer_id: int, defender_peer_id: int, damage: float, hit_h: float = 3.0) -> void:
+	_apply_cannon_hit_impl(attacker_peer_id, defender_peer_id, damage, hit_h)
 
 func _tick_local_timers(_delta: float) -> void:
 	pass
@@ -1659,7 +1679,9 @@ func _broadcast_my_state() -> void:
 	var helm_obj: Variant = p.get("helm")
 	var sail_level: float = sail_obj.current_sail_level if sail_obj != null else 0.0
 	var sail_state: int = int(sail_obj.sail_state) if sail_obj != null else 0
+	var sail_dmg: float = sail_obj.damage if sail_obj != null else 0.0
 	var rudder: float = helm_obj.rudder_angle if helm_obj != null else 0.0
+	var helm_dmg: float = helm_obj.damage if helm_obj != null else 0.0
 	_receive_naval_state.rpc(
 		int(p.peer_id),
 		float(p.wx), float(p.wy),
@@ -1669,7 +1691,8 @@ func _broadcast_my_state() -> void:
 		float(p.get("angular_velocity", 0.0)),
 		float(p.get("health", HULL_HITS_MAX)),
 		bool(p.get("alive", true)),
-		sail_level, sail_state, rudder
+		sail_level, sail_state, rudder,
+		sail_dmg, helm_dmg
 	)
 
 
@@ -1681,7 +1704,8 @@ func _receive_naval_state(
 		atk_time: float, moving: bool, walk_time: float,
 		move_speed: float, angular_velocity: float,
 		health: float, alive: bool,
-		sail_level: float, sail_state: int, rudder: float) -> void:
+		sail_level: float, sail_state: int, rudder: float,
+		sail_dmg: float = 0.0, helm_dmg: float = 0.0) -> void:
 	if peer_id == multiplayer.get_unique_id():
 		return
 	var idx: int = _find_player_index_by_peer_id(peer_id)
@@ -1702,9 +1726,11 @@ func _receive_naval_state(
 	if sail_obj != null:
 		sail_obj.current_sail_level = sail_level
 		sail_obj.sail_state = sail_state
+		sail_obj.damage = sail_dmg
 	var helm_obj: Variant = p.get("helm")
 	if helm_obj != null:
 		helm_obj.rudder_angle = rudder
+		helm_obj.damage = helm_dmg
 
 
 func _tick_ramming(delta: float) -> void:
@@ -1825,6 +1851,10 @@ func _apply_ram_damage(p: Dictionary, damage: float, idx: int, other_idx: int = 
 		return
 	var new_health: float = maxf(float(p.health) - damage, 0.0)
 	p.health = new_health
+	# Ramming damages the helm — collision shocks the tiller and rudder post.
+	var helm_obj: Variant = p.get("helm")
+	if helm_obj != null and damage > 0.5:
+		helm_obj.apply_hit()
 	# Scoreboard: track ramming damage.
 	var def_pid: int = int(p.get("peer_id", 0))
 	if _scoreboard.has(def_pid):
@@ -2397,7 +2427,6 @@ func _draw() -> void:
 	if pause_menu_panel != null and pause_menu_panel.visible:
 		_draw_keybindings_panel(vp)
 	_draw_ability_bar(vp)
-	_draw_bot_debug_hud(vp)
 	if _winner != -2:
 		_draw_win_screen(vp)
 	if Input.is_action_pressed(SCOREBOARD_ACTION) or _match_over:
@@ -2692,15 +2721,16 @@ func _draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 	var spd: float = float(p.get("move_speed", 0.0))
 	var ang_vel: float = float(p.get("angular_velocity", 0.0))
 
+	var prev_sail_eff: float = lerpf(1.0, _SailController.MIN_EFFICIENCY, sail.damage)
 	var target_cap: float = 0.0
 	var sails_provide_thrust: bool = true
 	match int(sail.sail_state):
 		_SailController.SailState.FULL:
-			target_cap = NC.MAX_SPEED
+			target_cap = NC.MAX_SPEED * prev_sail_eff
 		_SailController.SailState.HALF:
-			target_cap = NC.CRUISE_SPEED
+			target_cap = NC.CRUISE_SPEED * prev_sail_eff
 		_SailController.SailState.QUARTER:
-			target_cap = NC.QUARTER_SPEED
+			target_cap = NC.QUARTER_SPEED * prev_sail_eff
 		_:
 			target_cap = NC.SAILS_DOWN_DRIFT_SPEED
 			sails_provide_thrust = false
@@ -3208,12 +3238,32 @@ func _draw_helm_sail_hud(vp: Vector2) -> void:
 	var spd_kn: float = spd_u * _KNOTS_PER_GAME_UNIT
 	draw_string(font, Vector2(x, y + 68.0), "Speed: %.1f kn" % spd_kn, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, txt)
 
+	# --- Component damage indicators ---
+	var comp_y: float = y + 82.0
 	var bar_w: float = panel_w - 8.0
-	var sail_y: float = y + 86.0
+	var comp_bar_h: float = 5.0
+	# Sail damage bar
+	if sail.damage > 0.01:
+		var sail_dmg_col: Color = Color(0.95, 0.65, 0.20, 0.92) if sail.damage < 0.6 else Color(0.92, 0.30, 0.18, 0.95)
+		draw_rect(Rect2(x, comp_y, bar_w, comp_bar_h), Color(0.08, 0.1, 0.14, 0.8))
+		draw_rect(Rect2(x, comp_y, bar_w * clampf(sail.damage, 0.0, 1.0), comp_bar_h), sail_dmg_col)
+		draw_string(font, Vector2(x + bar_w + 3.0, comp_y + comp_bar_h), "Rigging -%d%%" % int(sail.damage * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, sail_dmg_col)
+		comp_y += comp_bar_h + 3.0
+	# Helm damage bar
+	if helm.damage > 0.01:
+		var helm_dmg_col: Color = Color(0.95, 0.65, 0.20, 0.92) if helm.damage < 0.6 else Color(0.92, 0.30, 0.18, 0.95)
+		draw_rect(Rect2(x, comp_y, bar_w, comp_bar_h), Color(0.08, 0.1, 0.14, 0.8))
+		draw_rect(Rect2(x, comp_y, bar_w * clampf(helm.damage, 0.0, 1.0), comp_bar_h), helm_dmg_col)
+		draw_string(font, Vector2(x + bar_w + 3.0, comp_y + comp_bar_h), "Rudder -%d%%" % int(helm.damage * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, helm_dmg_col)
+		comp_y += comp_bar_h + 3.0
+	var comp_offset: float = comp_y - (y + 82.0)
+
+	var sail_y: float = y + 86.0 + comp_offset
 	draw_rect(Rect2(x, sail_y, bar_w, 8.0), Color(0.08, 0.1, 0.14, 0.92))
 	draw_rect(Rect2(x, sail_y, bar_w * clampf(sail.current_sail_level, 0.0, 1.0), 8.0), Color(0.26, 0.74, 0.96, 0.92))
 
 	var wheel_y: float = sail_y + 18.0
+
 	var wheel_c: Vector2 = Vector2(x + 24.0, wheel_y + 20.0)
 	var wheel_r: float = 14.0
 	var wood_dark: Color = Color(0.28, 0.18, 0.10, 0.96)

@@ -19,6 +19,8 @@ func _ready() -> void:
 func _draw() -> void:
 	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		return
+	# Fill background with sea sky color so there are no black gaps
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), MapProfile.SEA_SKY)
 	var origin: Vector2 = MapProfile.world_focus_to_origin(viewport_size, _focus_world, TILE_W, TILE_H, 1.0) - map_offset
 	_renderer.draw_tiles(self, origin, viewport_size, TILE_W, TILE_H, 2)
 	MapProfile.draw_map_overlay(self, origin, TILE_W, TILE_H, _layout, time)

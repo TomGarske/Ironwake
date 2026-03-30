@@ -40,29 +40,29 @@ static func turn_rate_deg_for_speed(speed: float) -> float:
 	# Near-standstill: barely any rudder authority — ship is a floating log.
 	if s <= MIN_SPEED_DRIFT:
 		var t: float = s / maxf(0.001, MIN_SPEED_DRIFT)
-		return lerpf(0.4, 2.0, t)
+		return lerpf(0.6, 2.5, t)
 	# Low speed → peak turn authority around quarter sail.
 	if s <= QUARTER_SPEED:
 		var t: float = (s - MIN_SPEED_DRIFT) / maxf(0.001, QUARTER_SPEED - MIN_SPEED_DRIFT)
-		return lerpf(2.0, 3.8, t)
+		return lerpf(2.5, 4.5, t)
 	# Moderate speed: still decent, slight decline as momentum builds.
 	if s <= CRUISE_SPEED:
 		var t: float = (s - QUARTER_SPEED) / maxf(0.001, CRUISE_SPEED - QUARTER_SPEED)
-		return lerpf(3.8, 2.8, t)
+		return lerpf(4.5, 3.5, t)
 	# High speed: turning circle widens — heavy hull carries forward.
 	var t2: float = (s - CRUISE_SPEED) / maxf(0.001, MAX_SPEED - CRUISE_SPEED)
-	return lerpf(2.8, 1.8, clampf(t2, 0.0, 1.0))
+	return lerpf(3.5, 2.2, clampf(t2, 0.0, 1.0))
 
 
 ## Rudder / heading inertia (lower = heading catches rudder faster).
-## 1,600-ton hull has enormous rotational inertia — heading changes lag rudder by seconds.
-const HELM_TURN_LAG_SEC: float = 1.8
+## 1,600-ton hull has rotational inertia — tuned for responsive gameplay feel.
+const HELM_TURN_LAG_SEC: float = 1.2
 
 ## Speed at which rudder reaches full steering authority (linear ramp MIN→1).
-## Need ~5 knots (≈12 u/s) of way on before rudder bites fully.
-const RUDDER_AUTHORITY_SPEED: float = 12.0
-## Minimum rudder authority at zero speed (warping/kedging — nearly zero at anchor).
-const RUDDER_AUTHORITY_MIN: float = 0.08
+## Need ~3 knots (≈8 u/s) of way on before rudder bites fully.
+const RUDDER_AUTHORITY_SPEED: float = 8.0
+## Minimum rudder authority at zero speed (warping/kedging — some authority at anchor).
+const RUDDER_AUTHORITY_MIN: float = 0.15
 
 ## §4 Firing — half-angle from broadside normal (total arc per side ≈ 90°).
 ## Cannons can only traverse ±6° at the gunport; the arc represents the combined

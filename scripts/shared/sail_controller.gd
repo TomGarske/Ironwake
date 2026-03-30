@@ -22,6 +22,23 @@ var coast_drag_threshold: float = 0.1
 
 var current_sail_level: float = 0.0
 
+## Component damage: 0.0 = pristine, 1.0 = rigging destroyed.
+## Reduces effective sail deployment and raise rate.
+var damage: float = 0.0
+
+## Damage per cannonball hit to rigging (upper hull hits).
+const DAMAGE_PER_HIT: float = 0.12
+## At full damage, sails deliver this fraction of their normal thrust.
+const MIN_EFFICIENCY: float = 0.15
+## Raise rate penalty at full damage (sails are shredded — hard to set).
+const DAMAGED_RAISE_MULT: float = 0.3
+
+
+## Effective sail level after damage penalty.
+func get_effective_sail_level() -> float:
+	var efficiency: float = lerpf(1.0, MIN_EFFICIENCY, damage)
+	return current_sail_level * efficiency
+
 
 func get_target_sail_level() -> float:
 	match sail_state:
@@ -37,13 +54,22 @@ func get_target_sail_level() -> float:
 
 
 func get_target_speed() -> float:
-	return max_speed * current_sail_level
+	return max_speed * get_effective_sail_level()
 
 
 func process(delta: float) -> void:
 	var target: float = get_target_sail_level()
-	var rate: float = sail_raise_rate if current_sail_level < target else sail_lower_rate
+	var raise_rate_eff: float = sail_raise_rate * lerpf(1.0, DAMAGED_RAISE_MULT, damage)
+	var rate: float = raise_rate_eff if current_sail_level < target else sail_lower_rate
 	current_sail_level = move_toward(current_sail_level, target, rate * delta)
+
+
+func apply_hit() -> void:
+	damage = clampf(damage + DAMAGE_PER_HIT, 0.0, 1.0)
+
+
+func reset_damage() -> void:
+	damage = 0.0
 
 
 func raise_step() -> void:
@@ -71,13 +97,18 @@ func lower_step() -> void:
 
 
 func get_display_name() -> String:
+	var base: String
 	match sail_state:
 		SailState.STOP:
-			return "Stop"
+			base = "Stop"
 		SailState.QUARTER:
-			return "Quarter"
+			base = "Quarter"
 		SailState.HALF:
-			return "Half"
+			base = "Half"
 		SailState.FULL:
-			return "Full"
-	return "—"
+			base = "Full"
+		_:
+			base = "—"
+	if damage > 0.05:
+		return "%s (-%d%%)" % [base, int(damage * 100.0)]
+	return base

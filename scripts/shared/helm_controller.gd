@@ -47,6 +47,17 @@ var counter_steer_damping: float = 0.3
 
 var center_threshold: float = 0.04
 
+## Component damage: 0.0 = pristine, 1.0 = tiller/rudder destroyed.
+## Reduces rudder follow rate, wheel spin accel, and max rudder deflection.
+var damage: float = 0.0
+
+## Damage per cannonball hit to helm (lower hull hits near waterline).
+const DAMAGE_PER_HIT: float = 0.10
+## At full damage, rudder responds this fraction as fast.
+const MIN_RUDDER_EFFICIENCY: float = 0.2
+## At full damage, max rudder deflection is reduced to this fraction.
+const MIN_DEFLECTION_MULT: float = 0.35
+
 var _wheel_at_tick_start: float = 0.0
 var _had_steering_input: bool = false
 var _steer_left: bool = false
@@ -67,6 +78,7 @@ func copy_from(other: HelmController) -> void:
 	rudder_angle = other.rudder_angle
 	wheel_locked = other.wheel_locked
 	wheel_lock_position = other.wheel_lock_position
+	damage = other.damage
 
 
 func process_steer(delta: float, left_strength: float, right_strength: float) -> void:
@@ -105,7 +117,23 @@ func process_steer(delta: float, left_strength: float, right_strength: float) ->
 	if absf(wheel_position) < 0.005:
 		wheel_position = 0.0
 
-	rudder_angle = move_toward(rudder_angle, wheel_position, rudder_follow_rate * delta)
+	var eff_follow: float = rudder_follow_rate * lerpf(1.0, MIN_RUDDER_EFFICIENCY, damage)
+	rudder_angle = move_toward(rudder_angle, wheel_position, eff_follow * delta)
+	# Damage limits max rudder deflection — bent tiller / fouled rope.
+	var max_defl: float = lerpf(1.0, MIN_DEFLECTION_MULT, damage)
+	rudder_angle = clampf(rudder_angle, -max_defl, max_defl)
+
+
+func apply_hit() -> void:
+	damage = clampf(damage + DAMAGE_PER_HIT, 0.0, 1.0)
+
+
+func reset_damage() -> void:
+	damage = 0.0
+
+
+func get_effective_max_deflection() -> float:
+	return lerpf(1.0, MIN_DEFLECTION_MULT, damage)
 
 
 func set_wheel_lock(enabled: bool) -> void:

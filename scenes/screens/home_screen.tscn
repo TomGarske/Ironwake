@@ -91,7 +91,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.356863, 0.317647, 0.219608, 0.14)
+color = Color(0.04, 0.08, 0.16, 0.35)
 
 [node name="VersionLabel" type="Label" parent="." unique_id=169532133]
 layout_mode = 1
@@ -139,8 +139,18 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_colors/font_color = Color(0.631373, 0.733333, 0.866667, 0.95)
 theme_override_font_sizes/font_size = 13
-text = "Sci-fi squad operations across hostile sectors"
+text = "Age of Sail Naval Combat"
 horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="LeftMenuPanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.53, 0.62, 0.75, 0.85)
+theme_override_font_sizes/font_size = 11
+text = "Command a 74-gun third-rate warship.
+Helm, sail, and broadside battery controls
+with realistic ballistics and wind."
+horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="HostButton" type="Button" parent="LeftMenuPanel/VBoxContainer" unique_id=1462478616]
 layout_mode = 2
