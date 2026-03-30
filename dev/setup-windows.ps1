@@ -1,4 +1,4 @@
-# BurnBridgers — Windows addon setup
+# Ironwake — Windows addon setup
 # Downloads and installs GDExtension plugins (GodotSteam).
 # Requires: PowerShell 5.1+, 7-Zip or Windows tar with xz support (for GodotSteam)
 
@@ -9,7 +9,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
 # ── Addon versions ────────────────────────────────────────────────────
 # GodotSteam GDExtension plugin
