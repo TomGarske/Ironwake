@@ -11,6 +11,7 @@ const _BatteryController := preload("res://scripts/shared/battery_controller.gd"
 const _CannonBallistics := preload("res://scripts/shared/cannon_ballistics.gd")
 const _LocalSimController := preload("res://scripts/shared/local_sim_controller.gd")
 const _NavalBotController := preload("res://scripts/shared/naval_bot_controller.gd")
+const _OceanRenderer := preload("res://scripts/shared/ocean_renderer.gd")
 
 ## Emitted when local ship linear motion classification or turn flags change (req-motion-fsm §9).
 signal motion_state_changed(prev_linear: int, new_linear: int, is_turning: bool, is_turning_hard: bool)
@@ -56,6 +57,7 @@ var _match_over: bool = false
 var _post_match_ready: bool = false
 ## Smooth zoom target — lerped toward each frame when auto-zoom is active.
 var _zoom_target: float = NC.NAVAL_DEFAULT_ZOOM
+var _ocean_renderer: OceanRenderer = null
 
 ## Fade timers: each HUD element fades out after its trigger condition stops.
 ## Value = seconds remaining of full opacity; element fades over last 1.5s.
@@ -175,6 +177,7 @@ func _hull_visual_screen_pos(p: Dictionary) -> Vector2:
 
 func _ready() -> void:
 	super._ready()
+	_ensure_ocean_renderer()
 	_init_ironwake_movement_state()
 	_spawn_local_sim_bot_if_needed()
 	# Set spawn zoom to match the ballistic range at default 0° elevation.
@@ -196,6 +199,7 @@ func _ready() -> void:
 	else:
 		_camera_world_anchor = MapProfile.get_default_view_focus(_map_layout)
 	_ensure_audio_player()
+	_configure_ocean_renderer()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -760,6 +764,7 @@ func _process(delta: float) -> void:
 		var world_scale: float = _TD_SCALE * _zoom
 		if world_scale > 0.001:
 			_camera_world_anchor += pan_dir.normalized() * _CAM_PAN_SPEED * delta / world_scale
+	_sync_ocean_renderer(get_viewport_rect().size, delta)
 	queue_redraw()
 
 
@@ -2339,6 +2344,91 @@ func _draw_top_down_ocean(vp: Vector2) -> void:
 		gy += grid_spacing
 
 
+func _ensure_ocean_renderer() -> void:
+	if _ocean_renderer != null:
+		return
+	_ocean_renderer = _OceanRenderer.new()
+	_ocean_renderer.name = "OceanRenderer"
+	add_child(_ocean_renderer)
+
+
+func _configure_ocean_renderer() -> void:
+	if _ocean_renderer == null:
+		return
+	var map_w: float = float(_map_layout.get("map_width", NC.MAP_TILES_WIDE)) * NC.UNITS_PER_LOGIC_TILE
+	var map_h: float = float(_map_layout.get("map_height", NC.MAP_TILES_HIGH)) * NC.UNITS_PER_LOGIC_TILE
+	_ocean_renderer.configure(Vector2(map_w, map_h), NC.UNITS_PER_LOGIC_TILE)
+	var env: Dictionary = MapProfile.get_ocean_environment()
+	_ocean_renderer.set_environment(
+		env.get("wind_direction", Vector2(1.0, -0.25).normalized()),
+		env.get("weather_preset", &"clear"),
+		env.get("time_of_day_preset", &"day")
+	)
+
+
+func _update_camera_origin(vp: Vector2) -> Vector2:
+	var cam_target_idx: int = clampi(_camera_follow_index, 0, maxi(0, _players.size() - 1))
+	var cam_target: Dictionary = _players[cam_target_idx] if not _players.is_empty() else {}
+	var cam_focus: Vector2
+	if _camera_locked and not cam_target.is_empty():
+		cam_focus = Vector2(float(cam_target.wx), float(cam_target.wy))
+	else:
+		cam_focus = _camera_world_anchor
+	_origin = vp * 0.5 - cam_focus * _TD_SCALE * _zoom
+	return cam_focus
+
+
+func _sync_ocean_renderer(vp: Vector2, delta: float) -> void:
+	if _ocean_renderer == null:
+		return
+	_update_camera_origin(vp)
+	_ocean_renderer.update_view(vp, _origin, _zoom, _TD_SCALE * _zoom)
+	_ocean_renderer.set_ship_states(_build_ocean_ship_states())
+	_ocean_renderer.set_water_impacts(_build_ocean_water_impacts())
+	_ocean_renderer.tick(delta)
+
+
+func _build_ocean_ship_states() -> Array:
+	var states: Array = []
+	for i in range(_players.size()):
+		var p: Dictionary = _players[i]
+		var raw_dir: Variant = p.get("dir", Vector2.RIGHT)
+		var dir_vec: Vector2 = raw_dir if raw_dir is Vector2 else Vector2.RIGHT
+		var hull: Vector2 = Vector2(dir_vec.x, dir_vec.y)
+		if hull.length_squared() < 0.0001:
+			hull = Vector2.RIGHT
+		hull = hull.normalized()
+		var helm = p.get("helm")
+		var rudder: float = helm.rudder_angle if helm != null else 0.0
+		var angular_turn_amount: float = absf(float(p.get("angular_velocity", 0.0))) / maxf(0.001, deg_to_rad(4.5))
+		var motion_turn_amount: float = 0.85 if bool(p.get("motion_is_turning_hard", false)) else (0.35 if bool(p.get("motion_is_turning", false)) else 0.0)
+		var turn_amount: float = clampf(maxf(maxf(angular_turn_amount, absf(rudder)), motion_turn_amount), 0.0, 1.0)
+		var center_world := Vector2(float(p.get("wx", 0.0)), float(p.get("wy", 0.0)))
+		var stern_world: Vector2 = center_world - hull * (NC.SHIP_LENGTH_UNITS * 0.38)
+		states.append({
+			"id": str(p.get("peer_id", i)),
+			"center_world": center_world,
+			"stern_world": stern_world,
+			"heading": hull,
+			"speed_ratio": clampf(float(p.get("move_speed", 0.0)) / maxf(0.001, NC.MAX_SPEED), 0.0, 1.2),
+			"turn_amount": turn_amount,
+			"alive": bool(p.get("alive", true)),
+		})
+	return states
+
+
+func _build_ocean_water_impacts() -> Array:
+	var impacts: Array = []
+	for splash in _splash_fx:
+		impacts.append({
+			"world": Vector2(float(splash.get("wx", 0.0)), float(splash.get("wy", 0.0))),
+			"age": float(splash.get("t", 0.0)),
+			"lifetime": _SPLASH_DURATION,
+			"intensity": 1.0,
+		})
+	return impacts
+
+
 func _draw_accuracy_bands(center: Vector2, screen_y_offset_px: float = 0.0, alpha_mult: float = 1.0) -> void:
 	var bands: Array[Dictionary] = [
 		{"r0": 0.0, "r1": NC.ACC_PISTOL_RANGE, "col": Color(0.1, 0.95, 0.2, 0.06 * alpha_mult), "label": "Point Blank"},
@@ -2380,17 +2470,7 @@ func _draw_accuracy_bands(center: Vector2, screen_y_offset_px: float = 0.0, alph
 func _draw() -> void:
 	var vp := get_viewport_rect().size
 	var me: Dictionary = _players[_my_index] if not _players.is_empty() else {}
-	var cam_target_idx: int = clampi(_camera_follow_index, 0, maxi(0, _players.size() - 1))
-	var cam_target: Dictionary = _players[cam_target_idx] if not _players.is_empty() else {}
-	var cam_focus: Vector2
-	if _camera_locked and not cam_target.is_empty():
-		cam_focus = Vector2(float(cam_target.wx), float(cam_target.wy))
-	else:
-		cam_focus = _camera_world_anchor
-	_origin = vp * 0.5 - cam_focus * _TD_SCALE * _zoom
-
-	draw_rect(Rect2(Vector2.ZERO, vp), MapProfile.SEA_SKY)
-	_draw_top_down_ocean(vp)
+	var cam_focus: Vector2 = _update_camera_origin(vp)
 	var me_deck_y_off: float = 0.0
 	if not me.is_empty() and bool(me.get("alive", true)):
 		me_deck_y_off = -NC.SHIP_DECK_HEIGHT_UNITS * _CannonBallistics.SCREEN_HEIGHT_PX_PER_UNIT * _zoom
@@ -2400,7 +2480,6 @@ func _draw() -> void:
 		_draw_accuracy_bands(me_world, me_deck_y_off, ring_alpha)
 		var ballistic_max: float = _ballistic_splash_range_for_player(me)
 		_draw_world_range_ring(me_world, ballistic_max, Color(1.0, 0.25, 0.1, 0.7 * ring_alpha), 2.4, me_deck_y_off)
-	_draw_splash_fx()
 
 	var sorted := _players.duplicate()
 	sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:

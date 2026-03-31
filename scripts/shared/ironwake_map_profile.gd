@@ -101,6 +101,14 @@ static func apply_ocean_palette(renderer: IsoTerrainRenderer) -> void:
 	renderer.set_tile_modulate(IsoTerrainRenderer.T_SNOW, Color(0.86, 0.90, 0.93, 1.0))
 
 
+static func get_ocean_environment() -> Dictionary:
+	return {
+		"wind_direction": Vector2(1.0, -0.25).normalized(),
+		"weather_preset": &"clear",
+		"time_of_day_preset": &"day",
+	}
+
+
 static func _set_tile_arr(tiles: Array, width: int, height: int, x: int, y: int, tile_id: int) -> void:
 	if x < 0 or y < 0 or x >= width or y >= height:
 		return
