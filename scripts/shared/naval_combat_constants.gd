@@ -11,10 +11,10 @@ const MAP_TILES_HIGH: int = 800
 ## Movement tuning (higher top-end speed with same accel/decel feel).
 ## Residual speed when sails furled: zero — ship comes to a full stop once momentum decays.
 const SAILS_DOWN_DRIFT_SPEED: float = 0.0
-const MIN_SPEED_DRIFT: float = 2.6
-const QUARTER_SPEED: float = 11.7
-const CRUISE_SPEED: float = 20.8
-const MAX_SPEED: float = 35.75
+const MIN_SPEED_DRIFT: float = 3.8
+const QUARTER_SPEED: float = 17.1
+const CRUISE_SPEED: float = 30.5
+const MAX_SPEED: float = 52.4
 
 ## Time (s) to accelerate 0 → MAX_SPEED under sail thrust.
 const ACCEL_TIME_ZERO_TO_MAX: float = 10.0
@@ -40,30 +40,58 @@ static func turn_rate_deg_for_speed(speed: float) -> float:
 	# Near-standstill: barely any rudder authority — ship is a floating log.
 	if s <= MIN_SPEED_DRIFT:
 		var t: float = s / maxf(0.001, MIN_SPEED_DRIFT)
-		return lerpf(0.78, 3.25, t)
+		return lerpf(2.5, 10.0, t)
 	# Low speed → ramp up as water hits the rudder.
 	if s <= QUARTER_SPEED:
 		var t: float = (s - MIN_SPEED_DRIFT) / maxf(0.001, QUARTER_SPEED - MIN_SPEED_DRIFT)
-		return lerpf(3.25, 5.85, t)
-	# Quarter → max: stays near peak. Rudder has plenty of flow;
-	# the wider turning circle comes from covering more ground, not less rate.
+		return lerpf(10.0, 18.0, t)
+	# Quarter → max: stays near peak.
 	if s <= CRUISE_SPEED:
 		var t: float = (s - QUARTER_SPEED) / maxf(0.001, CRUISE_SPEED - QUARTER_SPEED)
-		return lerpf(5.85, 5.6, t)
-	# High speed: very mild dropoff — hull inertia resists slightly.
+		return lerpf(18.0, 16.0, t)
+	# High speed: mild dropoff — hull inertia resists slightly.
 	var t2: float = (s - CRUISE_SPEED) / maxf(0.001, MAX_SPEED - CRUISE_SPEED)
-	return lerpf(5.6, 5.2, clampf(t2, 0.0, 1.0))
+	return lerpf(16.0, 14.0, clampf(t2, 0.0, 1.0))
 
 
 ## Rudder / heading inertia (lower = heading catches rudder faster).
 ## 1,600-ton hull has rotational inertia — tuned for responsive gameplay feel.
-const HELM_TURN_LAG_SEC: float = 1.1
+const HELM_TURN_LAG_SEC: float = 0.01
 
 ## Speed at which rudder reaches full steering authority (linear ramp MIN→1).
 ## Need ~3 knots (≈8 u/s) of way on before rudder bites fully.
 const RUDDER_AUTHORITY_SPEED: float = 8.0
 ## Minimum rudder authority at zero speed (warping/kedging — some authority at anchor).
 const RUDDER_AUTHORITY_MIN: float = 0.15
+
+## Maximum physical rudder deflection (degrees). Shared with HelmController for display.
+## Used in physics: the deflection angle determines hydrodynamic turning force.
+const MAX_RUDDER_DEFLECTION_DEG: float = 45.0
+
+## Rudder effectiveness: converts normalized rudder (-1..+1) to hydrodynamic force scalar.
+## Real rudder lift follows ~sin(2*angle): peaks at 45°, drops off beyond.
+## A 90° rudder at full lock stalls and is less effective than 45°.
+static func rudder_effectiveness(rudder: float) -> float:
+	var angle_deg: float = absf(rudder) * MAX_RUDDER_DEFLECTION_DEG
+	var angle_rad: float = deg_to_rad(angle_deg)
+	# sin(2*a) peaks at 45°, falls to 0 at 0° and 90°.
+	var eff: float = sin(2.0 * angle_rad)
+	return eff * signf(rudder)
+
+## Unified turning computation. All ship heading rotation goes through this.
+## rudder: normalized -1..+1 (caller applies deadzone if needed).
+## turn_scalar: whirlpool penalty or similar; defaults to 1.0.
+## Returns the new angular velocity (rad/s).
+static func compute_angular_velocity(
+	rudder: float, speed: float, angular_velocity: float,
+	delta: float, turn_scalar: float = 1.0
+) -> float:
+	var max_turn_rad: float = deg_to_rad(turn_rate_deg_for_speed(speed))
+	var steer_auth: float = maxf(RUDDER_AUTHORITY_MIN, clampf(speed / RUDDER_AUTHORITY_SPEED, 0.0, 1.0)) * turn_scalar
+	var eff_rudder: float = rudder_effectiveness(rudder)
+	var target_av: float = max_turn_rad * eff_rudder * steer_auth
+	return lerpf(angular_velocity, target_av, 1.0 - exp(-delta / maxf(0.001, HELM_TURN_LAG_SEC)))
+
 
 ## §4 Firing — half-angle from broadside normal (total arc per side ≈ 90°).
 ## Cannons can only traverse ±6° at the gunport; the arc represents the combined

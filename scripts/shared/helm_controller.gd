@@ -32,15 +32,17 @@ var wheel_lock_position: float = 0.0
 ## How fast input accelerates the wheel spin (norm/sec²).
 var wheel_spin_accel: float = 1.4
 ## Terminal wheel velocity under continuous input (norm/sec).
-var wheel_max_spin: float = 0.45
+## 1.0 / 0.167 = ~6 seconds from center to full lock.
+var wheel_max_spin: float = 0.167
 ## Friction deceleration when input is released (norm/sec²).
-var wheel_friction: float = 3.0
-## Rudder chases wheel at this rate (norm/sec). 0.275 ≈ 3.6 sec to full deflection (+10% vs 0.25).
-var rudder_follow_rate: float = 0.275
+var wheel_friction: float = 1.5
+## Rudder chases wheel at this rate (norm/sec). Matched to wheel speed
+## so rudder and wheel arrive at full lock together in ~6 seconds.
+var rudder_follow_rate: float = 0.167
 ## Exponential spring return toward center when no input.
 ## Rate scales with displacement: fast far from center, gentle near center.
-## 0.3 ≈ from full lock: 50% in ~2.3s, 90% in ~7.7s, near-zero in ~13s.
-var wheel_return_rate: float = 0.3
+## 0.15 ≈ from full lock: slow, deliberate return.
+var wheel_return_rate: float = 0.15
 ## Damping factor when counter-steering (input opposes wheel position).
 ## Simulates fighting the rope tension wound around the drum.
 var counter_steer_damping: float = 0.3

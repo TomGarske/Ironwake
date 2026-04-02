@@ -58,14 +58,16 @@ void fragment() {
 		if (whirl_dist < u_whirlpool_radius && whirl_dist > 0.1) {
 			whirl_norm = 1.0 - whirl_dist / u_whirlpool_radius;
 			whirl_strength = whirl_norm * whirl_norm;  // Quadratic ramp.
+			// Fade swirl to zero in outer half for seamless edge.
+			float swirl_fade = smoothstep(0.0, 0.5, whirl_norm);
 			// Swirl UV distortion — rotate texture sampling coords (CW to match physics).
-			float swirl_angle = -(whirl_strength * 4.0 + t * (0.3 + whirl_strength * 0.8));
+			float swirl_angle = -(whirl_strength * 4.0 + sin(t * 1.9) * 0.5) * swirl_fade;
 			float ca = cos(swirl_angle);
 			float sa = sin(swirl_angle);
 			vec2 offset = world - u_whirlpool_center;
 			world = u_whirlpool_center + vec2(offset.x * ca - offset.y * sa, offset.x * sa + offset.y * ca);
 			// Radial compression.
-			float compress = 1.0 - whirl_strength * 0.2;
+			float compress = 1.0 - whirl_strength * 0.2 * swirl_fade;
 			world = u_whirlpool_center + (world - u_whirlpool_center) * compress;
 		}
 	}
@@ -110,42 +112,9 @@ void fragment() {
 		float r = whirl_dist;
 		float a = whirl_angle;
 
-		// Spiral arms — 5 prominent arms that rotate with time (CW to match physics).
-		// log-spiral: the angle offset increases with distance to create spiral shape.
-		float spiral_phase = a * 5.0 - log(max(r, 1.0)) * 2.5 - t * 1.2;
-		float spiral = pow(max(sin(spiral_phase) * 0.5 + 0.5, 0.0), 3.0);
-		// Foam on spiral arms — white/bright streaks.
-		float spiral_foam = spiral * whirl_strength * 0.45;
-		sea += vec3(0.7, 0.85, 0.95) * spiral_foam;
-
-		// Concentric foam rings — like the reference photo's white bands.
-		float ring1 = sin(r * 0.12 + t * 0.8) * 0.5 + 0.5;
-		float ring2 = sin(r * 0.07 + t * 0.5 + 1.5) * 0.5 + 0.5;
-		float ring_foam = (ring1 * 0.6 + ring2 * 0.4) * whirl_strength;
-		// Modulate with noise to break up the perfect circles.
-		float foam_noise = noise(world_raw * 0.03 + vec2(t * 0.2, -t * 0.15));
-		ring_foam *= (0.6 + foam_noise * 0.8);
-		sea += vec3(0.75, 0.88, 0.96) * ring_foam * 0.3;
-
-		// Bright white foam crests near the core — the intense churning zone.
-		float core_zone = smoothstep(u_whirlpool_core_radius * 5.0, u_whirlpool_core_radius * 1.5, r);
-		float core_churn = noise(world_raw * 0.06 + vec2(t * 0.5, t * 0.3));
-		sea += vec3(0.9, 0.95, 1.0) * core_zone * core_churn * 0.5;
-
 		// Dark eye at the very center.
 		float eye = smoothstep(u_whirlpool_core_radius * 1.2, u_whirlpool_core_radius * 0.3, r);
 		sea = mix(sea, vec3(0.01, 0.03, 0.08), eye * 0.9);
-
-		// Moving foam streaks that follow the circular flow.
-		// These rotate with the whirlpool — faster near center (Rankine angular velocity).
-		float angular_v = r > u_whirlpool_core_radius
-			? u_whirlpool_core_radius / max(r * r, 1.0)  // free vortex omega
-			: 1.0 / max(u_whirlpool_core_radius, 1.0);   // forced vortex omega
-		float flow_angle = a - t * angular_v * 30.0;  // Animated rotation.
-		float flow_streak = sin(flow_angle * 8.0 + r * 0.05) * 0.5 + 0.5;
-		flow_streak = pow(flow_streak, 4.0);
-		float streak_strength = whirl_strength * 0.2 * smoothstep(0.0, 0.2, whirl_norm);
-		sea += vec3(0.6, 0.8, 0.9) * flow_streak * streak_strength;
 	}
 
 	// ── Normal wind streaks (suppressed inside whirlpool) ──

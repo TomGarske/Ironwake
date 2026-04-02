@@ -68,7 +68,7 @@ var _whirlpool: _WhirlpoolController = null
 
 ## Fade timers: each HUD element fades out after its trigger condition stops.
 ## Value = seconds remaining of full opacity; element fades over last 1.5s.
-const _HUD_FADE_DURATION: float = 1.5
+const _HUD_FADE_DURATION: float = 5.0
 var _fade_path_line: float = 0.0
 var _fade_accuracy_ring: float = 0.0
 var _fade_ballistics_arc: float = 0.0
@@ -127,7 +127,7 @@ const MOTION_HARD_TURN_RUDDER: float = 0.7
 ## Each cannonball impact removes this many hull points (structural hit model).
 const HULL_DAMAGE_PER_HIT: float = 1.0
 ## Hull integrity: total structural hits before sinking.
-const HULL_HITS_MAX: float = 16.0
+const HULL_HITS_MAX: float = 14.0
 ## Ramming — collision between two ships.
 const _STICK_DEADZONE: float = 0.2
 const _SPLASH_DURATION: float = 0.42
@@ -513,17 +513,10 @@ func _tick_bot(p: Dictionary, player_idx: int, delta: float) -> void:
 	hull = hull.normalized()
 	var ang_vel: float = float(p.get("angular_velocity", 0.0))
 	var spd_for_turn: float = float(p.get("move_speed", 0.0))
-	var turn_deg: float = NC.turn_rate_deg_for_speed(spd_for_turn)
-	var max_turn_rad: float = deg_to_rad(turn_deg)
-	var steer_auth: float = maxf(NC.RUDDER_AUTHORITY_MIN, clampf(spd_for_turn / NC.RUDDER_AUTHORITY_SPEED, 0.0, 1.0))
-	steer_auth *= _whirlpool_turn_scalar(p)  # Whirlpool turn penalty.
-	var target_av: float = max_turn_rad * helm.rudder_angle * steer_auth
-	var tau: float = NC.HELM_TURN_LAG_SEC
-	ang_vel = lerpf(ang_vel, target_av, 1.0 - exp(-delta / tau))
+	ang_vel = NC.compute_angular_velocity(helm.rudder_angle, spd_for_turn, ang_vel, delta, _whirlpool_turn_scalar(p))
 	hull = hull.rotated(ang_vel * delta).normalized()
 	p.dir = hull
 	p["angular_velocity"] = ang_vel
-	_whirlpool_inject_physics(p, delta)
 
 	# --- Speed physics (identical to _tick_player) ---
 	var bot_sail_eff: float = lerpf(1.0, _SailController.MIN_EFFICIENCY, sail.damage)
@@ -563,8 +556,13 @@ func _tick_bot(p: Dictionary, player_idx: int, delta: float) -> void:
 		var hard_loss: float = rud_abs * MOTION_HARD_TURN_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
 		spd = maxf(drift_floor, spd - hard_loss * delta)
 
-	spd = clampf(spd, 0.0, NC.MAX_SPEED * 1.05)
+	var bot_speed_cap: float = NC.MAX_SPEED * 1.05
+	if int(p.get("_wp_ring", 0)) != 0:
+		bot_speed_cap = NC.MAX_SPEED * IronwakeWhirlpool.SLINGSHOT_MAX_SPEED_MULT
+	spd = clampf(spd, 0.0, bot_speed_cap)
 	p["move_speed"] = spd
+	_whirlpool_inject_physics(p, delta)
+	spd = float(p.get("move_speed", 0.0))
 
 	# --- Motion FSM (mirrors _tick_player) ---
 	var motion = p.get("motion")
@@ -895,19 +893,11 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 	hull = hull.normalized()
 	var ang_vel: float = float(p.get("angular_velocity", 0.0))
 	var spd_for_turn: float = float(p.get("move_speed", 0.0))
-	var turn_deg: float = NC.turn_rate_deg_for_speed(spd_for_turn)
-	var max_turn_rad: float = deg_to_rad(turn_deg)
-	var steer_auth: float = maxf(NC.RUDDER_AUTHORITY_MIN, clampf(spd_for_turn / NC.RUDDER_AUTHORITY_SPEED, 0.0, 1.0))
-	steer_auth *= _whirlpool_turn_scalar(p)  # Whirlpool turn penalty.
-	# Apply deadzone: ignore small rudder deflections around center to prevent drift.
 	var eff_rudder: float = _apply_rudder_deadzone(helm.rudder_angle)
-	var target_av: float = max_turn_rad * eff_rudder * steer_auth
-	var tau: float = NC.HELM_TURN_LAG_SEC
-	ang_vel = lerpf(ang_vel, target_av, 1.0 - exp(-delta / tau))
+	ang_vel = NC.compute_angular_velocity(eff_rudder, spd_for_turn, ang_vel, delta, _whirlpool_turn_scalar(p))
 	hull = hull.rotated(ang_vel * delta).normalized()
 	p.dir = hull
 	p["angular_velocity"] = ang_vel
-	_whirlpool_inject_physics(p, delta)
 
 	_update_broadside_aim(p, pad_id)
 
@@ -1006,8 +996,13 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 		var hard_loss: float = rud_abs * MOTION_HARD_TURN_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
 		spd = maxf(drift_floor, spd - hard_loss * delta)
 
-	spd = clampf(spd, 0.0, NC.MAX_SPEED * 1.05)
+	var speed_cap: float = NC.MAX_SPEED * 1.05
+	if int(p.get("_wp_ring", 0)) != 0:
+		speed_cap = NC.MAX_SPEED * IronwakeWhirlpool.SLINGSHOT_MAX_SPEED_MULT
+	spd = clampf(spd, 0.0, speed_cap)
 	p["move_speed"] = spd
+	_whirlpool_inject_physics(p, delta)
+	spd = float(p.get("move_speed", 0.0))
 
 	var motion = p.get("motion")
 	if motion != null:
@@ -1386,6 +1381,9 @@ const _SAIL_HIT_H_MIN: float = 3.5
 ## Lower hull near waterline — tiller, rudder post, steering gear.
 const _HELM_HIT_H_MAX: float = 1.5
 
+## Hull damage threshold: beyond this, hits shred sails before damaging hull.
+const SAIL_DESTRUCTION_THRESHOLD: float = 5.0
+
 func _apply_cannon_hit_impl(attacker_peer_id: int, defender_peer_id: int, damage: float, hit_h: float = 3.0) -> void:
 	var defender_idx: int = _find_player_index_by_peer_id(defender_peer_id)
 	if defender_idx < 0:
@@ -1393,8 +1391,16 @@ func _apply_cannon_hit_impl(attacker_peer_id: int, defender_peer_id: int, damage
 	var d: Dictionary = _players[defender_idx]
 	if not bool(d.get("alive", true)):
 		return
-	var new_health: float = maxf(float(d.health) - damage, 0.0)
-	var defender_alive: bool = new_health > 0.0
+	var current_health: float = float(d.health)
+	var damage_taken: float = HULL_HITS_MAX - current_health
+	# After taking more than SAIL_DESTRUCTION_THRESHOLD damage, hits also
+	# shred sails on top of normal hull damage.
+	if damage_taken >= SAIL_DESTRUCTION_THRESHOLD:
+		var sail_obj = d.get("sail")
+		if sail_obj != null and sail_obj.damage < 1.0:
+			sail_obj.apply_hit()
+	var new_health: float = maxf(current_health - damage, 0.0)
+	var defender_alive: bool = new_health > 0.01
 	d.health = new_health
 	d.alive = defender_alive
 	# --- Component damage based on hit height ---
@@ -2345,9 +2351,8 @@ func _draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 
 	var accel_r: float = NC.accel_rate()
 	var decel_r: float = NC.decel_rate_sails()
-	var tau: float = maxf(0.001, NC.HELM_TURN_LAG_SEC)
 	var sim_t: float = 0.0
-	var sim_max_t: float = 45.0
+	var sim_max_t: float = 15.0
 	var points: PackedVector2Array = PackedVector2Array()
 	var deck_lift_y: float = -(NC.SHIP_DECK_HEIGHT_UNITS * _CannonBallistics.SCREEN_HEIGHT_PX_PER_UNIT * _zoom) - 2.0 * _zoom
 	var deck_off: Vector2 = Vector2(0.0, deck_lift_y)
@@ -2361,13 +2366,7 @@ func _draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 	while sim_t <= sim_max_t:
 		points.append(_w2s(wx, wy) + deck_off)
 
-		var rudder: float = preview_rudder
-
-		var turn_deg: float = NC.turn_rate_deg_for_speed(spd)
-		var max_turn_rad: float = deg_to_rad(turn_deg)
-		var steer_auth: float = maxf(NC.RUDDER_AUTHORITY_MIN, clampf(spd / NC.RUDDER_AUTHORITY_SPEED, 0.0, 1.0))
-		var target_av: float = max_turn_rad * rudder * steer_auth
-		ang_vel = lerpf(ang_vel, target_av, 1.0 - exp(-dt_step / tau))
+		ang_vel = NC.compute_angular_velocity(preview_rudder, spd, ang_vel, dt_step)
 		hull = hull.rotated(ang_vel * dt_step).normalized()
 
 		sim_sail_level = move_toward(sim_sail_level, sim_sail_target, sim_sail_rate * dt_step)
@@ -2380,7 +2379,7 @@ func _draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 		spd = maxf(sim_drift_floor, spd - MOTION_PASSIVE_DRAG_K * spd * drag_mult * dt_step)
 		if sim_sail_level < sim_coast_thresh:
 			spd = maxf(sim_drift_floor, spd - MOTION_ZERO_SAIL_DRAG * drag_mult * dt_step)
-		var rud_abs: float = absf(rudder)
+		var rud_abs: float = absf(preview_rudder)
 		spd = maxf(sim_drift_floor, spd - rud_abs * MOTION_TURNING_SPEED_LOSS * dt_step)
 		if rud_abs > MOTION_HARD_TURN_RUDDER:
 			spd = maxf(sim_drift_floor, spd - rud_abs * MOTION_HARD_TURN_SPEED_LOSS * dt_step)
@@ -3073,7 +3072,6 @@ func _draw_whirlpool_visuals() -> void:
 	var wp_scale: float = _TD_SCALE * _zoom
 
 	var outer_r: float = _whirlpool.influence_radius * wp_scale
-	var core_r: float = _whirlpool.core_radius * wp_scale
 
 	# Skip if completely off-screen.
 	var vp: Vector2 = get_viewport_rect().size
@@ -3081,7 +3079,10 @@ func _draw_whirlpool_visuals() -> void:
 		return
 
 	# ── Animated swirl streaks (water current lines) — speed follows Rankine profile ──
-	var t: float = fmod(Time.get_ticks_msec() / 1000.0, 600.0)
+	# Simple fixed-speed animation: inner streaks orbit fast, outer slow.
+	# Full inner orbit = SWIRL_PERIOD seconds. No disruption influence.
+	const SWIRL_PERIOD: float = 12.0
+	var t: float = fmod(Time.get_ticks_msec() / 1000.0, SWIRL_PERIOD) / SWIRL_PERIOD  # 0→1 over period
 	var streak_count: int = 48
 	for si in range(streak_count):
 		var base_angle: float = (float(si) / float(streak_count)) * TAU
@@ -3090,25 +3091,20 @@ func _draw_whirlpool_visuals() -> void:
 		var r_px: float = r_world * wp_scale
 		if r_px < 2.0 or r_px > outer_r:
 			continue
-		# Orbit speed proportional to Rankine angular velocity: omega = v_tan / r.
-		# Forced vortex (r<=core): omega = v_max / R_core = constant.
-		# Free vortex (r>core): omega = v_max * R_core / r² — falls off as 1/r².
-		var w_spd: float = _whirlpool.water_speed_at_radius(r_world, NC.MAX_SPEED)
-		var omega: float = w_spd / maxf(1.0, r_world)  # Angular velocity in rad/s.
-		var orbit_speed: float = omega * 0.6  # Visual scaling factor.
-		var angle: float = base_angle + t * orbit_speed
+		# Angular speed: inner streaks do full rotations, outer do partial.
+		# speed_scale = 1.0 at core, falls off with 1/r_frac.
+		var speed_scale: float = 0.08 / maxf(0.01, r_frac)
+		var angle: float = base_angle + t * TAU * speed_scale
 		var p1: Vector2 = sc + Vector2(cos(angle), sin(angle)) * r_px
-		# Arc length proportional to speed — faster streaks are longer.
-		var arc_len: float = clampf(omega * 0.15, 0.08, 0.35)
+		var arc_len: float = clampf(speed_scale * 0.3, 0.06, 0.4)
 		var p2: Vector2 = sc + Vector2(cos(angle + arc_len), sin(angle + arc_len)) * r_px
-		# Color/alpha scales with water speed.
-		var speed_frac: float = clampf(w_spd / maxf(0.01, NC.MAX_SPEED), 0.0, 1.5)
+		var depth: float = 1.0 - r_frac
 		var streak_col: Color
-		if speed_frac < 0.5:
-			streak_col = Color(0.35, 0.60, 0.85, 0.06 + speed_frac * 0.08)
+		if depth < 0.5:
+			streak_col = Color(0.35, 0.60, 0.85, 0.06 + depth * 0.10)
 		else:
-			streak_col = Color(0.45, 0.55, 0.70, 0.08 + (speed_frac - 0.5) * 0.14)
-		draw_line(p1, p2, streak_col, 1.0 + speed_frac * 1.2)
+			streak_col = Color(0.45, 0.55, 0.70, 0.10 + (depth - 0.5) * 0.16)
+		draw_line(p1, p2, streak_col, 1.0 + depth * 1.5)
 
 
 

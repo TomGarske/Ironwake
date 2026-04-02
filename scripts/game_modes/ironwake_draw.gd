@@ -4,8 +4,10 @@ extends RefCounted
 ## Drawing helper extracted from the arena — all CanvasItem draw calls go through `a`.
 
 const NC := preload("res://scripts/shared/naval_combat_constants.gd")
+const _BatteryController := preload("res://scripts/shared/battery_controller.gd")
+const _MotionStateResolver := preload("res://scripts/shared/motion_state_resolver.gd")
 
-var a  # Arena node reference (CanvasItem).
+var a = null  # Arena node reference (CanvasItem). Untyped: draw helper accesses arena-specific consts.
 
 
 func init(arena_node) -> void:
@@ -337,7 +339,7 @@ func draw_player(p: Dictionary) -> void:
 	for bat_var in [p.get("battery_port"), p.get("battery_stbd")]:
 		if bat_var == null:
 			continue
-		var bat_c = bat_var as a._BatteryController
+		var bat_c = bat_var as _BatteryController
 		var perp_w: Vector2 = bat_c._broadside_perp(hull)
 		var out_scr: Vector2 = _dir_screen(perp_w.x, perp_w.y)
 		for gi in range(bat_c.cannon_count):
@@ -604,7 +606,7 @@ func draw_accuracy_bands(center: Vector2, screen_y_offset_px: float = 0.0, alpha
 # ── Main draw orchestrator ───────────────────────────────────────────
 
 func draw_all() -> void:
-	var vp := a.get_viewport_rect().size
+	var vp: Vector2 = a.get_viewport_rect().size
 	var me: Dictionary = a._players[a._my_index] if not a._players.is_empty() else {}
 	var cam_focus: Vector2 = a._update_camera_origin(vp)
 	var me_deck_y_off: float = 0.0
@@ -617,9 +619,7 @@ func draw_all() -> void:
 		var ballistic_max: float = ballistic_splash_range_for_player(me)
 		draw_world_range_ring(me_world, ballistic_max, Color(1.0, 0.25, 0.1, 0.7 * ring_alpha), 2.4, me_deck_y_off)
 
-	draw_whirlpool_visuals()
-
-	var sorted := a._players.duplicate()
+	var sorted: Array = a._players.duplicate()
 	sorted.sort_custom(func(sa: Dictionary, sb: Dictionary) -> bool:
 		return (sa.wx + sa.wy) < (sb.wx + sb.wy))
 	for p in sorted:
@@ -914,9 +914,8 @@ func draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 
 	var accel_r: float = NC.accel_rate()
 	var decel_r: float = NC.decel_rate_sails()
-	var tau: float = maxf(0.001, NC.HELM_TURN_LAG_SEC)
 	var sim_t: float = 0.0
-	var sim_max_t: float = 45.0
+	var sim_max_t: float = 15.0
 	var points: PackedVector2Array = PackedVector2Array()
 	var deck_lift_y: float = -(NC.SHIP_DECK_HEIGHT_UNITS * a._CannonBallistics.SCREEN_HEIGHT_PX_PER_UNIT * a._zoom) - 2.0 * a._zoom
 	var deck_off: Vector2 = Vector2(0.0, deck_lift_y)
@@ -930,13 +929,7 @@ func draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 	while sim_t <= sim_max_t:
 		points.append(_w2s(wx, wy) + deck_off)
 
-		var rudder: float = preview_rudder
-
-		var turn_deg: float = NC.turn_rate_deg_for_speed(spd)
-		var max_turn_rad: float = deg_to_rad(turn_deg)
-		var steer_auth: float = maxf(NC.RUDDER_AUTHORITY_MIN, clampf(spd / NC.RUDDER_AUTHORITY_SPEED, 0.0, 1.0))
-		var target_av: float = max_turn_rad * rudder * steer_auth
-		ang_vel = lerpf(ang_vel, target_av, 1.0 - exp(-dt_step / tau))
+		ang_vel = NC.compute_angular_velocity(preview_rudder, spd, ang_vel, dt_step)
 		hull = hull.rotated(ang_vel * dt_step).normalized()
 
 		sim_sail_level = move_toward(sim_sail_level, sim_sail_target, sim_sail_rate * dt_step)
@@ -949,7 +942,7 @@ func draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 		spd = maxf(sim_drift_floor, spd - a.MOTION_PASSIVE_DRAG_K * spd * drag_mult * dt_step)
 		if sim_sail_level < sim_coast_thresh:
 			spd = maxf(sim_drift_floor, spd - a.MOTION_ZERO_SAIL_DRAG * drag_mult * dt_step)
-		var rud_abs: float = absf(rudder)
+		var rud_abs: float = absf(preview_rudder)
 		spd = maxf(sim_drift_floor, spd - rud_abs * a.MOTION_TURNING_SPEED_LOSS * dt_step)
 		if rud_abs > a.MOTION_HARD_TURN_RUDDER:
 			spd = maxf(sim_drift_floor, spd - rud_abs * a.MOTION_HARD_TURN_SPEED_LOSS * dt_step)
@@ -983,11 +976,11 @@ func draw_aim_cursor() -> void:
 	if bool(p.get("aim_port_active", true)):
 		var bat: Variant = p.get("battery_port")
 		if bat != null:
-			draw_battery_reticle(p, hull_n, bat as a._BatteryController, true)
+			draw_battery_reticle(p, hull_n, bat as _BatteryController, true)
 	if bool(p.get("aim_stbd_active", false)):
 		var bat: Variant = p.get("battery_stbd")
 		if bat != null:
-			draw_battery_reticle(p, hull_n, bat as a._BatteryController, false)
+			draw_battery_reticle(p, hull_n, bat as _BatteryController, false)
 
 
 # ── Battery reticle ──────────────────────────────────────────────────
@@ -1019,7 +1012,7 @@ func draw_battery_reticle(p: Dictionary, hull_n: Vector2, bat_br: RefCounted, is
 	var spread_world: float = impact_dist * tan(deg_to_rad(spread_half_deg))
 	var n_guns: int = maxi(1, bat_br.cannon_count)
 	var hull_half_span: float = float(n_guns - 1) * 0.5 * 2.3
-	var is_barrage: bool = bat_br.fire_mode == a._BatteryController.FireMode.SALVO
+	var is_barrage: bool = bat_br.fire_mode == _BatteryController.FireMode.SALVO
 	var w2px: float = a._TD_SCALE * a._zoom
 	var aim_s: Vector2 = _dir_screen(aim_dir.x, aim_dir.y)
 	if aim_s.length_squared() < 0.0001:
@@ -1155,7 +1148,7 @@ func draw_motion_battery_hud(_vp: Vector2) -> void:
 	var turn_h: bool = bool(p.get("motion_is_turning_hard", false))
 	var motion_line: String = "—"
 	if motion != null:
-		motion_line = motion.format_motion_summary(lin_raw as a._MotionStateResolver.LinearMotionState, turn, turn_h)
+		motion_line = motion.format_motion_summary(lin_raw as _MotionStateResolver.LinearMotionState, turn, turn_h)
 	a.draw_string(font, Vector2(x, y + 56.0), "Motion FSM", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, sub)
 	a.draw_string(font, Vector2(x, y + 72.0), motion_line, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, txt)
 	var spd: float = float(p.get("move_speed", 0.0))
@@ -1195,7 +1188,7 @@ func draw_battery_row(font: Font, x: float, y: float, panel_w: float, bat: Varia
 	if bat == null:
 		a.draw_string(font, Vector2(x, y), "Battery —", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, dim)
 		return
-	var b = bat as a._BatteryController
+	var b = bat as _BatteryController
 	var sel_tag: String = " [selected]" if selected else ""
 	var line: String = "%s · %s · %s%s" % [b.side_label(), b.fire_mode_display(), b.state_display(), sel_tag]
 	a.draw_string(font, Vector2(x, y), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, txt)
@@ -1203,10 +1196,10 @@ func draw_battery_row(font: Font, x: float, y: float, panel_w: float, bat: Varia
 	var bar_y: float = y + 12.0
 	var fill: float = b.reload_progress()
 	var bg: Color = Color(0.08, 0.1, 0.14, 0.92)
-	var fg: Color = Color(0.85, 0.62, 0.35, 0.9) if b.state == a._BatteryController.BatteryState.RELOADING else Color(0.35, 0.72, 0.48, 0.85)
+	var fg: Color = Color(0.85, 0.62, 0.35, 0.9) if b.state == _BatteryController.BatteryState.RELOADING else Color(0.35, 0.72, 0.48, 0.85)
 	a.draw_rect(Rect2(x, bar_y, bar_w, 6.0), bg)
 	a.draw_rect(Rect2(x, bar_y, bar_w * fill, 6.0), fg)
-	var rtxt: String = "Reload" if b.state == a._BatteryController.BatteryState.RELOADING else "Ready"
+	var rtxt: String = "Reload" if b.state == _BatteryController.BatteryState.RELOADING else "Ready"
 	a.draw_string(font, Vector2(x + bar_w + 6.0, bar_y + 5.0), rtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, dim)
 
 
@@ -1303,12 +1296,12 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 	if stbd_b != null:
 		bat_entries.append({"bat": stbd_b, "pos": Vector2(cx + hw * 0.88, cy - hh * 0.05), "label": "S"})
 	for be in bat_entries:
-		var bat = be.bat as a._BatteryController
+		var bat = be.bat as _BatteryController
 		var bp: Vector2 = be.pos
-		var is_ready: bool = bat.state == a._BatteryController.BatteryState.READY
-		var reloading: bool = bat.state == a._BatteryController.BatteryState.RELOADING
-		var firing: bool = bat.state == a._BatteryController.BatteryState.FIRING
-		var disabled: bool = bat.state == a._BatteryController.BatteryState.DISABLED
+		var is_ready: bool = bat.state == _BatteryController.BatteryState.READY
+		var reloading: bool = bat.state == _BatteryController.BatteryState.RELOADING
+		var firing: bool = bat.state == _BatteryController.BatteryState.FIRING
+		var disabled: bool = bat.state == _BatteryController.BatteryState.DISABLED
 		var bc: Color
 		var state_label: String
 		if disabled:
@@ -1330,8 +1323,8 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 		a.draw_circle(bp, bat_icon_r, Color(0.06, 0.08, 0.12, 0.9))
 		a.draw_circle(bp, bat_icon_r - 1.5, bc)
 		a.draw_arc(bp, bat_icon_r, 0.0, TAU, 20, Color(0.6, 0.65, 0.75, 0.7), 1.2, true)
-		var bat_is_selected: bool = (bat.side == a._BatteryController.BatterySide.PORT and sel_fire_port) \
-			or (bat.side == a._BatteryController.BatterySide.STARBOARD and sel_fire_stbd)
+		var bat_is_selected: bool = (bat.side == _BatteryController.BatterySide.PORT and sel_fire_port) \
+			or (bat.side == _BatteryController.BatterySide.STARBOARD and sel_fire_stbd)
 		if bat_is_selected:
 			a.draw_arc(bp, bat_icon_r + 3.5, 0.0, TAU, 24, Color(1.0, 0.88, 0.30, 0.92), 2.0, true)
 		if is_ready:
@@ -1342,10 +1335,10 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 		a.draw_string(font, bp + Vector2(-3.0, 3.5), be.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.95, 0.95, 1.0, 0.95))
 		var lbl_offset: Vector2
 		match bat.side:
-			a._BatteryController.BatterySide.PORT:
+			_BatteryController.BatterySide.PORT:
 				lbl_offset = Vector2(-bat_icon_r - 4.0, 3.5)
 				a.draw_string(font, bp + lbl_offset, state_label, HORIZONTAL_ALIGNMENT_RIGHT, int(bat_icon_r * 8.0), 7, bc)
-			a._BatteryController.BatterySide.STARBOARD:
+			_BatteryController.BatterySide.STARBOARD:
 				lbl_offset = Vector2(bat_icon_r + 4.0, 3.5)
 				a.draw_string(font, bp + lbl_offset, state_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 7, bc)
 			_:
@@ -1600,7 +1593,7 @@ func draw_ability_bar(vp: Vector2) -> void:
 	var sel_stbd_ab: bool = bool(p.get("aim_stbd_active", false)) if not p.is_empty() else false
 	var active_bat: Variant = port_b if sel_port_ab else stbd_b2
 	var mode_lbl: String = "Ripple"
-	if port_b != null and port_b.fire_mode == a._BatteryController.FireMode.SALVO:
+	if port_b != null and port_b.fire_mode == _BatteryController.FireMode.SALVO:
 		mode_lbl = "Barrage"
 	draw_ability_slot(font, Vector2(x + 8.0, y + 12.0), _slot_key_caption(a.FIRE_MODE_ACTION), mode_lbl, true)
 	var elev_lbl: String = "+0.0°"
@@ -1614,11 +1607,11 @@ func draw_ability_bar(vp: Vector2) -> void:
 	var total_count: int = 0
 	if sel_port_ab and port_b != null:
 		total_count += 1
-		if port_b.state == a._BatteryController.BatteryState.READY:
+		if port_b.state == _BatteryController.BatteryState.READY:
 			ready_count += 1
 	if sel_stbd_ab and stbd_b2 != null:
 		total_count += 1
-		if stbd_b2.state == a._BatteryController.BatteryState.READY:
+		if stbd_b2.state == _BatteryController.BatteryState.READY:
 			ready_count += 1
 	var side_lbl: String
 	if sel_port_ab and sel_stbd_ab:
@@ -1660,44 +1653,35 @@ func draw_whirlpool_visuals() -> void:
 	var wp_scale: float = a._TD_SCALE * a._zoom
 
 	var outer_r: float = a._whirlpool.influence_radius * wp_scale
-	var ctrl_r: float = a._whirlpool.control_ring_radius * wp_scale
-	var danger_r: float = a._whirlpool.danger_ring_radius * wp_scale
-	var core_r: float = a._whirlpool.core_radius * wp_scale
 
 	# Skip if completely off-screen.
 	var vp: Vector2 = a.get_viewport_rect().size
 	if sc.x + outer_r < 0.0 or sc.x - outer_r > vp.x or sc.y + outer_r < 0.0 or sc.y - outer_r > vp.y:
 		return
 
-	# ── Animated swirl streaks (water current lines) — speed follows Rankine profile ──
-	var t: float = fmod(Time.get_ticks_msec() / 1000.0, 600.0)
+	# ── Animated swirl streaks ──
+	const SWIRL_PERIOD: float = 12.0
+	var t: float = fmod(Time.get_ticks_msec() / 1000.0, SWIRL_PERIOD) / SWIRL_PERIOD
 	var streak_count: int = 48
 	for si in range(streak_count):
 		var base_angle: float = (float(si) / float(streak_count)) * TAU
-		var r_frac: float = 0.08 + float(si % 9) * 0.105  # Distribute across rings.
+		var r_frac: float = 0.08 + float(si % 9) * 0.105
 		var r_world: float = a._whirlpool.influence_radius * r_frac
 		var r_px: float = r_world * wp_scale
 		if r_px < 2.0 or r_px > outer_r:
 			continue
-		# Orbit speed proportional to Rankine angular velocity: omega = v_tan / r.
-		# Forced vortex (r<=core): omega = v_max / R_core = constant.
-		# Free vortex (r>core): omega = v_max * R_core / r^2 — falls off as 1/r^2.
-		var w_spd: float = a._whirlpool.water_speed_at_radius(r_world, NC.MAX_SPEED)
-		var omega: float = w_spd / maxf(1.0, r_world)  # Angular velocity in rad/s.
-		var orbit_speed: float = omega * 0.6  # Visual scaling factor.
-		var angle: float = base_angle + t * orbit_speed
+		var speed_scale: float = 0.08 / maxf(0.01, r_frac)
+		var angle: float = base_angle + t * TAU * speed_scale
 		var p1: Vector2 = sc + Vector2(cos(angle), sin(angle)) * r_px
-		# Arc length proportional to speed — faster streaks are longer.
-		var arc_len: float = clampf(omega * 0.15, 0.08, 0.35)
+		var arc_len: float = clampf(speed_scale * 0.3, 0.06, 0.4)
 		var p2: Vector2 = sc + Vector2(cos(angle + arc_len), sin(angle + arc_len)) * r_px
-		# Color/alpha scales with water speed.
-		var speed_frac: float = clampf(w_spd / maxf(0.01, NC.MAX_SPEED), 0.0, 1.5)
+		var depth: float = 1.0 - r_frac
 		var streak_col: Color
-		if speed_frac < 0.5:
-			streak_col = Color(0.35, 0.60, 0.85, 0.06 + speed_frac * 0.08)
+		if depth < 0.5:
+			streak_col = Color(0.35, 0.60, 0.85, 0.06 + depth * 0.10)
 		else:
-			streak_col = Color(0.45, 0.55, 0.70, 0.08 + (speed_frac - 0.5) * 0.14)
-		a.draw_line(p1, p2, streak_col, 1.0 + speed_frac * 1.2)
+			streak_col = Color(0.45, 0.55, 0.70, 0.10 + (depth - 0.5) * 0.16)
+		a.draw_line(p1, p2, streak_col, 1.0 + depth * 1.5)
 
 
 

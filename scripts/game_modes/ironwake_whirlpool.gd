@@ -7,6 +7,16 @@ extends RefCounted
 const NC := preload("res://scripts/shared/naval_combat_constants.gd")
 const _WhirlpoolController := preload("res://scripts/shared/whirlpool_controller.gd")
 
+## Spin rate applied to ships caught in the core (rad/s).
+const CORE_SPIN_RATE: float = 6.0
+## Seconds of spinning in the core before the ship sinks.
+const CORE_SINK_TIME: float = 1.5
+
+## Slingshot: max speed multiplier when perfectly aligned deep in the whirlpool.
+const SLINGSHOT_MAX_SPEED_MULT: float = 1.6
+## How quickly the slingshot boost ramps up (units/s² added to move_speed).
+const SLINGSHOT_ACCEL: float = 25.0
+
 var arena: Node = null
 
 
@@ -52,17 +62,10 @@ func pre_physics(p: Dictionary, delta: float) -> void:
 		ship_id, ship_pos, ship_dir, spd, NC.MAX_SPEED, delta)
 
 	p["_wp_ring"] = ws.ring_type
-	p["_wp_captured"] = ws.is_captured
-	p["_wp_just_ejected"] = ws.just_ejected
 	p["_wp_turn_mod"] = ws.turn_modifier
 	p["_wp_accel_mod"] = ws.acceleration_modifier
 	p["_wp_flow_align"] = ws.flow_alignment
 	p["_wp_flow_dir"] = ws.flow_direction
-	p["_wp_vel_influence"] = ws.velocity_influence
-	p["_wp_capture_av"] = ws.capture_angular_velocity
-	p["_wp_eject_dir"] = ws.eject_direction
-	p["_wp_eject_speed"] = ws.eject_speed
-	p["_wp_recovery"] = ws.recovery_scalar
 	p["_wp_drag_force"] = ws.drag_force
 	p["_wp_torque"] = ws.torque
 	p["_wp_water_vel"] = ws.water_velocity
@@ -75,20 +78,12 @@ func pre_physics(p: Dictionary, delta: float) -> void:
 func turn_scalar(p: Dictionary) -> float:
 	if arena._whirlpool == null or not arena.whirlpool_enabled:
 		return 1.0
-	if bool(p.get("_wp_captured", false)):
-		return 0.0
-	var recovery: float = float(p.get("_wp_recovery", 1.0))
-	var turn_mod: float = float(p.get("_wp_turn_mod", 1.0))
-	if int(p.get("_wp_ring", 0)) == 0 and recovery < 1.0:
-		return minf(1.0, recovery + 0.3)
-	return turn_mod
+	return float(p.get("_wp_turn_mod", 1.0))
 
 
 func accel_scalar(p: Dictionary) -> float:
 	if arena._whirlpool == null or not arena.whirlpool_enabled:
 		return 1.0
-	if bool(p.get("_wp_captured", false)):
-		return 0.3
 	return float(p.get("_wp_accel_mod", 1.0))
 
 
@@ -96,71 +91,50 @@ func inject_physics(p: Dictionary, delta: float) -> void:
 	if arena._whirlpool == null or not arena.whirlpool_enabled:
 		p["_wp_water_carry_vel"] = Vector2.ZERO
 		return
+
 	var ring: int = int(p.get("_wp_ring", 0))
-	var captured: bool = bool(p.get("_wp_captured", false))
-	var just_ejected: bool = bool(p.get("_wp_just_ejected", false))
-
-	if just_ejected:
-		p.alive = false
-		p["move_speed"] = 0.0
-		p["angular_velocity"] = 0.0
-		p["respawn_timer"] = arena.RESPAWN_DELAY_SEC
-		var def_pid: int = int(p.get("peer_id", 0))
-		if arena._scoreboard.has(def_pid):
-			arena._scoreboard[def_pid]["deaths"] += 1
-		p["_wp_just_ejected"] = false
-		p["_wp_captured"] = false
-		p["_wp_ring"] = 0
-		var ship_id: int = int(p.get("peer_id", 0))
-		var ws: _WhirlpoolController.WhirlpoolShipState = arena._whirlpool.get_ship_state(ship_id)
-		ws.eject_speed = 0.0
-		ws.just_ejected = false
-		ws.is_captured = false
-		ws.capture_timer = 0.0
-		ws.eject_immunity_timer = 0.0
-		if not arena.multiplayer.has_multiplayer_peer() or arena.multiplayer.is_server():
-			arena._check_win()
-		return
-
-	if captured:
-		var capture_av: float = float(p.get("_wp_capture_av", -3.0))
-		p["angular_velocity"] = capture_av
-		var cap_hull: Vector2 = Vector2(p.dir.x, p.dir.y)
-		if cap_hull.length_squared() < 0.0001:
-			cap_hull = Vector2.RIGHT
-		cap_hull = cap_hull.rotated(capture_av * delta).normalized()
-		p.dir = cap_hull
-		var vel_inf: Vector2 = p.get("_wp_vel_influence", Vector2.ZERO)
-		p.wx = float(p.wx) + vel_inf.x
-		p.wy = float(p.wy) + vel_inf.y
-		p["move_speed"] = maxf(0.0, float(p.get("move_speed", 0.0)) * (1.0 - 0.8 * delta))
-		return
 
 	if ring == 0:
 		p["_wp_water_carry_vel"] = Vector2.ZERO
 		return
 
-	var drag_force: Vector2 = p.get("_wp_drag_force", Vector2.ZERO)
+	# Water carry handles all whirlpool movement (tangential orbit + radial pull).
+	# Ship's move_speed stays sail-driven; the carry adds on top in position integration.
+	p["_wp_water_carry_vel"] = p.get("_wp_water_carry", Vector2.ZERO)
+
+	# ── Slingshot: boost move_speed when aligned with the flow ──
+	# Deeper rings + better alignment = bigger boost. Risk vs reward.
+	var flow_align: float = float(p.get("_wp_flow_align", 0.0))
+	if flow_align > 0.0:
+		var water_spd: float = float(p.get("_wp_water_speed", 0.0))
+		var depth_frac: float = clampf(water_spd / maxf(0.01, NC.MAX_SPEED), 0.0, 1.0)
+		var slingshot_cap: float = NC.MAX_SPEED * lerpf(1.0, SLINGSHOT_MAX_SPEED_MULT, flow_align * depth_frac)
+		var spd: float = float(p.get("move_speed", 0.0))
+		if spd < slingshot_cap:
+			spd = minf(spd + SLINGSHOT_ACCEL * flow_align * depth_frac * delta, slingshot_cap)
+			p["move_speed"] = spd
+
 	var wp_torque: float = float(p.get("_wp_torque", 0.0))
-	var hull: Vector2 = Vector2(p.dir.x, p.dir.y)
-	if hull.length_squared() < 0.0001:
-		hull = Vector2.RIGHT
-	hull = hull.normalized()
-
-	var water_carry: Vector2 = p.get("_wp_water_carry", Vector2.ZERO)
-	p["_wp_water_carry_vel"] = water_carry
-
-	var spd: float = float(p.get("move_speed", 0.0))
-	var grav_long: float = drag_force.dot(hull)
-	spd = clampf(spd + grav_long * 0.5 * delta, 0.0, NC.MAX_SPEED)
-	p["move_speed"] = spd
-
 	var av: float = float(p.get("angular_velocity", 0.0))
 	av += wp_torque * delta
 	p["angular_velocity"] = av
 
-	var drag_lat_vec: Vector2 = drag_force - hull * drag_force.dot(hull)
-	if drag_lat_vec.length_squared() > 0.01:
-		var lat_heading_push: float = hull.angle_to(hull + drag_lat_vec * 0.15 * delta)
-		hull = hull.rotated(lat_heading_push).normalized()
+	# ── Core: spin and sink ──
+	if ring == _WhirlpoolController.Ring.CORE and bool(p.get("alive", false)):
+		p["angular_velocity"] = CORE_SPIN_RATE
+		var hull: Vector2 = Vector2(p.dir.x, p.dir.y).normalized()
+		hull = hull.rotated(CORE_SPIN_RATE * delta).normalized()
 		p.dir = hull
+		# Accumulate time in core; sink after CORE_SINK_TIME.
+		var core_t: float = float(p.get("_wp_core_timer", 0.0)) + delta
+		p["_wp_core_timer"] = core_t
+		if core_t >= CORE_SINK_TIME:
+			p.alive = false
+			p["health"] = 0.0
+			p["respawn_timer"] = arena.RESPAWN_DELAY_SEC
+			var pid: int = int(p.get("peer_id", 0))
+			if arena._scoreboard.has(pid):
+				arena._scoreboard[pid]["deaths"] += 1
+			arena._check_win()
+	else:
+		p.erase("_wp_core_timer")
