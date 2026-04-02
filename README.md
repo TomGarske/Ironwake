@@ -1,22 +1,28 @@
 # Ironwake
 
-Ironwake is a Godot 4 multiplayer naval combat game. Command sailing warships — schooners, galleys, and brigs — through broadside engagements driven by physics-based sail, helm, and motion systems.
+Ironwake is a Godot 4 multiplayer naval combat game set in the age of sail. Command a 74-gun third-rate warship (modeled on HMS Bellona) through broadside engagements driven by physics-based sail, helm, and motion systems with historically grounded ballistics.
 
-The project uses [GodotSteam](https://godotsteam.com/) for Steam lobbies and peer-to-peer multiplayer. One player hosts and acts as authority for match start and mode selection.
+The project uses [GodotSteam](https://godotsteam.com/) for Steam lobbies and peer-to-peer multiplayer. One player hosts and acts as authority for match start, hit detection, ramming, and respawn.
 
-> **Status:** Active prototype. Core lobby, navigation, combat, AI (LimboAI behavior trees), scoreboard, and multiplayer sync are implemented. Polishing and balancing in progress.
+> **Status:** Active prototype. Core lobby, navigation, combat, AI (LimboAI behavior trees), component damage, scoreboard, and multiplayer sync are implemented. Polishing and balancing in progress.
 
 ---
 
 ## Gameplay
 
-Three ship classes form the roster, each with a distinct combat role. All ships share the same state machine systems and differ through configuration values.
+Ships are controlled through interconnected FSMs:
 
-- **Schooner** — Fast attack and scouting. High speed, tight turning, light guns.
-- **Galley** — Close-range control. Oar/sail hybrid with strong forward armament.
-- **Brig** — Broadside powerhouse. Slow and heavy with devastating port and starboard batteries.
+- **Sail** — Stepped propulsion (Stop / Quarter / Half / Full). Raise rate ~6.5s, lower rate ~3s. Max speed 13 knots.
+- **Helm** — Mechanical wheel → tiller → rudder chain with inertia. Wheel lock holds course.
+- **Motion** — Physics integration: speed from sail level, turning bleeds speed, passive drag.
+- **Battery** — Port and starboard broadsides. Elevation -3° to +5° with realistic ballistic trajectories. Salvo or ripple fire modes. 12-second reload.
 
-Ships are controlled through interconnected FSMs: Sail (propulsion), Helm (steering), Motion (physics integration), and Battery (cannon targeting, firing, reload). Damage feeds back into these systems — a damaged mast caps sail level, a broken rudder slows turning.
+**Component damage** feeds back into ship performance:
+- **Rigging hits** (upper hull) shred sails — reduces speed cap and slows sail deployment.
+- **Helm hits** (waterline) damage the rudder — slows rudder response and limits max deflection.
+- **Ramming** damages the helm on collision.
+
+Zoom is locked to the farthest active battery's ballistic range. Both batteries are active on spawn.
 
 ---
 
@@ -25,11 +31,10 @@ Ships are controlled through interconnected FSMs: Sail (propulsion), Helm (steer
 See **[SETUP.md](SETUP.md)** for full setup instructions.
 
 Short version:
-1. Install [Godot 4.x](https://godotengine.org/download)
-2. Download the GodotSteam GDExtension and extract it into `addons/godotsteam/`
-3. Create `steam_appid.txt` at the project root containing `4530870` (Ironwake Playtest app ID) — the setup scripts do this automatically
-4. Open the project in Godot (Steam running)
-5. Press **F5** to run
+1. Install [Godot 4.6+](https://godotengine.org/download)
+2. Run the platform setup script in `dev/` (or manually install GodotSteam GDExtension into `addons/godotsteam/`)
+3. Open the project in Godot (Steam running)
+4. Press **F5** to run
 
 ---
 
@@ -37,8 +42,9 @@ Short version:
 
 - **Open Operations** on the home screen to host a Steam lobby.
 - In lobby, ready up and host launches the match.
-- All players ready up, then host launches mission.
-- **Solo Sim (Offline)** starts local testing with AI bots without Steam.
+- **Solo Sim (Offline)** starts local testing with AI bots (no Steam required).
+- **Tab** opens the scoreboard (kills, deaths, shots, accuracy, damage).
+- **Local MP testing:** `./dev/test-multiplayer-local.sh` launches two side-by-side Godot windows.
 
 ---
 

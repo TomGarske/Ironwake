@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# BurnBridgers — SteamOS / Linux addon setup
+# Ironwake — SteamOS / Linux addon setup
 # Downloads and installs GDExtension plugins (GodotSteam).
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FORCE=0
 NON_INTERACTIVE=0
 

@@ -75,13 +75,7 @@ var last_hit_attacker_peer_id: int = 0
 # ── Shot tracking — error if no shot within 15 s of gameplay ────────────
 var _game_time_elapsed: float = 0.0
 var _has_fired_at_least_once: bool = false
-var _no_shot_error_emitted: bool = false
 
-# ── Debug (req-debug-combat-v1) ─────────────────────────────────────────
-## When false, arena skips this bot’s text panel.
-var show_debug_hud_panel: bool = false
-## Verbose print() for fire decision logging.
-var debug_log_events: bool = true
 var current_bt_state: String = "init"
 
 
@@ -138,26 +132,11 @@ func _setup_bt_player() -> void:
 
 	bt_player = player
 	_bt_initialised = true
-	print("[NavalBot %s] BTPlayer initialised — owner=%s, active=%s, behavior_tree=%s, blackboard=%s" % [
-		name, str(root_hint), str(player.get("active")), str(player.get("behavior_tree") != null), str(bb != null)])
 
 
 ## Main update — called each frame by arena's _tick_bot().
-var _update_log_count: int = 0
-var _periodic_log_timer: float = 0.0
-const _PERIODIC_LOG_INTERVAL: float = 2.0
 func update(delta: float) -> void:
-	var should_log_initial: bool = _update_log_count < 5
-	_periodic_log_timer += delta
-	var should_log_periodic: bool = _periodic_log_timer >= _PERIODIC_LOG_INTERVAL
-	if should_log_periodic:
-		_periodic_log_timer = 0.0
-	var should_log: bool = should_log_initial or should_log_periodic
-
 	if agent == null or agent.ship_dict.is_empty():
-		if should_log_initial:
-			print("[NavalBot %s] update: agent null or empty" % name)
-			_update_log_count += 1
 		return
 	if not agent.is_alive():
 		steer_left = 0.0
@@ -175,28 +154,10 @@ func update(delta: float) -> void:
 	fire_port_intent = false
 	fire_stbd_intent = false
 
-	# 15-second shot watchdog — disabled (bots behaving correctly now).
-	# if _game_time_elapsed >= 15.0 and not _has_fired_at_least_once and not _no_shot_error_emitted:
-	# 	_no_shot_error_emitted = true
-	# 	push_error(...)
-
 	if _bt_initialised and bt_player != null:
 		_sync_limbo_blackboard()
 		bt_player.call("update", delta)
 		_adjust_sail_for_turn()
-		if should_log:
-			print("[NavalBot %s] BT ticked — steer=L%.2f/R%.2f fire=P%s/S%s sail=%d state=%s dist=%.0f band=%d spd=%.1f bearing=%.0f" % [
-				name, steer_left, steer_right, fire_port_intent, fire_stbd_intent,
-				desired_sail_state, current_bt_state, distance_to_target, range_band,
-				agent.get_speed(), bearing_to_target_deg])
-			if should_log_initial:
-				_update_log_count += 1
-	else:
-		if should_log:
-			print("[NavalBot %s] update: BT NOT running — _bt_initialised=%s bt_player=%s _bt_setup_attempted=%s" % [
-				name, _bt_initialised, bt_player != null, _bt_setup_attempted])
-			if should_log_initial:
-				_update_log_count += 1
 
 
 func _tick_timers(delta: float) -> void:
@@ -210,8 +171,6 @@ func _tick_timers(delta: float) -> void:
 		var prev_repo: float = reposition_timer
 		reposition_timer = maxf(0.0, reposition_timer - delta)
 		if reposition_timer <= 0.0 and prev_repo > 0.0:
-			if debug_log_events:
-				print("[NavalBot] reposition_end dist=%.0f" % distance_to_target)
 			currently_repositioning = false
 			recently_fired = false
 			reposition_turn_dir = 0.0
@@ -310,11 +269,7 @@ func reset_combat_state() -> void:
 	distance_to_target = 9999.0
 	_game_time_elapsed = 0.0
 	_has_fired_at_least_once = false
-	_no_shot_error_emitted = false
 	bearing_to_target_deg = 0.0
-	_update_log_count = 0
-	_periodic_log_timer = 0.0
-	print("[NavalBot %s] combat state reset" % name)
 
 
 ## Called from arena when this bot receives a registered cannon hit (not every frame).
@@ -325,8 +280,6 @@ func notify_cannon_hit(attacker_peer_id: int) -> void:
 	_pending_fire_delay = 0.0
 	_pending_fire_side = ""
 	fire_block_reason = "took_hit"
-	if debug_log_events:
-		print("[NavalBot] hit from peer %d" % attacker_peer_id)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -350,14 +303,6 @@ func limbo_tick_fire(_delta: float) -> int:
 	var stbd_b: Variant = agent.get_battery_stbd()
 	var port_ready: bool = port_b != null and int(port_b.state) == int(_BatteryController.BatteryState.READY)
 	var stbd_ready: bool = stbd_b != null and int(stbd_b.state) == int(_BatteryController.BatteryState.READY)
-
-	if debug_log_events:
-		var p_state: String = port_b.state_display() if port_b != null else "null"
-		var s_state: String = stbd_b.state_display() if stbd_b != null else "null"
-		var best_q: float = float(broadside_result.get("best_quality", 0.0))
-		print("[NavalBot %s] fire_check: port=%s stbd=%s dist=%.0f bearing=%.1f best_q=%.2f band=%s block=%s" % [
-			name, p_state, s_state, distance_to_target, bearing_to_target_deg,
-			best_q, _Evaluator.band_name(range_band), fire_block_reason])
 
 	if not port_ready and not stbd_ready:
 		if port_b != null and int(port_b.state) == int(_BatteryController.BatteryState.AIMING):
@@ -435,8 +380,6 @@ func _try_recover_if_stuck(_delta: float) -> bool:
 		return false
 	current_bt_state = "recover_stuck"
 	last_maneuver = "stuck_recovery"
-	if debug_log_events:
-		print("[NavalBot] stuck_recovery turn_commit after %.1fs" % stuck_timer)
 	# Commit to a random turn direction.
 	if turn_commit_timer <= 0.0:
 		turn_commit_direction = [-1.0, 1.0][randi() % 2]
@@ -476,10 +419,6 @@ func _commit_broadside_volley(best_side_str: String) -> bool:
 		return false
 
 	_has_fired_at_least_once = true
-
-	print("[NavalBot %s] FIRE %s broadside — dist=%.0f quality=%.2f bearing=%.1f" % [
-		name, best_side_str, distance_to_target,
-		float(broadside_result.get("best_quality", 0.0)), bearing_to_target_deg])
 
 	# Short post-fire lockout only — no repositioning block so bot can fire again ASAP.
 	post_fire_lockout_timer = 0.25
@@ -627,9 +566,6 @@ func _hold_pattern(_delta: float) -> void:
 	_set_steer(turn_commit_direction)
 	desired_sail_state = 2  # HALF
 	fire_block_reason = "holding"
-	if debug_log_events:
-		print("[NavalBot %s] _hold_pattern: steerDir=%.1f L=%.2f R=%.2f sail=%d" % [
-			name, turn_commit_direction, steer_left, steer_right, desired_sail_state])
 
 
 # ═══════════════════════════════════════════════════════════════════════

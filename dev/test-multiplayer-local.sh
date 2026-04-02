@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-PROJECT_DIR="/Users/tomgarske/games-dev/BurnBridgers"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WINDOW_W=960
 WINDOW_H=540
 

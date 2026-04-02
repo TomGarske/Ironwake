@@ -38,6 +38,19 @@ func get_battery_stbd() -> Variant:
 func is_alive() -> bool:
 	return bool(ship_dict.get("alive", false))
 
+## Whirlpool AI hooks (req-whirlpool-arena-v1 §21).
+func get_whirlpool_ring() -> int:
+	return int(ship_dict.get("_whirlpool_ring", 0))
+
+func is_in_whirlpool() -> bool:
+	return get_whirlpool_ring() > 0
+
+func is_whirlpool_captured() -> bool:
+	return bool(ship_dict.get("_whirlpool_captured", false))
+
+func get_whirlpool_flow_alignment() -> float:
+	return float(ship_dict.get("_whirlpool_flow_align", 0.0))
+
 func _process(_delta: float) -> void:
 	if ship_dict.is_empty():
 		return
