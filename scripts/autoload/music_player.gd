@@ -9,11 +9,17 @@ const DEFAULT_MENU_SONG := "spanish-ladies"
 const DEFAULT_ARENA_SONG := "haul-away-joe"
 const PRESET_DIR := "res://presets/"
 
+## Available songs loaded from manifest.json — array of {id, name}
+var available_songs: Array[Dictionary] = []
+
 var _engine: AudioStreamPlayer = null
 var _current_song: String = ""
 var _base_bpm: float = 115.0
 
+signal song_changed(preset_name: String)
+
 func _ready() -> void:
+	_load_manifest()
 	_engine = ProceduralMusicScript.new()
 	_engine.name = "ProceduralMusic"
 	add_child(_engine)
@@ -30,6 +36,23 @@ func _ready() -> void:
 	play_song(DEFAULT_MENU_SONG)
 
 
+func _load_manifest() -> void:
+	var file := FileAccess.open(PRESET_DIR + "manifest.json", FileAccess.READ)
+	if not file:
+		push_warning("[MusicPlayer] Could not load manifest.json")
+		return
+	var json := JSON.new()
+	if json.parse(file.get_as_text()) != OK:
+		push_warning("[MusicPlayer] Failed to parse manifest.json")
+		return
+	var data: Dictionary = json.data
+	var presets: Array = data.get("presets", [])
+	available_songs.clear()
+	for p: Variant in presets:
+		var pd: Dictionary = p as Dictionary
+		available_songs.append({"id": str(pd.get("id", "")), "name": str(pd.get("name", ""))})
+
+
 func play_song(preset_name: String) -> void:
 	if preset_name == _current_song:
 		return
@@ -42,6 +65,7 @@ func play_song(preset_name: String) -> void:
 		return
 	_current_song = preset_name
 	_base_bpm = _engine._bpm
+	song_changed.emit(_current_song)
 	# Apply current profile
 	if GameManager != null:
 		_engine.set_volume(GameManager.music_volume)

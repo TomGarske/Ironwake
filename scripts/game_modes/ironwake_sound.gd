@@ -118,33 +118,42 @@ func play_cannon_fire_sound() -> void:
 	var player: AudioStreamPlayer = _get_next_player()
 	var vol: float = _sfx_scale()
 	var mix_rate: int = 44100
-	var duration_sec: float = 0.65
+	var duration_sec: float = 0.90
 	var sample_count: int = maxi(1, int(duration_sec * float(mix_rate)))
 	var data := PackedByteArray()
 	data.resize(sample_count * 2)
-	# Seeded noise for deterministic "crack" texture.
 	var noise_state: int = 48271
+	var prev_noise: float = 0.0
+	var prev_noise2: float = 0.0
 	for i in range(sample_count):
 		var t: float = float(i) / float(mix_rate)
-		# Initial blast envelope (fast attack, medium decay)
-		var blast_env: float = exp(-t * 6.0)
-		# Sustained rumble envelope (slower decay for body)
-		var rumble_env: float = exp(-t * 3.5)
-		# Mid-range boom (audible on all speakers): 110 Hz + 165 Hz + 220 Hz
-		var boom: float = (
-			sin(t * TAU * 110.0) * 0.40
-			+ sin(t * TAU * 165.0) * 0.25
-			+ sin(t * TAU * 220.0) * 0.15
-		) * rumble_env
-		# Sub-bass thud (felt on good speakers)
-		var sub: float = sin(t * TAU * 55.0) * 0.20 * exp(-t * 5.0)
-		# Filtered noise burst for the crack (fast decay, shaped lower)
-		var noise_env: float = exp(-t * 20.0)
+		# === Initial blast crack — very short, punchy ===
+		var crack_env: float = exp(-t * 45.0)
 		noise_state = (noise_state * 48271) % 2147483647
 		var raw_noise: float = float(noise_state) / 1073741823.5 - 1.0
-		# Simple low-pass on noise: average with previous to cut high freq
-		var noise: float = raw_noise * noise_env * 0.18
-		var s: float = (boom + sub + noise) * blast_env * 0.65 * vol
+		# Two-pole low-pass to darken the noise (no tinny snare)
+		prev_noise = prev_noise * 0.72 + raw_noise * 0.28
+		prev_noise2 = prev_noise2 * 0.72 + prev_noise * 0.28
+		var crack: float = prev_noise2 * crack_env * 0.35
+		# === Main body — descending pitch boom (cannon barrel resonance) ===
+		var pitch_sweep: float = 180.0 + 80.0 * exp(-t * 8.0)  # sweeps 260→180 Hz
+		var body_env: float = exp(-t * 4.0)
+		var body: float = sin(t * TAU * pitch_sweep) * 0.50 * body_env
+		# === Low rumble — sustained resonance ===
+		var rumble_env: float = exp(-t * 2.2)
+		var rumble: float = (
+			sin(t * TAU * 95.0) * 0.35
+			+ sin(t * TAU * 142.0) * 0.20
+		) * rumble_env
+		# === Sub thud (felt, not heard on small speakers) ===
+		var sub: float = sin(t * TAU * 48.0) * 0.15 * exp(-t * 5.0)
+		# === Smoke/air push — very low filtered noise tail ===
+		var tail_env: float = exp(-t * 1.8) * (1.0 - exp(-t * 12.0))  # delayed onset
+		noise_state = (noise_state * 16807) % 2147483647
+		var tail_noise: float = float(noise_state) / 1073741823.5 - 1.0
+		var tail: float = tail_noise * tail_env * 0.08
+		# === Mix ===
+		var s: float = (crack + body + rumble + sub + tail) * 0.70 * vol
 		s = clampf(s, -1.0, 1.0)
 		var v: int = int(clampi(int(s * 32767.0), -32768, 32767))
 		data[i * 2] = v & 0xFF
@@ -163,22 +172,33 @@ func play_cannon_fire_sound() -> void:
 # ---------------------------------------------------------------------------
 func play_cannon_fire_distant() -> void:
 	var player: AudioStreamPlayer = _get_next_player()
-	var vol: float = _sfx_scale() * 0.35
+	var vol: float = _sfx_scale() * 0.30
 	var mix_rate: int = 44100
-	var duration_sec: float = 0.50
+	var duration_sec: float = 0.70
 	var sample_count: int = maxi(1, int(duration_sec * float(mix_rate)))
 	var data := PackedByteArray()
 	data.resize(sample_count * 2)
+	var noise_state: int = 73939
+	var prev_n: float = 0.0
+	var prev_n2: float = 0.0
 	for i in range(sample_count):
 		var t: float = float(i) / float(mix_rate)
-		var env: float = exp(-t * 4.5)  # Slower decay = more distant rumble.
-		# Mid-range muffled boom — no crack, just rumble.
+		# Delayed onset — sound takes time to travel
+		var onset: float = 1.0 - exp(-t * 18.0)
+		var env: float = exp(-t * 2.5) * onset
+		# Muffled boom — lower pitch, no crack
 		var boom: float = (
-			sin(t * TAU * 100.0) * 0.45
-			+ sin(t * TAU * 150.0) * 0.30
-			+ sin(t * TAU * 65.0) * 0.20
-		)
-		var s: float = boom * env * 0.50 * vol
+			sin(t * TAU * 85.0) * 0.40
+			+ sin(t * TAU * 128.0) * 0.25
+		) * env
+		# Distant rumble tail — heavily filtered noise
+		noise_state = (noise_state * 48271) % 2147483647
+		var raw_noise: float = float(noise_state) / 1073741823.5 - 1.0
+		prev_n = prev_n * 0.82 + raw_noise * 0.18
+		prev_n2 = prev_n2 * 0.82 + prev_n * 0.18
+		var tail_env: float = exp(-t * 1.8) * (1.0 - exp(-t * 8.0))
+		var tail: float = prev_n2 * tail_env * 0.10
+		var s: float = (boom + tail) * 0.55 * vol
 		s = clampf(s, -1.0, 1.0)
 		var v: int = int(clampi(int(s * 32767.0), -32768, 32767))
 		data[i * 2] = v & 0xFF

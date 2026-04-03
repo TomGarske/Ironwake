@@ -51,6 +51,9 @@ const TERRAIN_RENDERER_SCRIPT := preload("res://scripts/shared/iso_terrain_rende
 @onready var pause_resume_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseResumeButton
 @onready var pause_quit_button: Button = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/PauseQuitButton
 @onready var quit_confirm_dialog: ConfirmationDialog = $UILayer/QuitConfirmDialog
+@onready var song_selector: OptionButton = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/SongRow/SongSelector
+@onready var music_vol_slider: HSlider = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/MusicVolumeRow/MusicVolumeSlider
+@onready var sfx_vol_slider: HSlider = $UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/SfxVolumeRow/SfxVolumeSlider
 
 var _players:   Array = []
 var _my_index:  int   = 0    # which player in _players this peer controls
@@ -117,6 +120,7 @@ func _ready() -> void:
 		quit_confirm_dialog.title = "Leave Match"
 		quit_confirm_dialog.ok_button_text = "Quit Match"
 		_apply_quit_dialog_theme()
+	_setup_pause_settings()
 	if multiplayer.has_multiplayer_peer():
 		if not multiplayer.peer_connected.is_connected(_on_peer_connected):
 			multiplayer.peer_connected.connect(_on_peer_connected)
@@ -314,6 +318,7 @@ func _toggle_pause_menu() -> void:
 func _open_pause_menu() -> void:
 	if pause_menu_panel == null:
 		return
+	_sync_pause_settings()
 	pause_menu_panel.visible = true
 	if pause_backdrop != null:
 		pause_backdrop.visible = true
@@ -342,6 +347,67 @@ func _apply_quit_dialog_theme() -> void:
 
 func _on_quit_confirmed() -> void:
 	get_tree().change_scene_to_file(GameManager.HOME_SCREEN_SCENE_PATH)
+
+
+# ---------------------------------------------------------------------------
+# In-game settings (song selector, volume sliders)
+# ---------------------------------------------------------------------------
+func _setup_pause_settings() -> void:
+	# Song selector
+	if song_selector != null and MusicPlayer != null:
+		song_selector.clear()
+		var current_idx := 0
+		for i in range(MusicPlayer.available_songs.size()):
+			var song: Dictionary = MusicPlayer.available_songs[i]
+			song_selector.add_item(str(song["name"]), i)
+			if str(song["id"]) == MusicPlayer.get_current_song():
+				current_idx = i
+		song_selector.select(current_idx)
+		if not song_selector.item_selected.is_connected(_on_song_selected):
+			song_selector.item_selected.connect(_on_song_selected)
+		song_selector.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
+
+	# Music volume slider
+	if music_vol_slider != null and GameManager != null:
+		music_vol_slider.set_value_no_signal(GameManager.music_volume)
+		if not music_vol_slider.value_changed.is_connected(_on_pause_music_vol_changed):
+			music_vol_slider.value_changed.connect(_on_pause_music_vol_changed)
+
+	# SFX volume slider
+	if sfx_vol_slider != null and GameManager != null:
+		sfx_vol_slider.set_value_no_signal(GameManager.sfx_volume)
+		if not sfx_vol_slider.value_changed.is_connected(_on_pause_sfx_vol_changed):
+			sfx_vol_slider.value_changed.connect(_on_pause_sfx_vol_changed)
+
+
+func _sync_pause_settings() -> void:
+	if song_selector != null and MusicPlayer != null:
+		for i in range(MusicPlayer.available_songs.size()):
+			if str(MusicPlayer.available_songs[i]["id"]) == MusicPlayer.get_current_song():
+				song_selector.select(i)
+				break
+	if music_vol_slider != null and GameManager != null:
+		music_vol_slider.set_value_no_signal(GameManager.music_volume)
+	if sfx_vol_slider != null and GameManager != null:
+		sfx_vol_slider.set_value_no_signal(GameManager.sfx_volume)
+
+
+func _on_song_selected(idx: int) -> void:
+	if MusicPlayer == null or idx < 0 or idx >= MusicPlayer.available_songs.size():
+		return
+	var song_id: String = str(MusicPlayer.available_songs[idx]["id"])
+	MusicPlayer.play_song(song_id)
+
+
+func _on_pause_music_vol_changed(value: float) -> void:
+	if GameManager != null:
+		GameManager.set_audio_volumes(value, GameManager.sfx_volume)
+
+
+func _on_pause_sfx_vol_changed(value: float) -> void:
+	if GameManager != null:
+		GameManager.set_audio_volumes(GameManager.music_volume, value)
+
 
 func _on_peer_connected(peer_id: int) -> void:
 	if multiplayer.is_server():
