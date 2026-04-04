@@ -1,5 +1,5 @@
 # Ironwake — Windows addon setup
-# Downloads and installs GDExtension plugins (GodotSteam).
+# Downloads and installs GDExtension plugins (GodotSteam, LimboAI).
 # Requires: PowerShell 5.1+, 7-Zip or Windows tar with xz support (for GodotSteam)
 
 param(
@@ -17,6 +17,12 @@ $GodotSteamVersion = "4.17.1"
 $GodotSteamGdeTag  = "v4.17.1-gde"
 $GodotSteamArchive = "godotsteam-4.17-gdextension-plugin-4.4.tar.xz"
 $GodotSteamBaseUrl = "https://codeberg.org/godotsteam/godotsteam/releases/download"
+
+# LimboAI GDExtension plugin
+$LimboAIVersion  = "1.7.0"
+$LimboAITag      = "v1.7.0"
+$LimboAIArchive  = "limboai+v1.7.0.gdextension-4.6.zip"
+$LimboAIBaseUrl  = "https://github.com/limbonaut/limboai/releases/download"
 
 # Steam app ID — Ironwake Playtest (App ID 4530870)
 $SteamAppId = "4530870"
@@ -156,6 +162,50 @@ if ($installGodotSteam) {
     }
 } else {
     Write-Host "Skipped GodotSteam."
+}
+
+# ── LimboAI ────────────────────────────────────────────────────────────
+$LimboDownloadUrl = "$LimboAIBaseUrl/$LimboAITag/$LimboAIArchive"
+$LimboAddonDir    = Get-AddonDir "limboai"
+if (-not $LimboAddonDir) {
+    $LimboAddonDir = Join-Path $ScriptDir "addons\limboai"
+    Write-Host "limboai was not pre-registered; using default path: $LimboAddonDir"
+}
+$LimboRequiredLib = Join-Path $LimboAddonDir "bin\liblimboai.windows.template_release.x86_64.dll"
+
+if (Test-Path $LimboAddonDir) {
+    Write-Host "LimboAI already installed at $LimboAddonDir"
+    if (-not (Test-Path $LimboRequiredLib)) {
+        Write-Host "LimboAI install appears incomplete (missing Windows runtime DLL); repairing install."
+        $installLimboAI = $true
+    } else {
+        $installLimboAI = Should-Reinstall "LimboAI"
+    }
+    if ($installLimboAI -and $Force) {
+        Remove-Item -Recurse -Force $LimboAddonDir
+    }
+} else {
+    $installLimboAI = $true
+}
+
+$LimboTmpFile = Join-Path $env:TEMP "limboai-$LimboAIVersion.zip"
+
+if ($installLimboAI) {
+    try {
+        Write-Host "Downloading LimboAI GDExtension v$LimboAIVersion..."
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $LimboDownloadUrl -OutFile $LimboTmpFile -UseBasicParsing
+
+        Write-Host "Extracting to addons\limboai\..."
+        Expand-Archive -Path $LimboTmpFile -DestinationPath $ScriptDir -Force
+
+        Write-Host "LimboAI v$LimboAIVersion installed successfully."
+    }
+    finally {
+        if (Test-Path $LimboTmpFile) { Remove-Item $LimboTmpFile -Force }
+    }
+} else {
+    Write-Host "Skipped LimboAI."
 }
 
 # Create steam_appid.txt if it doesn't exist

@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://dq6steamimg01"]
+
+[ext_resource type="Script" path="res://tools/generate_steam_assets.gd" id="1_generator"]
+
+[node name="SteamImageGenerator" type="Node2D"]
+script = ExtResource("1_generator")
