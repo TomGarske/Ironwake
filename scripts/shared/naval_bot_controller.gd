@@ -158,6 +158,7 @@ func update(delta: float) -> void:
 		_sync_limbo_blackboard()
 		bt_player.call("update", delta)
 		_adjust_sail_for_turn()
+	_manage_crew()
 
 
 func _tick_timers(delta: float) -> void:
@@ -657,3 +658,47 @@ func get_debug_text() -> String:
 	lines.append("Spd: %.1f  AngV: %.2f" % [agent.get_speed() if agent else 0.0, agent.get_angular_velocity() if agent else 0.0])
 	lines.append("BT: init=%s active=%s" % [_bt_initialised, bt_player.get("active") if bt_player else "N/A"])
 	return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Crew management — allocate crew based on tactical situation
+# ═══════════════════════════════════════════════════════════════════════
+const _CrewController := preload("res://scripts/shared/crew_controller.gd")
+
+func _manage_crew() -> void:
+	if agent == null:
+		return
+	var crew: Variant = agent.ship_dict.get("crew")
+	if crew == null:
+		return
+
+	var hp_frac: float = 0.0
+	var max_hp: float = float(agent.ship_dict.get("hull_hits_max", 14.0))
+	if max_hp > 0.0:
+		hp_frac = float(agent.ship_dict.get("health", max_hp)) / max_hp
+
+	var in_combat: bool = distance_to_target < 800.0
+	var needs_repair: bool = hp_frac < 0.5
+	var maneuvering: bool = absf(bearing_to_target_deg) > 60.0
+
+	# Check for fire/flood emergencies.
+	var dmg_st: Variant = agent.ship_dict.get("damage_state")
+	var has_fire: bool = dmg_st != null and dmg_st.is_on_fire()
+	var has_flood: bool = dmg_st != null and dmg_st.flood_level > 0.15
+
+	var target_alloc: Array[int] = [4, 4, 4, 4, 4]
+	if has_fire and has_flood:
+		target_alloc = [2, 2, 2, 2, 12]
+	elif has_fire or has_flood:
+		target_alloc = [3, 3, 2, 2, 10]
+	elif needs_repair:
+		target_alloc = [3, 3, 3, 3, 8]
+	elif in_combat:
+		if preferred_side == "port":
+			target_alloc = [7, 3, 3, 4, 3]
+		else:
+			target_alloc = [3, 7, 3, 4, 3]
+	elif maneuvering:
+		target_alloc = [3, 3, 6, 5, 3]
+
+	crew.move_toward_allocation(target_alloc)

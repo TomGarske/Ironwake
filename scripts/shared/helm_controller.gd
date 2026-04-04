@@ -48,6 +48,8 @@ var wheel_return_rate: float = 0.15
 var counter_steer_damping: float = 0.3
 
 var center_threshold: float = 0.04
+## Crew manning multiplier: scales rudder responsiveness. Set by arena from CrewController efficiency.
+var crew_helm_mult: float = 1.0
 
 ## Component damage: 0.0 = pristine, 1.0 = tiller/rudder destroyed.
 ## Reduces rudder follow rate, wheel spin accel, and max rudder deflection.
@@ -81,6 +83,7 @@ func copy_from(other: HelmController) -> void:
 	wheel_locked = other.wheel_locked
 	wheel_lock_position = other.wheel_lock_position
 	damage = other.damage
+	crew_helm_mult = other.crew_helm_mult
 
 
 func process_steer(delta: float, left_strength: float, right_strength: float) -> void:
@@ -106,7 +109,7 @@ func process_steer(delta: float, left_strength: float, right_strength: float) ->
 	if active:
 		var target_vel: float = wheel_max_spin * r - wheel_max_spin * l
 		var opposing: bool = (target_vel > 0.0 and wheel_position < -0.12) or (target_vel < 0.0 and wheel_position > 0.12)
-		var eff_accel: float = wheel_spin_accel * (counter_steer_damping if opposing else 1.0)
+		var eff_accel: float = wheel_spin_accel * crew_helm_mult * (counter_steer_damping if opposing else 1.0)
 		wheel_velocity = move_toward(wheel_velocity, target_vel, eff_accel * delta)
 	else:
 		wheel_velocity = move_toward(wheel_velocity, 0.0, wheel_friction * delta)
@@ -119,7 +122,7 @@ func process_steer(delta: float, left_strength: float, right_strength: float) ->
 	if absf(wheel_position) < 0.005:
 		wheel_position = 0.0
 
-	var eff_follow: float = rudder_follow_rate * lerpf(1.0, MIN_RUDDER_EFFICIENCY, damage)
+	var eff_follow: float = rudder_follow_rate * lerpf(1.0, MIN_RUDDER_EFFICIENCY, damage) * crew_helm_mult
 	rudder_angle = move_toward(rudder_angle, wheel_position, eff_follow * delta)
 	# Damage limits max rudder deflection — bent tiller / fouled rope.
 	var max_defl: float = lerpf(1.0, MIN_DEFLECTION_MULT, damage)

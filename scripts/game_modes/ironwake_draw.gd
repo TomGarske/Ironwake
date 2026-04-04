@@ -84,7 +84,7 @@ func _cannon_muzzle_world(p: Dictionary, battery: RefCounted, cannon_index: int)
 		along_t = (float(idx) - float(n_g - 1) * 0.5) / float(n_g - 1)
 	var along: Vector2 = hull_n * (along_t * half_span * 2.0)
 	# Muzzle at hull edge — half-width of the ship (gunport in the hull side).
-	var out_m: float = NC.SHIP_WIDTH_UNITS * 0.5
+	var out_m: float = float(p.get("ship_width", NC.SHIP_WIDTH_UNITS)) * 0.5
 	return Vector2(float(p.wx), float(p.wy)) + along + perp * out_m
 
 
@@ -219,8 +219,10 @@ func draw_player(p: Dictionary) -> void:
 			sink_hull_v = sink_hull_v.normalized()
 			var sink_fwd: Vector2 = _dir_screen(sink_hull_v.x, sink_hull_v.y)
 			var sink_right: Vector2 = Vector2(-sink_fwd.y, sink_fwd.x)
-			var sink_px_len: float = maxf(14.0 * a._zoom, (_w2s(p.wx + sink_hull_v.x * NC.SHIP_LENGTH_UNITS, p.wy + sink_hull_v.y * NC.SHIP_LENGTH_UNITS) - sp).length())
-			var sink_px_wid: float = maxf(8.0 * a._zoom, (_w2s(p.wx + sink_right.x * NC.SHIP_WIDTH_UNITS, p.wy + sink_right.y * NC.SHIP_WIDTH_UNITS) - sp).length())
+			var sink_s_len: float = float(p.get("ship_length", NC.SHIP_LENGTH_UNITS))
+			var sink_s_wid: float = float(p.get("ship_width", NC.SHIP_WIDTH_UNITS))
+			var sink_px_len: float = maxf(14.0 * a._zoom, (_w2s(p.wx + sink_hull_v.x * sink_s_len, p.wy + sink_hull_v.y * sink_s_len) - sp).length())
+			var sink_px_wid: float = maxf(8.0 * a._zoom, (_w2s(p.wx + sink_right.x * sink_s_wid, p.wy + sink_right.y * sink_s_wid) - sp).length())
 
 			# Sink offset: ship drops downward on screen as it sinks.
 			var sink_drop: float = sink_frac * 18.0 * a._zoom
@@ -269,8 +271,8 @@ func draw_player(p: Dictionary) -> void:
 			# Fully sunk — wreck X marker sized to match the ship hull.
 			var wreck_alpha: float = clampf(respawn_t / (a.RESPAWN_DELAY_SEC - a.SINK_ANIM_DURATION), 0.0, 0.6)
 			if wreck_alpha > 0.02:
-				var wx_half_l: float = maxf(14.0 * a._zoom, NC.SHIP_LENGTH_UNITS * a._TD_SCALE * a._zoom * 0.4)
-				var wx_half_w: float = maxf(8.0 * a._zoom, NC.SHIP_WIDTH_UNITS * a._TD_SCALE * a._zoom * 0.4)
+				var wx_half_l: float = maxf(14.0 * a._zoom, float(p.get("ship_length", NC.SHIP_LENGTH_UNITS)) * a._TD_SCALE * a._zoom * 0.4)
+				var wx_half_w: float = maxf(8.0 * a._zoom, float(p.get("ship_width", NC.SHIP_WIDTH_UNITS)) * a._TD_SCALE * a._zoom * 0.4)
 				var wreck_col: Color = Color(0.55, 0.15, 0.1, wreck_alpha)
 				a.draw_line(draw_pos + Vector2(-wx_half_l, -wx_half_w), draw_pos + Vector2(wx_half_l, wx_half_w),
 					wreck_col, 3.0 * a._zoom)
@@ -283,8 +285,10 @@ func draw_player(p: Dictionary) -> void:
 	hull = hull.normalized()
 	var fwd: Vector2 = _dir_screen(hull.x, hull.y)
 	var right: Vector2 = Vector2(-fwd.y, fwd.x)
-	var px_len: float = maxf(14.0 * a._zoom, (_w2s(p.wx + hull.x * NC.SHIP_LENGTH_UNITS, p.wy + hull.y * NC.SHIP_LENGTH_UNITS) - sp).length())
-	var px_wid: float = maxf(8.0 * a._zoom, (_w2s(p.wx + right.x * NC.SHIP_WIDTH_UNITS, p.wy + right.y * NC.SHIP_WIDTH_UNITS) - sp).length())
+	var draw_s_len: float = float(p.get("ship_length", NC.SHIP_LENGTH_UNITS))
+	var draw_s_wid: float = float(p.get("ship_width", NC.SHIP_WIDTH_UNITS))
+	var px_len: float = maxf(14.0 * a._zoom, (_w2s(p.wx + hull.x * draw_s_len, p.wy + hull.y * draw_s_len) - sp).length())
+	var px_wid: float = maxf(8.0 * a._zoom, (_w2s(p.wx + right.x * draw_s_wid, p.wy + right.y * draw_s_wid) - sp).length())
 	var h_len: float = px_len
 	var h_wid: float = px_wid
 	# FTL-style schematic hull (same proportions as _draw_ftl_ship_hud), oriented with bow = fwd.
@@ -301,7 +305,7 @@ func draw_player(p: Dictionary) -> void:
 	var stern_r: Vector2 = draw_pos - fwd * h_len * 0.38 + right * h_wid * 0.48
 	var transom: Vector2 = draw_pos - fwd * h_len * 0.35
 	var mod_color: Color = p.palette[0]
-	var hp_frac: float = clampf(float(p.get("health", a.HULL_HITS_MAX)) / a.HULL_HITS_MAX, 0.0, 1.0)
+	var hp_frac: float = clampf(float(p.get("health", a._hull_max(p))) / a._hull_max(p), 0.0, 1.0)
 	# Tint hull toward red/brown as damage accumulates.
 	var dmg_t: float = 1.0 - hp_frac
 	var base_r: float = lerpf(mod_color.r * 0.55, 0.35, dmg_t * 0.6)
@@ -329,6 +333,29 @@ func draw_player(p: Dictionary) -> void:
 			var side_f: float = -0.3 if mi % 2 == 0 else 0.3
 			var mark_pos: Vector2 = draw_pos + fwd * h_len * along_off + right * h_wid * side_f
 			a.draw_circle(mark_pos, (1.5 + dmg_t * 1.5) * a._zoom, mark_col)
+	# Fire visual effects on world ship.
+	var draw_dmg: Variant = p.get("damage_state")
+	if draw_dmg != null and draw_dmg.is_on_fire():
+		var game_t: float = float(Time.get_ticks_msec()) / 1000.0
+		for fi in range(draw_dmg.fire_zones.size()):
+			var fire_i: float = draw_dmg.fire_zones[fi]
+			if fire_i < 0.03:
+				continue
+			var ft: float = (float(fi) + 0.5) / 8.0
+			var along: float = lerpf(0.35, -0.35, ft)
+			var fire_pos: Vector2 = draw_pos + fwd * h_len * along
+			var flicker: float = 0.6 + 0.4 * sin(game_t * 8.0 + float(fi) * 2.1)
+			var fire_r: float = (3.0 + fire_i * 6.0) * a._zoom * flicker
+			var fire_alpha: float = fire_i * 0.7 * flicker
+			a.draw_circle(fire_pos, fire_r, Color(1.0, 0.55, 0.1, fire_alpha))
+			a.draw_circle(fire_pos + Vector2(0, -2.0 * a._zoom), fire_r * 0.6, Color(1.0, 0.3, 0.05, fire_alpha * 0.7))
+	# Flooding visual overlay.
+	if draw_dmg != null and draw_dmg.flood_level > 0.05:
+		var flood_alpha: float = draw_dmg.flood_level * 0.3
+		var flood_col: Color = Color(0.1, 0.2, 0.6, flood_alpha)
+		var flood_poly := PackedVector2Array([mid_l, mid_r, aft_r, stern_r, transom, stern_l, aft_l])
+		if h_len > 1.0:
+			a.draw_colored_polygon(flood_poly, flood_col)
 	a.draw_line(draw_pos + fwd * h_len * 0.40, draw_pos + fwd * h_len * 0.52, Color(0.55, 0.45, 0.30, 0.75), 1.6 * a._zoom, true)
 	a.draw_line(draw_pos + fwd * h_len * 0.06, draw_pos + fwd * h_len * 0.28, Color(0.48, 0.40, 0.28, 0.55), 1.2 * a._zoom, true)
 	var ctr_w: Vector2 = Vector2(float(p.wx), float(p.wy))
@@ -402,7 +429,7 @@ func draw_hud(vp: Vector2) -> void:
 		var row_idx: int = i / MAX_COLS
 		var bx: float = pad + float(col_idx) * spacing
 		var by: float = pad + float(row_idx) * row_stride
-		var fill: float = bar_w * clampf(float(p.health) / a.HULL_HITS_MAX, 0.0, 1.0)
+		var fill: float = bar_w * clampf(float(p.health) / a._hull_max(p), 0.0, 1.0)
 		var col: Color = p.palette[0]
 		a.draw_rect(Rect2(bx, by, bar_w, bar_h), a._HUD_BG)
 		if p.alive and fill > 0.0:
@@ -410,7 +437,7 @@ func draw_hud(vp: Vector2) -> void:
 		a.draw_rect(Rect2(bx, by, bar_w, bar_h), a._HUD_BORDER, false, 1.5)
 		var bar_txt: String
 		if p.alive:
-			bar_txt = "%s  %d/%d" % [p.label, int(maxf(p.health, 0.0)), int(a.HULL_HITS_MAX)]
+			bar_txt = "%s  %d/%d" % [p.label, int(maxf(p.health, 0.0)), int(a._hull_max(p))]
 		else:
 			var rt: float = float(p.get("respawn_timer", 0.0))
 			bar_txt = "%s  respawn %.1fs" % [p.label, rt] if rt > 0.001 else "%s  —" % p.label
@@ -898,16 +925,17 @@ func draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 	var spd: float = float(p.get("move_speed", 0.0))
 	var ang_vel: float = float(p.get("angular_velocity", 0.0))
 
+	var draw_max_speed: float = a._ship_max_speed(p)
 	var prev_sail_eff: float = lerpf(1.0, a._SailController.MIN_EFFICIENCY, sail.damage)
 	var target_cap: float = 0.0
 	var sails_provide_thrust: bool = true
 	match int(sail.sail_state):
 		a._SailController.SailState.FULL:
-			target_cap = NC.MAX_SPEED * prev_sail_eff
+			target_cap = draw_max_speed * prev_sail_eff
 		a._SailController.SailState.HALF:
-			target_cap = NC.CRUISE_SPEED * prev_sail_eff
+			target_cap = draw_max_speed * (NC.CRUISE_SPEED / NC.MAX_SPEED) * prev_sail_eff
 		a._SailController.SailState.QUARTER:
-			target_cap = NC.QUARTER_SPEED * prev_sail_eff
+			target_cap = draw_max_speed * (NC.QUARTER_SPEED / NC.MAX_SPEED) * prev_sail_eff
 		_:
 			target_cap = NC.SAILS_DOWN_DRIFT_SPEED
 			sails_provide_thrust = false
@@ -946,7 +974,7 @@ func draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 		spd = maxf(sim_drift_floor, spd - rud_abs * a.MOTION_TURNING_SPEED_LOSS * dt_step)
 		if rud_abs > a.MOTION_HARD_TURN_RUDDER:
 			spd = maxf(sim_drift_floor, spd - rud_abs * a.MOTION_HARD_TURN_SPEED_LOSS * dt_step)
-		spd = clampf(spd, 0.0, NC.MAX_SPEED * 1.05)
+		spd = clampf(spd, 0.0, draw_max_speed * 1.05)
 
 		wx += hull.x * spd * dt_step
 		wy += hull.y * spd * dt_step
@@ -1154,14 +1182,15 @@ func draw_motion_battery_hud(_vp: Vector2) -> void:
 	var spd: float = float(p.get("move_speed", 0.0))
 	var cap: float = 0.0
 	var sail = p.get("sail")
+	var dbg_ship_max: float = a._ship_max_speed(p)
 	if sail != null:
 		match sail.sail_state:
 			a._SailController.SailState.FULL:
-				cap = NC.MAX_SPEED
+				cap = dbg_ship_max
 			a._SailController.SailState.HALF:
-				cap = NC.CRUISE_SPEED
+				cap = dbg_ship_max * (NC.CRUISE_SPEED / NC.MAX_SPEED)
 			a._SailController.SailState.QUARTER:
-				cap = NC.QUARTER_SPEED
+				cap = dbg_ship_max * (NC.QUARTER_SPEED / NC.MAX_SPEED)
 			_:
 				cap = NC.SAILS_DOWN_DRIFT_SPEED
 	a.draw_string(font, Vector2(x, y + 88.0), "Speed %.2f / %.1f" % [spd, cap], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, dim)
@@ -1257,8 +1286,9 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 	a.draw_line(Vector2(cx - 12.0, cy - hh * 0.28), Vector2(cx + 12.0, cy - hh * 0.28), Color(0.50, 0.42, 0.28, 0.6), 1.2, true)
 	a.draw_line(Vector2(cx, cy + 0.0), Vector2(cx, cy + hh * 0.15), Color(0.50, 0.42, 0.28, 0.6), 1.2, true)
 
-	var hp: float = float(p.get("health", a.HULL_HITS_MAX))
-	var hp_frac: float = clampf(hp / a.HULL_HITS_MAX, 0.0, 1.0)
+	var hull_max: float = a._hull_max(p)
+	var hp: float = float(p.get("health", hull_max))
+	var hp_frac: float = clampf(hp / hull_max, 0.0, 1.0)
 
 	var zone_names: Array[String] = ["Bowsprit", "Bow", "Fwd Gun", "Mid", "Main", "Aft Gun", "Quarter", "Stern"]
 	var zone_count: int = zone_names.size()
@@ -1266,6 +1296,7 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 	var zone_total_h: float = hh * 0.80
 	var zone_h: float = zone_total_h / float(zone_count)
 
+	var dmg_state: Variant = p.get("damage_state")
 	var zone_widths: Array[float] = [0.30, 0.50, 0.68, 0.72, 0.72, 0.65, 0.52, 0.40]
 	for zi in range(zone_count):
 		var zy: float = zone_y_start + float(zi) * zone_h
@@ -1283,9 +1314,28 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 		else:
 			zone_col = Color(0.78, 0.18, 0.12, 0.65)
 		a.draw_rect(Rect2(cx - zw * 0.5, zy + 1.0, zw, zone_h - 2.0), zone_col)
+		# Fire overlay — pulsing orange/red glow on burning zones.
+		if dmg_state != null and zi < dmg_state.fire_zones.size():
+			var fire_i: float = dmg_state.fire_zones[zi]
+			if fire_i > 0.02:
+				var pulse: float = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008 + float(zi) * 1.5)
+				var fire_alpha: float = fire_i * 0.65 * pulse
+				var fire_col: Color = Color(1.0, lerpf(0.5, 0.15, fire_i), 0.05, fire_alpha)
+				a.draw_rect(Rect2(cx - zw * 0.5, zy + 1.0, zw, zone_h - 2.0), fire_col)
 		a.draw_line(Vector2(cx - zw * 0.5, zy + zone_h - 1.0), Vector2(cx + zw * 0.5, zy + zone_h - 1.0), Color(0.40, 0.44, 0.52, 0.35), 0.8)
 		var lbl_col: Color = Color(0.82, 0.85, 0.92, 0.75)
-		a.draw_string(font, Vector2(cx - zw * 0.5 + 3.0, zy + zone_h - 4.0), zone_names[zi], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, lbl_col)
+		# Show "FIRE" label on burning zones.
+		if dmg_state != null and zi < dmg_state.fire_zones.size() and dmg_state.fire_zones[zi] > 0.02:
+			a.draw_string(font, Vector2(cx + zw * 0.5 - 28.0, zy + zone_h - 4.0), "FIRE", HORIZONTAL_ALIGNMENT_RIGHT, -1, 7, Color(1.0, 0.4, 0.1, 0.95))
+			a.draw_string(font, Vector2(cx - zw * 0.5 + 3.0, zy + zone_h - 4.0), zone_names[zi], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1.0, 0.7, 0.3, 0.9))
+		else:
+			a.draw_string(font, Vector2(cx - zw * 0.5 + 3.0, zy + zone_h - 4.0), zone_names[zi], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, lbl_col)
+	# Flood level indicator — rising blue from bottom of hull schematic.
+	if dmg_state != null and dmg_state.flood_level > 0.01:
+		var flood_h: float = zone_total_h * clampf(dmg_state.flood_level, 0.0, 1.0)
+		var flood_y: float = zone_y_start + zone_total_h - flood_h
+		var flood_alpha: float = 0.25 + 0.15 * sin(Time.get_ticks_msec() * 0.003)
+		a.draw_rect(Rect2(cx - hw * 0.35, flood_y, hw * 0.70, flood_h), Color(0.1, 0.3, 0.7, flood_alpha))
 
 	var bat_icon_r: float = 6.0
 	var bat_entries: Array[Dictionary] = []
@@ -1371,12 +1421,38 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 	else:
 		hp_col = Color(0.85, 0.22, 0.18, 0.92)
 	a.draw_rect(Rect2(hp_bar_x + 1.0, hp_bar_y + 1.0, (hp_bar_w - 2.0) * hp_frac, 10.0), hp_col)
-	for tick_i in range(1, int(a.HULL_HITS_MAX)):
-		var tx: float = hp_bar_x + hp_bar_w * (float(tick_i) / a.HULL_HITS_MAX)
+	var _SCC := preload("res://scripts/shared/ship_class_config.gd")
+	for tick_i in range(1, int(hull_max)):
+		var tx: float = hp_bar_x + hp_bar_w * (float(tick_i) / hull_max)
 		a.draw_line(Vector2(tx, hp_bar_y + 1.0), Vector2(tx, hp_bar_y + 11.0), Color(0.12, 0.14, 0.18, 0.6), 0.8)
-	a.draw_string(font, Vector2(hp_bar_x, hp_bar_y + 24.0), "Hull %d / %d" % [int(maxf(hp, 0.0)), int(a.HULL_HITS_MAX)], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.85, 0.88, 0.95, 0.95))
+	var class_name_str: String = _SCC.CLASS_NAMES[int(p.get("ship_class", _SCC.ShipClass.BRIG))]
+	a.draw_string(font, Vector2(hp_bar_x, hp_bar_y + 24.0), "%s  Hull %d / %d" % [class_name_str, int(maxf(hp, 0.0)), int(hull_max)], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.85, 0.88, 0.95, 0.95))
+	# --- Integrity state + hazard indicators ---
+	var _DSC := preload("res://scripts/shared/damage_state_controller.gd")
+	var status_y: float = hp_bar_y + 26.0
+	if dmg_state != null:
+		var int_state: int = int(dmg_state.integrity)
+		var int_name: String = _DSC.INTEGRITY_NAMES[int_state] if int_state < _DSC.INTEGRITY_NAMES.size() else "Unknown"
+		var int_col: Color = _DSC.INTEGRITY_COLORS[int_state] if int_state < _DSC.INTEGRITY_COLORS.size() else Color.WHITE
+		a.draw_string(font, Vector2(hp_bar_x + hp_bar_w - 2.0, hp_bar_y + 24.0), int_name, HORIZONTAL_ALIGNMENT_RIGHT, int(hp_bar_w * 0.4), 11, int_col)
+		# Flood bar (below hull bar, if flooding).
+		if dmg_state.flood_level > 0.01:
+			status_y += 14.0
+			var flood_bar_w: float = hp_bar_w * 0.5
+			a.draw_rect(Rect2(hp_bar_x, status_y, flood_bar_w, 8.0), Color(0.05, 0.08, 0.15, 0.9))
+			var flood_frac: float = clampf(dmg_state.flood_level, 0.0, 1.0)
+			var flood_col: Color = Color(0.15, 0.4, 0.85, 0.9) if flood_frac < 0.6 else Color(0.2, 0.25, 0.95, 0.95)
+			a.draw_rect(Rect2(hp_bar_x + 1.0, status_y + 1.0, (flood_bar_w - 2.0) * flood_frac, 6.0), flood_col)
+			a.draw_string(font, Vector2(hp_bar_x + flood_bar_w + 4.0, status_y + 8.0), "Flooding %d%%" % int(flood_frac * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.5, 0.65, 0.95, 0.95))
+		# Fire summary (below flood, if burning).
+		var burning: int = dmg_state.get_burning_zone_count()
+		if burning > 0:
+			status_y += 12.0
+			var fire_pulse: float = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.006)
+			var fire_text: String = "%d zone%s ablaze" % [burning, "s" if burning > 1 else ""]
+			a.draw_string(font, Vector2(hp_bar_x, status_y + 10.0), fire_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(1.0, 0.5, 0.15, 0.95 * fire_pulse))
 
-	var elev_y: float = hp_bar_y + 36.0
+	var elev_y: float = maxf(hp_bar_y + 36.0, status_y + 16.0)
 	var elev_alpha: float = _hud_fade_alpha(a._fade_elev_hud)
 	var ref_bat: Variant = p.get("battery_port") if sel_fire_port else p.get("battery_stbd")
 	if ref_bat != null and elev_alpha > 0.01:

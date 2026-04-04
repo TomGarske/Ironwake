@@ -21,6 +21,8 @@ var max_speed: float = 5.0
 var coast_drag_threshold: float = 0.1
 
 var current_sail_level: float = 0.0
+## Crew manning multiplier: scales raise/lower rate. Set by arena from CrewController efficiency.
+var crew_sail_mult: float = 1.0
 
 ## Component damage: 0.0 = pristine, 1.0 = rigging destroyed.
 ## Reduces effective sail deployment and raise rate.
@@ -59,8 +61,8 @@ func get_target_speed() -> float:
 
 func process(delta: float) -> void:
 	var target: float = get_target_sail_level()
-	var raise_rate_eff: float = sail_raise_rate * lerpf(1.0, DAMAGED_RAISE_MULT, damage)
-	var rate: float = raise_rate_eff if current_sail_level < target else sail_lower_rate
+	var raise_rate_eff: float = sail_raise_rate * lerpf(1.0, DAMAGED_RAISE_MULT, damage) * crew_sail_mult
+	var rate: float = raise_rate_eff if current_sail_level < target else sail_lower_rate * crew_sail_mult
 	current_sail_level = move_toward(current_sail_level, target, rate * delta)
 
 

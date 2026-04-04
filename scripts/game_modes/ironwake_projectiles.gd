@@ -47,8 +47,8 @@ func point_hits_ship_ellipse(point: Vector2, ship: Dictionary) -> bool:
 	var rel: Vector2 = point - Vector2(float(ship.wx), float(ship.wy))
 	var fwd: float = rel.dot(hull)
 	var lat: float = rel.dot(perp)
-	var a: float = NC.SHIP_LENGTH_UNITS * 0.5
-	var b: float = NC.SHIP_WIDTH_UNITS * 0.5
+	var a: float = float(ship.get("ship_length", NC.SHIP_LENGTH_UNITS)) * 0.5
+	var b: float = float(ship.get("ship_width", NC.SHIP_WIDTH_UNITS)) * 0.5
 	var k: float = (fwd * fwd) / (a * a) + (lat * lat) / (b * b)
 	return k <= NC.ELLIPSE_HIT_SLACK
 
@@ -160,7 +160,7 @@ func cannon_muzzle_world(p: Dictionary, battery: _BatteryController, cannon_inde
 		along_t = (float(idx) - float(n_g - 1) * 0.5) / float(n_g - 1)
 	var along: Vector2 = hull_n * (along_t * half_span * 2.0)
 	# Muzzle at hull edge — half-width of the ship (gunport in the hull side).
-	var out_m: float = NC.SHIP_WIDTH_UNITS * 0.5
+	var out_m: float = float(p.get("ship_width", NC.SHIP_WIDTH_UNITS)) * 0.5
 	return Vector2(float(p.wx), float(p.wy)) + along + perp * out_m
 
 
@@ -207,6 +207,12 @@ func fire_projectile(p: Dictionary, cannon_index: int = 0, _shot_damage: float =
 		start_x = float(p.wx) + shot_dir.x * muzzle
 		start_y = float(p.wy) + shot_dir.y * muzzle
 	spawn_muzzle_fx(start_x, start_y, shot_dir)
+	# Cannon discharge SFX — close boom for local player, distant for others.
+	var local_peer: int = int(arena._players[arena._my_index].get("peer_id", -1))
+	if fire_peer == local_peer:
+		arena._play_cannon_fire_sound()
+	else:
+		arena._play_cannon_fire_distant()
 	var elev_deg: float = _CannonBallistics.DEFAULT_ELEVATION_DEG
 	if battery != null:
 		elev_deg = battery.elevation_degrees()

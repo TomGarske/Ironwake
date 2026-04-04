@@ -99,8 +99,8 @@ func tick_ramming(delta: float) -> void:
 			# Ellipse half-extent along collision normal (Lame approximation).
 			var a_fwd_dot: float = absf(a_hull.dot(col_n))
 			var b_fwd_dot: float = absf(b_hull.dot(col_n))
-			var a_half: float = lerpf(NC.SHIP_WIDTH_UNITS * 0.5, NC.SHIP_LENGTH_UNITS * 0.5, a_fwd_dot)
-			var b_half: float = lerpf(NC.SHIP_WIDTH_UNITS * 0.5, NC.SHIP_LENGTH_UNITS * 0.5, b_fwd_dot)
+			var a_half: float = lerpf(float(a.get("ship_width", NC.SHIP_WIDTH_UNITS)) * 0.5, float(a.get("ship_length", NC.SHIP_LENGTH_UNITS)) * 0.5, a_fwd_dot)
+			var b_half: float = lerpf(float(b.get("ship_width", NC.SHIP_WIDTH_UNITS)) * 0.5, float(b.get("ship_length", NC.SHIP_LENGTH_UNITS)) * 0.5, b_fwd_dot)
 			var threshold: float = a_half + b_half
 			if dist > threshold:
 				continue
@@ -165,7 +165,7 @@ func tick_ramming(delta: float) -> void:
 			# Spawn a splash FX at the point of contact.
 			var cx: float = ax + nx * (dist * 0.5)
 			var cy: float = ay + ny * (dist * 0.5)
-			arena._splash_fx.append({"wx": cx, "wy": cy, "t": arena._SPLASH_DURATION * 1.8})
+			arena._splash_fx.append({"wx": cx, "wy": cy, "t": 0.0})
 
 
 
@@ -178,6 +178,10 @@ func apply_ram_damage(p: Dictionary, damage: float, idx: int, other_idx: int = -
 	var helm_obj: Variant = p.get("helm")
 	if helm_obj != null and damage > 0.5:
 		helm_obj.apply_hit()
+	# Ramming causes flooding — hull breach at the waterline.
+	var ram_dmg_state: Variant = p.get("damage_state")
+	if ram_dmg_state != null:
+		ram_dmg_state.on_ram_hit()
 	# Scoreboard: track ramming damage.
 	var def_pid: int = int(p.get("peer_id", 0))
 	if arena._scoreboard.has(def_pid):
@@ -203,7 +207,7 @@ func apply_ram_damage(p: Dictionary, damage: float, idx: int, other_idx: int = -
 	arena._hull_strike_fx.append({
 		"wx": float(p.wx), "wy": float(p.wy),
 		"h": NC.SHIP_DECK_HEIGHT_UNITS,
-		"t": arena._HULL_STRIKE_DURATION,
+		"t": 0.0,
 	})
 	arena._sound.play_cannon_hit_sound()
 	if not arena.multiplayer.has_multiplayer_peer() or arena.multiplayer.is_server():

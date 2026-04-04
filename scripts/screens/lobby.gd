@@ -14,6 +14,8 @@ const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 @onready var friends_title: Label = $LobbyCard/VBoxContainer/FriendsTitle
 @onready var friends_list: VBoxContainer = $LobbyCard/VBoxContainer/FriendsScroll/FriendsList
 @onready var invite_note_label: Label = $LobbyCard/VBoxContainer/InviteNoteLabel
+@onready var ship_class_selector: OptionButton = $LobbyCard/VBoxContainer/ShipClassSelector
+@onready var ship_class_desc: Label = $LobbyCard/VBoxContainer/ShipClassDesc
 @onready var ready_button: Button = $LobbyCard/VBoxContainer/ReadyButton
 @onready var start_button: Button = $LobbyCard/VBoxContainer/StartButton
 @onready var back_button: Button = $LobbyCard/VBoxContainer/BackButton
@@ -43,6 +45,7 @@ func _ready() -> void:
 	if GameManager != null and not GameManager.selected_game_mode_changed.is_connected(_on_selected_game_mode_changed):
 		GameManager.selected_game_mode_changed.connect(_on_selected_game_mode_changed)
 	_setup_game_mode_selector()
+	_setup_ship_class_selector()
 
 	# Refresh list when peers connect/disconnect
 	SteamManager.peer_connected.connect(_refresh_player_list)
@@ -83,6 +86,7 @@ func _apply_warm_tactical_theme() -> void:
 	UiStyleScript.style_title(game_mode_title_label, 16)
 	game_mode_selector.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
 	game_mode_selector.add_theme_color_override("font_disabled_color", UiStyleScript.TEXT_MUTED)
+	ship_class_selector.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
 	UiStyleScript.style_body(game_mode_description_label, true)
 	UiStyleScript.style_body(handshake_status_label, true)
 	UiStyleScript.style_body(invite_note_label, true)
@@ -155,6 +159,23 @@ func _on_selected_game_mode_changed(mode_id: String) -> void:
 	_refresh_crew_status()
 	game_mode_selector.disabled = not SteamManager.is_host
 
+func _setup_ship_class_selector() -> void:
+	ship_class_selector.clear()
+	for i in range(ShipClassConfig.CLASS_COUNT):
+		ship_class_selector.add_item(ShipClassConfig.CLASS_NAMES[i])
+	ship_class_selector.select(GameManager.local_ship_class)
+	_update_ship_class_desc(GameManager.local_ship_class)
+	if not ship_class_selector.item_selected.is_connected(_on_ship_class_selected):
+		ship_class_selector.item_selected.connect(_on_ship_class_selected)
+
+func _on_ship_class_selected(index: int) -> void:
+	GameManager.set_local_ship_class(index)
+	_update_ship_class_desc(index)
+
+func _update_ship_class_desc(index: int) -> void:
+	if ship_class_desc != null and index >= 0 and index < ShipClassConfig.CLASS_DESCRIPTIONS.size():
+		ship_class_desc.text = ShipClassConfig.CLASS_DESCRIPTIONS[index]
+
 func _refresh_player_list(_peer_id: int) -> void:
 	# Clear existing entries
 	for child in player_list.get_children():
@@ -185,7 +206,9 @@ func _refresh_player_list(_peer_id: int) -> void:
 		var label := Label.new()
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var ready_text: String = "Ready" if SteamManager.is_member_ready(member_id) else "Not Ready"
-		label.text = member_name + " (" + ready_text + ")"
+		var cls: int = GameManager.get_ship_class_for_steam_id(member_id)
+		var cls_name: String = ShipClassConfig.CLASS_NAMES[cls] if cls >= 0 and cls < ShipClassConfig.CLASS_COUNT else "Brig"
+		label.text = "%s [%s] (%s)" % [member_name, cls_name, ready_text]
 		UiStyleScript.style_body(label)
 		row.add_child(label)
 

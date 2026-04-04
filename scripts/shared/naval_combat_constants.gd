@@ -5,8 +5,8 @@ extends Object
 
 const UNITS_PER_LOGIC_TILE: float = 10.0
 
-const MAP_TILES_WIDE: int = 800
-const MAP_TILES_HIGH: int = 800
+const MAP_TILES_WIDE: int = 400
+const MAP_TILES_HIGH: int = 400
 
 ## Movement tuning (higher top-end speed with same accel/decel feel).
 ## Residual speed when sails furled: zero — ship comes to a full stop once momentum decays.

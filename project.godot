@@ -23,6 +23,7 @@ GameConstants="*res://scripts/autoload/game_constants.gd"
 DebugOverlay="*res://scripts/autoload/debug_overlay.gd"
 SteamManager="*res://scripts/autoload/steam_manager.gd"
 GameManager="*res://scripts/autoload/game_manager.gd"
+MusicPlayer="*res://scripts/autoload/music_player.gd"
 
 [display]
 

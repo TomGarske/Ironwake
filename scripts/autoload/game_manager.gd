@@ -3,8 +3,6 @@ extends Node
 # ---------------------------------------------------------------------------
 # Enums & Constants
 # ---------------------------------------------------------------------------
-# GAME_OVER is set when the match ends (currently only win/draw is handled via TurnManager signal).
-# TODO: assign GAME_OVER in _on_match_over handler once end-match UI flow is implemented.
 enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
 const MATCH_SCENE_PATH: String = "res://scenes/game/ironwake/ironwake_arena.tscn"
 const IRONWAKE_SCENE_PATH: String = "res://scenes/game/ironwake/ironwake_arena.tscn"
@@ -35,20 +33,25 @@ const GAME_MODES: Array[Dictionary] = [
 # ---------------------------------------------------------------------------
 ## Registry: peer_id (int) -> { steam_id: int, username: String, team: int }
 var players: Dictionary = {}
+## Per-player ship class selection: peer_id (int) -> ShipClassConfig.ShipClass (int)
+var player_ship_classes: Dictionary = {}
+var local_ship_class: int = ShipClassConfig.DEFAULT_CLASS
 var match_phase: MatchPhase = MatchPhase.LOBBY
 var _next_team_id: int = 0
 var music_enabled: bool = true
 var selected_game_mode_id: String = DEFAULT_GAME_MODE_ID
-var music_volume: float = 0.38
+var music_volume: float = 0.55
 var sfx_volume: float = 0.45
 var music_intensity: float = float(DEFAULT_MUSIC_PROFILE["intensity"])
 var music_speed: float = float(DEFAULT_MUSIC_PROFILE["speed"])
 var music_tone: float = float(DEFAULT_MUSIC_PROFILE["tone"])
 
+signal match_phase_changed(phase: MatchPhase)
 signal music_enabled_changed(enabled: bool)
 signal selected_game_mode_changed(mode_id: String)
 signal audio_volume_changed(music_volume: float, sfx_volume: float)
 signal music_profile_changed(intensity: float, speed: float, tone: float)
+signal ship_class_changed(peer_id: int, ship_class: int)
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -56,6 +59,12 @@ signal music_profile_changed(intensity: float, speed: float, tone: float)
 func _ready() -> void:
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	_apply_music_profile_for_mode(selected_game_mode_id, false)
+
+func set_match_phase(phase: MatchPhase) -> void:
+	if match_phase == phase:
+		return
+	match_phase = phase
+	match_phase_changed.emit(phase)
 
 func set_music_enabled(enabled: bool) -> void:
 	if music_enabled == enabled:
@@ -166,6 +175,35 @@ func _ensure_joy_motion_for_action(action: String, axis: JoyAxis, axis_value: fl
 	InputMap.action_add_event(action, motion_event)
 
 # ---------------------------------------------------------------------------
+# Ship class selection
+# ---------------------------------------------------------------------------
+func set_local_ship_class(ship_class: int) -> void:
+	if ship_class < 0 or ship_class >= ShipClassConfig.CLASS_COUNT:
+		return
+	local_ship_class = ship_class
+	if multiplayer.has_multiplayer_peer():
+		_sync_ship_class.rpc(multiplayer.get_unique_id(), ship_class)
+	else:
+		player_ship_classes[1] = ship_class
+		ship_class_changed.emit(1, ship_class)
+
+@rpc("any_peer", "call_local", "reliable")
+func _sync_ship_class(peer_id: int, ship_class: int) -> void:
+	if ship_class < 0 or ship_class >= ShipClassConfig.CLASS_COUNT:
+		return
+	player_ship_classes[peer_id] = ship_class
+	ship_class_changed.emit(peer_id, ship_class)
+
+func get_ship_class_for_peer(peer_id: int) -> int:
+	return int(player_ship_classes.get(peer_id, ShipClassConfig.DEFAULT_CLASS))
+
+func get_ship_class_for_steam_id(steam_id: int) -> int:
+	for peer_id in players:
+		if int(players[peer_id].get("steam_id", -1)) == steam_id:
+			return get_ship_class_for_peer(peer_id)
+	return ShipClassConfig.DEFAULT_CLASS
+
+# ---------------------------------------------------------------------------
 # Player registration
 # ---------------------------------------------------------------------------
 ## Any peer can call this; only the host processes it.
@@ -212,7 +250,7 @@ func start_match() -> void:
 	var target_scene_path: String = str(mode.get("scene_path", MATCH_SCENE_PATH))
 	if target_scene_path.is_empty():
 		target_scene_path = MATCH_SCENE_PATH
-	match_phase = MatchPhase.IN_MATCH
+	set_match_phase(MatchPhase.IN_MATCH)
 	print("[GameManager] Starting '%s' with %d players." % [str(mode.get("label", "Ironwake")), players.size()])
 	_load_match_scene.rpc(target_scene_path)
 
@@ -230,7 +268,8 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 func reset() -> void:
 	players.clear()
-	match_phase = MatchPhase.LOBBY
+	player_ship_classes.clear()
+	set_match_phase(MatchPhase.LOBBY)
 	_next_team_id = 0
 	if selected_game_mode_id != DEFAULT_GAME_MODE_ID:
 		selected_game_mode_id = DEFAULT_GAME_MODE_ID
@@ -243,7 +282,9 @@ func setup_offline_test() -> void:
 	players[1] = {"steam_id": 0, "username": "Player 1 (Test)", "team": 0}
 	players[2] = {"steam_id": 0, "username": "Player 2 (Test)", "team": 1}
 	_next_team_id = 2
+	player_ship_classes[1] = local_ship_class
+	player_ship_classes[2] = ShipClassConfig.DEFAULT_CLASS
 	selected_game_mode_id = DEFAULT_GAME_MODE_ID
 	_apply_music_profile_for_mode(selected_game_mode_id)
-	match_phase = MatchPhase.IN_MATCH
+	set_match_phase(MatchPhase.IN_MATCH)
 	print("[GameManager] Offline test mode: 2 players registered.")

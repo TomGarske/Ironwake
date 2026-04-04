@@ -146,9 +146,23 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_colors/font_color = Color(0.53, 0.62, 0.75, 0.85)
 theme_override_font_sizes/font_size = 11
-text = "Command a 74-gun third-rate warship.
-Helm, sail, and broadside battery controls
-with realistic ballistics and wind."
+text = "Choose your ship class and command
+helm, sail, and broadside battery controls
+with realistic ballistics."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="ShipClassSelector" type="OptionButton" parent="LeftMenuPanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.89, 0.94, 1, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
+
+[node name="ShipClassDesc" type="Label" parent="LeftMenuPanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.53, 0.62, 0.75, 0.85)
+theme_override_font_sizes/font_size = 10
+text = "Balanced warship — 20 crew, standard broadside."
 horizontal_alignment = 1
 autowrap_mode = 2
 

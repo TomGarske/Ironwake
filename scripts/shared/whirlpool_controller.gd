@@ -57,9 +57,6 @@ var disruption_ramp_sec: float = 180.0
 ## At full disruption, turbulence jitter amplitude (world units/s² on drag force).
 var disruption_turbulence_max: float = 3.0
 
-## Base influence radius (set once at init).
-var _base_influence_radius: float = 600.0
-
 ## Current disruption level (0.0–1.0). Read-only outside; use advance_time().
 var disruption: float = 0.0
 

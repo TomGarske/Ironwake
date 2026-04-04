@@ -73,16 +73,16 @@ static func build_drone_spawns(data: Dictionary) -> Array:
 	var u: float = NC.UNITS_PER_LOGIC_TILE
 	var cx: float = width * 0.5 * u
 	var cy: float = height * 0.5 * u
-	# Wide separation — ships are large and need room to manoeuvre at spawn.
+	# Tighter separation for smaller arena — still enough room to manoeuvre.
 	return [
-		Vector2(cx - 500.0, cy + 350.0),
-		Vector2(cx - 500.0, cy - 350.0),
-		Vector2(cx + 500.0, cy + 350.0),
-		Vector2(cx + 500.0, cy - 350.0),
-		Vector2(cx - 250.0, cy + 550.0),
-		Vector2(cx + 250.0, cy + 550.0),
-		Vector2(cx - 250.0, cy - 550.0),
-		Vector2(cx + 250.0, cy - 550.0),
+		Vector2(cx - 300.0, cy + 200.0),
+		Vector2(cx - 300.0, cy - 200.0),
+		Vector2(cx + 300.0, cy + 200.0),
+		Vector2(cx + 300.0, cy - 200.0),
+		Vector2(cx - 150.0, cy + 350.0),
+		Vector2(cx + 150.0, cy + 350.0),
+		Vector2(cx - 150.0, cy - 350.0),
+		Vector2(cx + 150.0, cy - 350.0),
 	]
 
 

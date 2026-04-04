@@ -14,13 +14,18 @@ const UiStyleScript := preload("res://scripts/ui/ui_style.gd")
 @onready var refresh_lobbies_button: Button = $RightLobbyPanel/VBoxContainer/RefreshLobbiesButton
 @onready var lobby_list_status: Label = $RightLobbyPanel/VBoxContainer/LobbyListStatus
 @onready var lobby_list: VBoxContainer = $RightLobbyPanel/VBoxContainer/LobbyListScroll/LobbyList
+@onready var ship_class_selector: OptionButton = $LeftMenuPanel/VBoxContainer/ShipClassSelector
+@onready var ship_class_desc: Label = $LeftMenuPanel/VBoxContainer/ShipClassDesc
 @onready var version_label: Label = $VersionLabel
 @onready var quit_confirm_dialog: ConfirmationDialog = $QuitConfirmDialog
 @onready var settings_popup: PopupPanel = $SettingsPopup
 @onready var sfx_volume_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/SfxVolumeRow/SfxVolumeSlider
 @onready var music_volume_row: HBoxContainer = $SettingsPopup/SettingsMargin/VBoxContainer/MusicVolumeRow
+@onready var music_volume_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/MusicVolumeRow/MusicVolumeSlider
 @onready var music_intensity_row: HBoxContainer = $SettingsPopup/SettingsMargin/VBoxContainer/MusicIntensityRow
+@onready var music_intensity_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/MusicIntensityRow/MusicIntensitySlider
 @onready var music_speed_row: HBoxContainer = $SettingsPopup/SettingsMargin/VBoxContainer/MusicSpeedRow
+@onready var music_speed_slider: HSlider = $SettingsPopup/SettingsMargin/VBoxContainer/MusicSpeedRow/MusicSpeedSlider
 
 var _menu_index: int = 0
 var _menu_up_prev: bool = false
@@ -37,6 +42,7 @@ func _ready() -> void:
 	_apply_warm_tactical_theme()
 	_setup_menu_navigation()
 	_setup_controller_debug_line()
+	_setup_ship_class_selector()
 	_sync_audio_settings_ui()
 	_hide_music_settings_ui()
 	_apply_dialog_theme()
@@ -61,7 +67,17 @@ func _ready() -> void:
 		quit_confirm_dialog.confirmed.connect(_on_quit_confirmed)
 	if GameManager != null and not GameManager.audio_volume_changed.is_connected(_on_audio_volume_changed):
 		GameManager.audio_volume_changed.connect(_on_audio_volume_changed)
+	if music_volume_slider != null and not music_volume_slider.value_changed.is_connected(_on_music_volume_slider_changed):
+		music_volume_slider.value_changed.connect(_on_music_volume_slider_changed)
+	if music_intensity_slider != null and not music_intensity_slider.value_changed.is_connected(_on_music_intensity_slider_changed):
+		music_intensity_slider.value_changed.connect(_on_music_intensity_slider_changed)
+	if music_speed_slider != null and not music_speed_slider.value_changed.is_connected(_on_music_speed_slider_changed):
+		music_speed_slider.value_changed.connect(_on_music_speed_slider_changed)
 	_refresh_menu_selection()
+
+	# Ensure menu music is playing (e.g. when returning from arena)
+	if MusicPlayer != null:
+		MusicPlayer.play_song(MusicPlayer.DEFAULT_MENU_SONG)
 
 	DebugOverlay.log_message("[HomeScreen] Ready.")
 	if SteamManager != null:
@@ -78,6 +94,7 @@ func _apply_warm_tactical_theme() -> void:
 	UiStyleScript.style_button(exit_button)
 	UiStyleScript.style_button(confirm_join_button)
 	UiStyleScript.style_button(refresh_lobbies_button)
+	ship_class_selector.add_theme_color_override("font_color", UiStyleScript.TEXT_PRIMARY)
 	UiStyleScript.style_line_edit(join_input)
 	var slider_rows := [
 		$SettingsPopup/SettingsMargin/VBoxContainer/SfxVolumeRow/Label
@@ -269,6 +286,26 @@ func _exit_tree() -> void:
 		GameManager.audio_volume_changed.disconnect(_on_audio_volume_changed)
 
 # ---------------------------------------------------------------------------
+# Ship class selector
+# ---------------------------------------------------------------------------
+func _setup_ship_class_selector() -> void:
+	ship_class_selector.clear()
+	for i in range(ShipClassConfig.CLASS_COUNT):
+		ship_class_selector.add_item(ShipClassConfig.CLASS_NAMES[i])
+	ship_class_selector.select(GameManager.local_ship_class)
+	_update_ship_class_desc(GameManager.local_ship_class)
+	if not ship_class_selector.item_selected.is_connected(_on_ship_class_selected):
+		ship_class_selector.item_selected.connect(_on_ship_class_selected)
+
+func _on_ship_class_selected(index: int) -> void:
+	GameManager.set_local_ship_class(index)
+	_update_ship_class_desc(index)
+
+func _update_ship_class_desc(index: int) -> void:
+	if ship_class_desc != null and index >= 0 and index < ShipClassConfig.CLASS_DESCRIPTIONS.size():
+		ship_class_desc.text = ShipClassConfig.CLASS_DESCRIPTIONS[index]
+
+# ---------------------------------------------------------------------------
 # Button handlers
 # ---------------------------------------------------------------------------
 func _on_host_button_pressed() -> void:
@@ -310,6 +347,18 @@ func _on_sfx_volume_slider_changed(value: float) -> void:
 	if GameManager != null:
 		GameManager.set_audio_volumes(GameManager.music_volume, value)
 
+func _on_music_volume_slider_changed(value: float) -> void:
+	if GameManager != null:
+		GameManager.set_audio_volumes(value, GameManager.sfx_volume)
+
+func _on_music_intensity_slider_changed(value: float) -> void:
+	if GameManager != null:
+		GameManager.set_music_profile(value, GameManager.music_speed, GameManager.music_tone)
+
+func _on_music_speed_slider_changed(value: float) -> void:
+	if GameManager != null:
+		GameManager.set_music_profile(GameManager.music_intensity, value, GameManager.music_tone)
+
 func _on_audio_volume_changed(_music_volume: float, _sfx_volume: float) -> void:
 	_sync_audio_settings_ui()
 
@@ -317,14 +366,19 @@ func _sync_audio_settings_ui() -> void:
 	if GameManager == null:
 		return
 	sfx_volume_slider.set_value_no_signal(GameManager.sfx_volume)
+	if music_volume_slider != null:
+		music_volume_slider.set_value_no_signal(GameManager.music_volume)
+	if music_intensity_slider != null:
+		music_intensity_slider.set_value_no_signal(GameManager.music_intensity)
+	if music_speed_slider != null:
+		music_speed_slider.set_value_no_signal(GameManager.music_speed)
 
 func _hide_music_settings_ui() -> void:
-	if music_volume_row != null:
-		music_volume_row.visible = false
+	# Music system is active — show intensity and speed sliders.
 	if music_intensity_row != null:
-		music_intensity_row.visible = false
+		music_intensity_row.visible = true
 	if music_speed_row != null:
-		music_speed_row.visible = false
+		music_speed_row.visible = true
 
 func _on_quit_confirmed() -> void:
 	get_tree().quit()

@@ -12,7 +12,10 @@ const _CannonBallistics := preload("res://scripts/shared/cannon_ballistics.gd")
 const _LocalSimController := preload("res://scripts/shared/local_sim_controller.gd")
 const _NavalBotController := preload("res://scripts/shared/naval_bot_controller.gd")
 const _OceanRenderer := preload("res://scripts/shared/ocean_renderer.gd")
+const _CrewController := preload("res://scripts/shared/crew_controller.gd")
 const _WhirlpoolController := preload("res://scripts/shared/whirlpool_controller.gd")
+const _ShipClassConfig := preload("res://scripts/shared/ship_class_config.gd")
+const _DamageStateController := preload("res://scripts/shared/damage_state_controller.gd")
 
 ## Emitted when local ship linear motion classification or turn flags change (req-motion-fsm §9).
 signal motion_state_changed(prev_linear: int, new_linear: int, is_turning: bool, is_turning_hard: bool)
@@ -61,6 +64,13 @@ var _scoreboard: Dictionary = {}
 var _match_over: bool = false
 ## Post-match: after END_DELAY, accept any key to return to menu.
 var _post_match_ready: bool = false
+## Win condition: first to KILL_TARGET kills, or most kills when MATCH_TIME_LIMIT expires.
+const KILL_TARGET: int = 10
+const MATCH_TIME_LIMIT: float = 300.0  # 5 minutes
+var _match_timer: float = 0.0
+var _warned_30s: bool = false
+var _warned_10s: bool = false
+var _crew_overlay_visible: bool = false
 ## Smooth zoom target — lerped toward each frame when auto-zoom is active.
 var _zoom_target: float = NC.NAVAL_DEFAULT_ZOOM
 var _ocean_renderer: OceanRenderer = null
@@ -102,6 +112,14 @@ const FIRE_MODE_ACTION: String = "bf_fire_mode"
 const WHEEL_LOCK_ACTION: String = "bf_wheel_lock"
 const ELEV_UP_ACTION: String = "bf_elev_up"
 const ELEV_DOWN_ACTION: String = "bf_elev_down"
+const CREW_OVERLAY_ACTION: String = "bf_crew_overlay"
+const CREW_STATION_1_ACTION: String = "bf_crew_1"
+const CREW_STATION_2_ACTION: String = "bf_crew_2"
+const CREW_STATION_3_ACTION: String = "bf_crew_3"
+const CREW_STATION_4_ACTION: String = "bf_crew_4"
+const CREW_STATION_5_ACTION: String = "bf_crew_5"
+const CREW_ADD_ACTION: String = "bf_crew_add"
+const CREW_REMOVE_ACTION: String = "bf_crew_remove"
 ## Min dot(aim, direction_to_opponent) to treat opponent as aim target for battery range (req-battery-fsm §6).
 const _BATTERY_AIM_ALIGN_DOT: float = 0.35
 ## Auto-aim elevation: how fast (fraction per second) cannon_elevation lerps toward the target angle.
@@ -126,8 +144,19 @@ const MOTION_HARD_TURN_SPEED_LOSS: float = 0.35
 const MOTION_HARD_TURN_RUDDER: float = 0.7
 ## Each cannonball impact removes this many hull points (structural hit model).
 const HULL_DAMAGE_PER_HIT: float = 1.0
-## Hull integrity: total structural hits before sinking.
+## Hull integrity: default (Brig). Per-ship value stored in p["hull_hits_max"].
 const HULL_HITS_MAX: float = 14.0
+
+## Helper: returns the per-ship hull max, falling back to constant.
+func _hull_max(p: Dictionary) -> float:
+	return float(p.get("hull_hits_max", HULL_HITS_MAX))
+
+## Helper: returns the per-ship max speed from its sail controller.
+func _ship_max_speed(p: Dictionary) -> float:
+	var sail = p.get("sail")
+	if sail != null:
+		return sail.max_speed
+	return NC.MAX_SPEED
 ## Ramming — collision between two ships.
 const _STICK_DEADZONE: float = 0.2
 const _SPLASH_DURATION: float = 0.42
@@ -177,6 +206,9 @@ func _ready() -> void:
 	# Initialise helpers first — other setup calls may delegate into them.
 	_sound = IronwakeSound.new()
 	_sound.init(self)
+	_sound.start_ocean_ambient()
+	if MusicPlayer != null:
+		MusicPlayer.play_song(MusicPlayer.DEFAULT_ARENA_SONG)
 	_ramming = IronwakeRamming.new()
 	_ramming.init(self)
 	_proj = IronwakeProjectiles.new()
@@ -270,8 +302,6 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _init_ironwake_movement_state() -> void:
 	for p in _players:
-		p["health"] = HULL_HITS_MAX
-		p.erase("respawn_timer")
 		_apply_naval_controllers_to_ship(p)
 		var pid: int = int(p.get("peer_id", 0))
 		if not _scoreboard.has(pid):
@@ -282,23 +312,38 @@ func _init_ironwake_movement_state() -> void:
 			}
 
 
-## Sail/helm/batteries/motion — quarter sail deployed at max quarter speed.
+## Resolve which ship class config to use for a given player dict.
+func _get_ship_class_config(p: Dictionary) -> Dictionary:
+	var peer_id: int = int(p.get("peer_id", 0))
+	var cls: int = GameManager.get_ship_class_for_peer(peer_id)
+	return _ShipClassConfig.get_config(cls)
+
+
+## Sail/helm/batteries/motion — quarter sail deployed at quarter speed.
+## Reads ship class config to set per-class tuning constants.
 func _apply_naval_controllers_to_ship(p: Dictionary) -> void:
+	var cfg: Dictionary = _get_ship_class_config(p)
+	var hull_max: float = float(cfg.get("hull_hits_max", HULL_HITS_MAX))
+	p["hull_hits_max"] = hull_max
+	p["health"] = hull_max
+	p["ship_class"] = int(cfg.get("ship_class", _ShipClassConfig.ShipClass.BRIG))
+	p["ship_length"] = NC.SHIP_LENGTH_UNITS * float(cfg.get("hull_length_scale", 1.0))
+	p["ship_width"] = NC.SHIP_WIDTH_UNITS * float(cfg.get("hull_width_scale", 1.0))
+	p["flood_resistance"] = float(cfg.get("flood_resistance", 1.0))
+	p.erase("respawn_timer")
+	var class_max_speed: float = float(cfg.get("max_speed", NC.MAX_SPEED))
 	var sail := _SailController.new()
-	sail.max_speed = NC.MAX_SPEED
-	## Raise rate: ~6.5s STOP→FULL (setting canvas is slow — unfurl, sheet home, brace).
-	sail.sail_raise_rate = 0.15
-	## Lower rate: ~3s FULL→STOP (gravity-assisted — clew up and furl).
-	sail.sail_lower_rate = 0.33
+	sail.max_speed = class_max_speed
+	sail.sail_raise_rate = float(cfg.get("sail_raise_rate", 0.15))
+	sail.sail_lower_rate = float(cfg.get("sail_lower_rate", 0.33))
 	sail.sail_state = _SailController.SailState.QUARTER
 	sail.current_sail_level = 0.25
 	p["sail"] = sail
 	var helm := _HelmController.new()
-	helm.wheel_spin_accel = 2.0
-	helm.wheel_max_spin = 0.55
-	helm.wheel_friction = 2.5
-	## Rudder follow rate: ~2 seconds center-to-full deflection (responsive gameplay).
-	helm.rudder_follow_rate = 0.5
+	helm.wheel_spin_accel = float(cfg.get("wheel_spin_accel", 2.0))
+	helm.wheel_max_spin = float(cfg.get("wheel_max_spin", 0.55))
+	helm.wheel_friction = float(cfg.get("wheel_friction", 2.5))
+	helm.rudder_follow_rate = float(cfg.get("rudder_follow_rate", 0.5))
 	p["helm"] = helm
 	p["move_speed"] = NC.QUARTER_SPEED
 	p["angular_velocity"] = 0.0
@@ -306,34 +351,45 @@ func _apply_naval_controllers_to_ship(p: Dictionary) -> void:
 	p["aim_stbd_active"] = true
 	p["aim_dir"] = Vector2(p.dir.x, p.dir.y)
 	var motion: _MotionStateResolver = _MotionStateResolver.new()
-	motion.max_speed_ref = NC.MAX_SPEED
+	motion.max_speed_ref = class_max_speed
 	motion.idle_speed_threshold = 1.35
 	motion.accel_threshold = 2.7
 	motion.cruise_threshold = 2.25
 	motion.coast_speed_threshold = 1.8
 	motion.decel_threshold = 2.7
 	p["motion"] = motion
+	var cannon_count: int = int(cfg.get("cannon_count", 14))
+	var reload_time: float = float(cfg.get("reload_time", NC.RELOAD_TIME_SEC))
+	var fire_seq: float = float(cfg.get("fire_sequence_duration", 4.0))
+	var bat_dmg: float = float(cfg.get("battery_damage", 75.0))
 	var bat_p: _BatteryController = _BatteryController.new()
 	bat_p.side = _BatteryController.BatterySide.PORT
-	bat_p.cannon_count = 14
-	bat_p.reload_time = NC.RELOAD_TIME_SEC
-	bat_p.fire_sequence_duration = 4.0
-	bat_p.battery_damage = 75.0
+	bat_p.cannon_count = cannon_count
+	bat_p.reload_time = reload_time
+	bat_p.fire_sequence_duration = fire_seq
+	bat_p.battery_damage = bat_dmg
 	bat_p.firing_arc_degrees = NC.BROADSIDE_HALF_ARC_DEG
 	bat_p.max_range = NC.MAX_CANNON_RANGE
 	bat_p.fire_mode = _BatteryController.FireMode.RIPPLE
 	p["battery_port"] = bat_p
 	var bat_s: _BatteryController = _BatteryController.new()
 	bat_s.side = _BatteryController.BatterySide.STARBOARD
-	bat_s.cannon_count = 14
-	bat_s.reload_time = NC.RELOAD_TIME_SEC
-	bat_s.fire_sequence_duration = 4.0
-	bat_s.battery_damage = 75.0
+	bat_s.cannon_count = cannon_count
+	bat_s.reload_time = reload_time
+	bat_s.fire_sequence_duration = fire_seq
+	bat_s.battery_damage = bat_dmg
 	bat_s.firing_arc_degrees = NC.BROADSIDE_HALF_ARC_DEG
 	bat_s.max_range = NC.MAX_CANNON_RANGE
 	bat_s.fire_mode = _BatteryController.FireMode.RIPPLE
 	p["battery_stbd"] = bat_s
 	p["helm_state_prev"] = -1
+	var crew := _CrewController.new()
+	crew.reset(int(cfg.get("crew_total", 20)))
+	p["crew"] = crew
+	var dmg_state := _DamageStateController.new()
+	dmg_state.flood_resistance = float(cfg.get("flood_resistance", 1.0))
+	dmg_state.reset()
+	p["damage_state"] = dmg_state
 	bat_p.battery_state_changed.connect(func(s, ns): _forward_battery_state(bat_p, s, ns))
 	bat_s.battery_state_changed.connect(func(s, ns): _forward_battery_state(bat_s, s, ns))
 
@@ -411,11 +467,12 @@ func _spawn_local_sim_bot_if_needed() -> void:
 		var idx: int = _players.size() - 1
 		_bot_indices.append(idx)
 
+		# Assign a random ship class to the bot.
+		var bot_pid: int = int(bot_dict.get("peer_id", 0))
+		GameManager.player_ship_classes[bot_pid] = randi() % _ShipClassConfig.CLASS_COUNT
 		# Initialize movement controllers on the bot — same as player init.
 		var p: Dictionary = _players[idx]
 		_init_bot_controllers(p)
-		# Initialize scoreboard entry for the bot.
-		var bot_pid: int = int(p.get("peer_id", 0))
 		if not _scoreboard.has(bot_pid):
 			_scoreboard[bot_pid] = {
 				"kills": 0, "deaths": 0,
@@ -440,8 +497,6 @@ func _spawn_local_sim_bot_if_needed() -> void:
 
 ## Set up sail, helm, batteries, and motion resolver on a bot dictionary entry.
 func _init_bot_controllers(p: Dictionary) -> void:
-	p["health"] = HULL_HITS_MAX
-	p.erase("respawn_timer")
 	_apply_naval_controllers_to_ship(p)
 	_apply_bot_helm_overrides(p)
 	# Bots auto-fire: battery fires as soon as target is in arc and battery is loaded.
@@ -471,10 +526,168 @@ func _get_bot_controller_for_index(player_idx: int) -> Variant:
 	return null
 
 
-## Tick the bot ship: run AI decision, then apply intents through identical physics.
-## TODO(refactor): Extract shared physics (heading rotation, speed physics, motion FSM,
-## position update) into _tick_ship_physics() and call from both _tick_player() and _tick_bot().
-## Currently ~130 lines of physics code are duplicated between the two methods.
+## Shared ship physics: heading rotation, speed, motion FSM, and position update.
+## Called by both _tick_player() and _tick_bot() to eliminate duplication.
+## Returns motion state dict for optional signal emission by the caller.
+func _tick_ship_physics(p: Dictionary, helm: Variant, sail: Variant, delta: float, rudder_deadzone: bool = false) -> Dictionary:
+	# --- Crew efficiency → controller multipliers ---
+	var crew: Variant = p.get("crew")
+	var dmg_state: Variant = p.get("damage_state")
+	# Flooding penalizes all crew efficiency (water on decks).
+	var flood_crew_mult: float = 1.0
+	if dmg_state != null:
+		flood_crew_mult = dmg_state.get_flood_crew_mult()
+	if crew != null:
+		helm.crew_helm_mult = crew.get_station_efficiency(_CrewController.Station.HELM) * flood_crew_mult
+		sail.crew_sail_mult = crew.get_station_efficiency(_CrewController.Station.RIGGING) * flood_crew_mult
+		var port_bat: Variant = p.get("battery_port")
+		var stbd_bat: Variant = p.get("battery_stbd")
+		if port_bat != null:
+			port_bat.crew_reload_mult = crew.get_station_efficiency(_CrewController.Station.GUNS_PORT) * flood_crew_mult
+		if stbd_bat != null:
+			stbd_bat.crew_reload_mult = crew.get_station_efficiency(_CrewController.Station.GUNS_STBD) * flood_crew_mult
+		# Tick damage state (fire/flood) — consumes some repair effort.
+		if dmg_state != null:
+			var repair_eff: float = crew.get_station_efficiency(_CrewController.Station.REPAIR) * flood_crew_mult
+			var fire_hull_dmg: float = dmg_state.process(delta, repair_eff, crew)
+			var still_alive: bool = bool(p.get("alive", true))
+			if fire_hull_dmg > 0.0 and still_alive:
+				var hp: float = float(p.get("health", _hull_max(p)))
+				var new_hp: float = maxf(0.0, hp - fire_hull_dmg)
+				p["health"] = new_hp
+				if new_hp <= 0.01:
+					still_alive = false
+					p["alive"] = false
+					p["respawn_timer"] = RESPAWN_DELAY_SEC
+					var pid: int = int(p.get("peer_id", 0))
+					if _scoreboard.has(pid):
+						_scoreboard[pid]["deaths"] += 1
+			# Flood-triggered sinking (guarded — only if not already dead from fire).
+			if still_alive and dmg_state.flood_level >= _DamageStateController.FLOOD_SINK_THRESHOLD:
+				still_alive = false
+				p["alive"] = false
+				p["health"] = 0.0
+				p["respawn_timer"] = RESPAWN_DELAY_SEC
+				var fpid: int = int(p.get("peer_id", 0))
+				if _scoreboard.has(fpid):
+					_scoreboard[fpid]["deaths"] += 1
+			var hull_frac: float = clampf(float(p.get("health", _hull_max(p))) / _hull_max(p), 0.0, 1.0)
+			dmg_state.update_integrity(hull_frac, still_alive)
+		crew.process_repair(delta, p, _hull_max(p))
+
+	# --- Heading rotation ---
+	var hull: Vector2 = Vector2(p.dir.x, p.dir.y)
+	if hull.length_squared() < 0.0001:
+		hull = Vector2.RIGHT
+	hull = hull.normalized()
+	var ang_vel: float = float(p.get("angular_velocity", 0.0))
+	var spd_for_turn: float = float(p.get("move_speed", 0.0))
+	var eff_rudder: float = _apply_rudder_deadzone(helm.rudder_angle) if rudder_deadzone else helm.rudder_angle
+	ang_vel = NC.compute_angular_velocity(eff_rudder, spd_for_turn, ang_vel, delta, _whirlpool_turn_scalar(p))
+	hull = hull.rotated(ang_vel * delta).normalized()
+	p.dir = hull
+	p["angular_velocity"] = ang_vel
+
+	# --- Speed physics ---
+	var ship_max_speed: float = sail.max_speed
+	var sail_eff: float = lerpf(1.0, _SailController.MIN_EFFICIENCY, sail.damage)
+	var target_cap: float = 0.0
+	var sails_provide_thrust: bool = true
+	# Scale half/quarter proportionally to this ship's max speed.
+	var half_speed: float = ship_max_speed * (NC.CRUISE_SPEED / NC.MAX_SPEED)
+	var quarter_speed: float = ship_max_speed * (NC.QUARTER_SPEED / NC.MAX_SPEED)
+	match sail.sail_state:
+		_SailController.SailState.FULL:
+			target_cap = ship_max_speed * sail_eff
+		_SailController.SailState.HALF:
+			target_cap = half_speed * sail_eff
+		_SailController.SailState.QUARTER:
+			target_cap = quarter_speed * sail_eff
+		_:
+			target_cap = NC.SAILS_DOWN_DRIFT_SPEED
+			sails_provide_thrust = false
+
+	var spd: float = float(p.get("move_speed", 0.0))
+	var drag_mult: float = COAST_DRAG_MULT if sail.current_sail_level < sail.coast_drag_threshold else 1.0
+	var rud_abs: float = absf(helm.rudder_angle)
+	var accel_r: float = NC.accel_rate() * _whirlpool_accel_scalar(p)
+	var decel_r: float = NC.decel_rate_sails()
+	var drift_floor: float = NC.SAILS_DOWN_DRIFT_SPEED if not sails_provide_thrust and spd > 0.01 else 0.0
+
+	if spd < target_cap and sails_provide_thrust:
+		spd = minf(spd + accel_r * delta, target_cap)
+	elif spd > target_cap:
+		spd = maxf(0.0, spd - decel_r * drag_mult * delta)
+
+	spd = maxf(drift_floor, spd - MOTION_PASSIVE_DRAG_K * spd * drag_mult * delta)
+	if sail.current_sail_level < sail.coast_drag_threshold:
+		spd = maxf(drift_floor, spd - MOTION_ZERO_SAIL_DRAG * drag_mult * delta)
+
+	# Turning bleeds speed proportional to rudder angle; harder turns cost much more.
+	var turn_loss: float = rud_abs * MOTION_TURNING_SPEED_LOSS * (1.0 + spd / maxf(1.0, ship_max_speed))
+	spd = maxf(drift_floor, spd - turn_loss * delta)
+	if rud_abs > MOTION_HARD_TURN_RUDDER:
+		var hard_loss: float = rud_abs * MOTION_HARD_TURN_SPEED_LOSS * (1.0 + spd / maxf(1.0, ship_max_speed))
+		spd = maxf(drift_floor, spd - hard_loss * delta)
+
+	var speed_cap: float = ship_max_speed * 1.05
+	if int(p.get("_wp_ring", 0)) != 0:
+		speed_cap = ship_max_speed * IronwakeWhirlpool.SLINGSHOT_MAX_SPEED_MULT
+	spd = clampf(spd, 0.0, speed_cap)
+	# Flooding drags the ship down — reduce effective speed.
+	if dmg_state != null:
+		spd *= dmg_state.get_flood_speed_mult()
+	p["move_speed"] = spd
+	_whirlpool_inject_physics(p, delta)
+	spd = float(p.get("move_speed", 0.0))
+
+	# --- Motion FSM ---
+	var result: Dictionary = { "linear": 0, "is_turning": false, "is_turning_hard": false }
+	var motion = p.get("motion")
+	if motion != null:
+		motion.max_speed_ref = ship_max_speed
+		var lin: int = motion.resolve_linear(spd, target_cap, sail.get_target_sail_level(), sail.current_sail_level)
+		var tf: Dictionary = motion.compute_turn_flags(spd, helm.rudder_angle)
+		p["linear_motion_state"] = lin
+		var turn_b: bool = bool(tf.get("is_turning", false))
+		var turn_hb: bool = bool(tf.get("is_turning_hard", false))
+		p["motion_is_turning"] = turn_b
+		p["motion_is_turning_hard"] = turn_hb
+		result = { "linear": lin, "is_turning": turn_b, "is_turning_hard": turn_hb }
+	var helm_st: int = int(helm.get_helm_state())
+	if helm_st != int(p.get("helm_state_prev", -1)):
+		p["helm_state_prev"] = helm_st
+
+	# --- Position update ---
+	var dir_wx: float = p.dir.x
+	var dir_wy: float = p.dir.y
+	var dlen_sq: float = dir_wx * dir_wx + dir_wy * dir_wy
+	if dlen_sq > 0.0001:
+		var inv: float = 1.0 / sqrt(dlen_sq)
+		dir_wx *= inv
+		dir_wy *= inv
+	else:
+		dir_wx = 1.0
+		dir_wy = 0.0
+
+	var carry: Vector2 = p.get("_wp_water_carry_vel", Vector2.ZERO)
+	var move_x: float = dir_wx * spd + carry.x
+	var move_y: float = dir_wy * spd + carry.y
+	if absf(move_x) > 0.02 or absf(move_y) > 0.02:
+		var new_wx: float = p.wx + move_x * delta
+		var new_wy: float = p.wy + move_y * delta
+		if _naval_tile_walkable(new_wx, new_wy):
+			p.wx = new_wx
+			p.wy = new_wy
+		p.moving = true
+		p.walk_time += delta
+	else:
+		p.moving = false
+
+	return result
+
+
+## Tick the bot ship: run AI decision, then apply intents through shared physics.
 func _tick_bot(p: Dictionary, player_idx: int, delta: float) -> void:
 	if not bool(p.get("alive", false)):
 		return
@@ -506,103 +719,7 @@ func _tick_bot(p: Dictionary, player_idx: int, delta: float) -> void:
 		sail.lower_step()
 	sail.process(delta)
 
-	# --- Heading rotation (identical to _tick_player physics) ---
-	var hull: Vector2 = Vector2(p.dir.x, p.dir.y)
-	if hull.length_squared() < 0.0001:
-		hull = Vector2.RIGHT
-	hull = hull.normalized()
-	var ang_vel: float = float(p.get("angular_velocity", 0.0))
-	var spd_for_turn: float = float(p.get("move_speed", 0.0))
-	ang_vel = NC.compute_angular_velocity(helm.rudder_angle, spd_for_turn, ang_vel, delta, _whirlpool_turn_scalar(p))
-	hull = hull.rotated(ang_vel * delta).normalized()
-	p.dir = hull
-	p["angular_velocity"] = ang_vel
-
-	# --- Speed physics (identical to _tick_player) ---
-	var bot_sail_eff: float = lerpf(1.0, _SailController.MIN_EFFICIENCY, sail.damage)
-	var target_cap: float = 0.0
-	var sails_provide_thrust: bool = true
-	match sail.sail_state:
-		_SailController.SailState.FULL:
-			target_cap = NC.MAX_SPEED * bot_sail_eff
-		_SailController.SailState.HALF:
-			target_cap = NC.CRUISE_SPEED * bot_sail_eff
-		_SailController.SailState.QUARTER:
-			target_cap = NC.QUARTER_SPEED * bot_sail_eff
-		_:
-			target_cap = NC.SAILS_DOWN_DRIFT_SPEED
-			sails_provide_thrust = false
-
-	var spd: float = float(p.get("move_speed", 0.0))
-	var drag_mult: float = COAST_DRAG_MULT if sail.current_sail_level < sail.coast_drag_threshold else 1.0
-	var rud_abs: float = absf(helm.rudder_angle)
-	var accel_r: float = NC.accel_rate() * _whirlpool_accel_scalar(p)  # Whirlpool flow alignment.
-	var decel_r: float = NC.decel_rate_sails()
-	var drift_floor: float = NC.SAILS_DOWN_DRIFT_SPEED if not sails_provide_thrust and spd > 0.01 else 0.0
-
-	if spd < target_cap and sails_provide_thrust:
-		spd = minf(spd + accel_r * delta, target_cap)
-	elif spd > target_cap:
-		spd = maxf(0.0, spd - decel_r * drag_mult * delta)
-
-	spd = maxf(drift_floor, spd - MOTION_PASSIVE_DRAG_K * spd * drag_mult * delta)
-	if sail.current_sail_level < sail.coast_drag_threshold:
-		spd = maxf(drift_floor, spd - MOTION_ZERO_SAIL_DRAG * drag_mult * delta)
-
-	# Turning bleeds speed proportional to rudder angle; harder turns cost much more.
-	var turn_loss: float = rud_abs * MOTION_TURNING_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
-	spd = maxf(drift_floor, spd - turn_loss * delta)
-	if rud_abs > MOTION_HARD_TURN_RUDDER:
-		var hard_loss: float = rud_abs * MOTION_HARD_TURN_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
-		spd = maxf(drift_floor, spd - hard_loss * delta)
-
-	var bot_speed_cap: float = NC.MAX_SPEED * 1.05
-	if int(p.get("_wp_ring", 0)) != 0:
-		bot_speed_cap = NC.MAX_SPEED * IronwakeWhirlpool.SLINGSHOT_MAX_SPEED_MULT
-	spd = clampf(spd, 0.0, bot_speed_cap)
-	p["move_speed"] = spd
-	_whirlpool_inject_physics(p, delta)
-	spd = float(p.get("move_speed", 0.0))
-
-	# --- Motion FSM (mirrors _tick_player) ---
-	var motion = p.get("motion")
-	if motion != null:
-		motion.max_speed_ref = NC.MAX_SPEED
-		var lin: int = motion.resolve_linear(spd, target_cap, sail.get_target_sail_level(), sail.current_sail_level)
-		var tf: Dictionary = motion.compute_turn_flags(spd, helm.rudder_angle)
-		p["linear_motion_state"] = lin
-		p["motion_is_turning"] = bool(tf.get("is_turning", false))
-		p["motion_is_turning_hard"] = bool(tf.get("is_turning_hard", false))
-	var helm_st: int = int(helm.get_helm_state())
-	if helm_st != int(p.get("helm_state_prev", -1)):
-		p["helm_state_prev"] = helm_st
-
-	# --- Position update ---
-	var dir_wx: float = p.dir.x
-	var dir_wy: float = p.dir.y
-	var dlen_sq: float = dir_wx * dir_wx + dir_wy * dir_wy
-	if dlen_sq > 0.0001:
-		var inv: float = 1.0 / sqrt(dlen_sq)
-		dir_wx *= inv
-		dir_wy *= inv
-	else:
-		dir_wx = 1.0
-		dir_wy = 0.0
-
-	# Position integration: sail-driven movement + whirlpool water carry.
-	var bot_carry: Vector2 = p.get("_wp_water_carry_vel", Vector2.ZERO)
-	var bot_move_x: float = dir_wx * spd + bot_carry.x
-	var bot_move_y: float = dir_wy * spd + bot_carry.y
-	if absf(bot_move_x) > 0.02 or absf(bot_move_y) > 0.02:
-		var new_wx: float = p.wx + bot_move_x * delta
-		var new_wy: float = p.wy + bot_move_y * delta
-		if _naval_tile_walkable(new_wx, new_wy):
-			p.wx = new_wx
-			p.wy = new_wy
-		p.moving = true
-		p.walk_time += delta
-	else:
-		p.moving = false
+	_tick_ship_physics(p, helm, sail, delta, false)
 
 	# --- Battery processing with bot fire intents ---
 	var hull_n: Vector2 = Vector2(p.dir.x, p.dir.y)
@@ -623,7 +740,7 @@ func _tick_bot(p: Dictionary, player_idx: int, delta: float) -> void:
 		max_bat_range = maxf(max_bat_range, stbd_bat.max_range)
 	var target_dist_m: float = _battery_target_distance_m(p, aim_n, max_bat_range)
 	p["_naval_acc_dist"] = target_dist_m
-	p["_naval_spd"] = spd
+	p["_naval_spd"] = float(p.get("move_speed", 0.0))
 
 	# Fire intent: bot controller decides which side.
 	var fire_port: bool = bot_ctrl.fire_port_intent
@@ -712,7 +829,15 @@ func _register_inputs() -> void:
 	_ensure_joy_button_for_action(SAIL_RAISE_ACTION, JOY_BUTTON_RIGHT_STICK)
 	_ensure_joy_button_for_action(SAIL_LOWER_ACTION, JOY_BUTTON_LEFT_STICK)
 
-	_set_action_keys(SCOREBOARD_ACTION, [KEY_TAB])
+	_set_action_keys(SCOREBOARD_ACTION, [KEY_QUOTELEFT])  # Backtick (moved from Tab)
+	_set_action_keys(CREW_OVERLAY_ACTION, [KEY_TAB])
+	_set_action_keys(CREW_STATION_1_ACTION, [KEY_1])
+	_set_action_keys(CREW_STATION_2_ACTION, [KEY_2])
+	_set_action_keys(CREW_STATION_3_ACTION, [KEY_3])
+	_set_action_keys(CREW_STATION_4_ACTION, [KEY_4])
+	_set_action_keys(CREW_STATION_5_ACTION, [KEY_5])
+	_set_action_keys(CREW_ADD_ACTION, [KEY_EQUAL])  # + key
+	_set_action_keys(CREW_REMOVE_ACTION, [KEY_MINUS])
 
 
 func _clear_action_input_events(action: String) -> void:
@@ -758,6 +883,8 @@ func _process(delta: float) -> void:
 			_post_match_ready = true
 		queue_redraw()
 	else:
+		if _winner == -2:
+			_match_timer += delta
 		super._process(delta)
 	_whirlpool_begin_frame(delta)
 	for bi in _bot_indices:
@@ -887,18 +1014,6 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 		_play_tone(224.0 if is_locked else 164.0, 0.05, 0.12)
 	helm.process_steer(delta, steer_l, steer_r)
 
-	var hull: Vector2 = Vector2(p.dir.x, p.dir.y)
-	if hull.length_squared() < 0.0001:
-		hull = Vector2.RIGHT
-	hull = hull.normalized()
-	var ang_vel: float = float(p.get("angular_velocity", 0.0))
-	var spd_for_turn: float = float(p.get("move_speed", 0.0))
-	var eff_rudder: float = _apply_rudder_deadzone(helm.rudder_angle)
-	ang_vel = NC.compute_angular_velocity(eff_rudder, spd_for_turn, ang_vel, delta, _whirlpool_turn_scalar(p))
-	hull = hull.rotated(ang_vel * delta).normalized()
-	p.dir = hull
-	p["angular_velocity"] = ang_vel
-
 	_update_broadside_aim(p, pad_id)
 
 	var port_bat = p.get("battery_port")
@@ -948,7 +1063,7 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 	var sail = p.get("sail")
 	if sail == null:
 		sail = _SailController.new()
-		sail.max_speed = NC.MAX_SPEED
+		sail.max_speed = float(_get_ship_class_config(p).get("max_speed", NC.MAX_SPEED))
 		p["sail"] = sail
 	sail.process(delta)
 
@@ -959,99 +1074,46 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 		sail.lower_step()
 		_play_tone(175.0, 0.04, 0.12)
 
-	var player_sail_eff: float = lerpf(1.0, _SailController.MIN_EFFICIENCY, sail.damage)
-	var target_cap: float = 0.0
-	var sails_provide_thrust: bool = true
-	match sail.sail_state:
-		_SailController.SailState.FULL:
-			target_cap = NC.MAX_SPEED * player_sail_eff
-		_SailController.SailState.HALF:
-			target_cap = NC.CRUISE_SPEED * player_sail_eff
-		_SailController.SailState.QUARTER:
-			target_cap = NC.QUARTER_SPEED * player_sail_eff
-		_:
-			target_cap = NC.SAILS_DOWN_DRIFT_SPEED
-			sails_provide_thrust = false
+	# --- Crew management input ---
+	if Input.is_action_just_pressed(CREW_OVERLAY_ACTION):
+		_crew_overlay_visible = not _crew_overlay_visible
+	var p_crew: Variant = p.get("crew")
+	if p_crew != null:
+		var crew_actions: Array[String] = [
+			CREW_STATION_1_ACTION, CREW_STATION_2_ACTION, CREW_STATION_3_ACTION,
+			CREW_STATION_4_ACTION, CREW_STATION_5_ACTION]
+		for ci in range(crew_actions.size()):
+			if Input.is_action_just_pressed(crew_actions[ci]):
+				if p_crew.selected_station == ci:
+					# Double-press: add one crew to this station.
+					p_crew.add_crew_to_station(ci)
+					_play_tone(340.0, 0.03, 0.10)
+				else:
+					p_crew.selected_station = ci
+					_play_tone(280.0, 0.03, 0.08)
+		if p_crew.selected_station >= 0:
+			if Input.is_action_just_pressed(CREW_ADD_ACTION):
+				p_crew.add_crew_to_station(p_crew.selected_station)
+				_play_tone(340.0, 0.03, 0.10)
+			if Input.is_action_just_pressed(CREW_REMOVE_ACTION):
+				p_crew.remove_crew_from_station(p_crew.selected_station)
+				_play_tone(200.0, 0.03, 0.10)
 
-	var spd: float = float(p.get("move_speed", 0.0))
-	var drag_mult: float = COAST_DRAG_MULT if sail.current_sail_level < sail.coast_drag_threshold else 1.0
-	var rud_abs: float = absf(helm.rudder_angle)
-	var accel_r: float = NC.accel_rate() * _whirlpool_accel_scalar(p)  # Whirlpool flow alignment.
-	var decel_r: float = NC.decel_rate_sails()
-	var drift_floor: float = NC.SAILS_DOWN_DRIFT_SPEED if not sails_provide_thrust and spd > 0.01 else 0.0
+	# --- Shared physics (heading, speed, motion FSM, position) ---
+	var phys_result: Dictionary = _tick_ship_physics(p, helm, sail, delta, true)
 
-	if spd < target_cap and sails_provide_thrust:
-		spd = minf(spd + accel_r * delta, target_cap)
-	elif spd > target_cap:
-		spd = maxf(0.0, spd - decel_r * drag_mult * delta)
-
-	spd = maxf(drift_floor, spd - MOTION_PASSIVE_DRAG_K * spd * drag_mult * delta)
-	if sail.current_sail_level < sail.coast_drag_threshold:
-		spd = maxf(drift_floor, spd - MOTION_ZERO_SAIL_DRAG * drag_mult * delta)
-
-	# Turning bleeds speed proportional to rudder angle; harder turns cost much more.
-	var turn_loss: float = rud_abs * MOTION_TURNING_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
-	spd = maxf(drift_floor, spd - turn_loss * delta)
-	if rud_abs > MOTION_HARD_TURN_RUDDER:
-		var hard_loss: float = rud_abs * MOTION_HARD_TURN_SPEED_LOSS * (1.0 + spd / maxf(1.0, NC.MAX_SPEED))
-		spd = maxf(drift_floor, spd - hard_loss * delta)
-
-	var speed_cap: float = NC.MAX_SPEED * 1.05
-	if int(p.get("_wp_ring", 0)) != 0:
-		speed_cap = NC.MAX_SPEED * IronwakeWhirlpool.SLINGSHOT_MAX_SPEED_MULT
-	spd = clampf(spd, 0.0, speed_cap)
-	p["move_speed"] = spd
-	_whirlpool_inject_physics(p, delta)
-	spd = float(p.get("move_speed", 0.0))
-
-	var motion = p.get("motion")
-	if motion != null:
-		motion.max_speed_ref = NC.MAX_SPEED
-		var lin: int = motion.resolve_linear(spd, target_cap, sail.get_target_sail_level(), sail.current_sail_level)
-		var tf: Dictionary = motion.compute_turn_flags(spd, helm.rudder_angle)
-		p["linear_motion_state"] = lin
-		var turn_b: bool = bool(tf.get("is_turning", false))
-		var turn_hb: bool = bool(tf.get("is_turning_hard", false))
-		p["motion_is_turning"] = turn_b
-		p["motion_is_turning_hard"] = turn_hb
-		if _motion_sig_init:
-			if lin != _prev_motion_linear or turn_b != _prev_motion_turn or turn_hb != _prev_motion_turn_hard:
-				motion_state_changed.emit(_prev_motion_linear, lin, turn_b, turn_hb)
-		else:
-			_motion_sig_init = true
-		_prev_motion_linear = lin
-		_prev_motion_turn = turn_b
-		_prev_motion_turn_hard = turn_hb
-
-	var helm_st: int = int(helm.get_helm_state())
-	if helm_st != int(p.get("helm_state_prev", -1)):
-		p["helm_state_prev"] = helm_st
-
-	var dir_wx: float = p.dir.x
-	var dir_wy: float = p.dir.y
-	var dlen_sq: float = dir_wx * dir_wx + dir_wy * dir_wy
-	if dlen_sq > 0.0001:
-		var inv: float = 1.0 / sqrt(dlen_sq)
-		dir_wx *= inv
-		dir_wy *= inv
+	# Player-only: emit motion state change signal.
+	var lin: int = int(phys_result.get("linear", 0))
+	var turn_b: bool = bool(phys_result.get("is_turning", false))
+	var turn_hb: bool = bool(phys_result.get("is_turning_hard", false))
+	if _motion_sig_init:
+		if lin != _prev_motion_linear or turn_b != _prev_motion_turn or turn_hb != _prev_motion_turn_hard:
+			motion_state_changed.emit(_prev_motion_linear, lin, turn_b, turn_hb)
 	else:
-		dir_wx = 1.0
-		dir_wy = 0.0
-
-	# Position integration: sail-driven movement + whirlpool water carry.
-	var player_carry: Vector2 = p.get("_wp_water_carry_vel", Vector2.ZERO)
-	var player_move_x: float = dir_wx * spd + player_carry.x
-	var player_move_y: float = dir_wy * spd + player_carry.y
-	if absf(player_move_x) > 0.02 or absf(player_move_y) > 0.02:
-		var new_wx: float = p.wx + player_move_x * delta
-		var new_wy: float = p.wy + player_move_y * delta
-		if _naval_tile_walkable(new_wx, new_wy):
-			p.wx = new_wx
-			p.wy = new_wy
-		p.moving = true
-		p.walk_time += delta
-	else:
-		p.moving = false
+		_motion_sig_init = true
+	_prev_motion_linear = lin
+	_prev_motion_turn = turn_b
+	_prev_motion_turn_hard = turn_hb
 
 	var fire_pressed: bool = Input.is_action_pressed(_ACTIONS.atk) or _is_pad_fire_pressed(pad_id)
 	var fire_just_pressed: bool = (Input.is_action_just_pressed(_ACTIONS.atk) or (fire_pressed and not _pad_fire_prev))
@@ -1077,7 +1139,7 @@ func _tick_player(p: Dictionary, delta: float) -> void:
 		max_bat_range = maxf(max_bat_range, stbd_b.max_range)
 	var target_dist_m: float = _battery_target_distance_m(p, aim_n, max_bat_range)
 	p["_naval_acc_dist"] = target_dist_m
-	p["_naval_spd"] = spd
+	p["_naval_spd"] = float(p.get("move_speed", 0.0))
 	var fire_port_active: bool = bool(p.get("aim_port_active", true))
 	var fire_stbd_active: bool = bool(p.get("aim_stbd_active", false))
 	var fired_any: bool = false
@@ -1392,7 +1454,7 @@ func _apply_cannon_hit_impl(attacker_peer_id: int, defender_peer_id: int, damage
 	if not bool(d.get("alive", true)):
 		return
 	var current_health: float = float(d.health)
-	var damage_taken: float = HULL_HITS_MAX - current_health
+	var damage_taken: float = _hull_max(d) - current_health
 	# After taking more than SAIL_DESTRUCTION_THRESHOLD damage, hits also
 	# shred sails on top of normal hull damage.
 	if damage_taken >= SAIL_DESTRUCTION_THRESHOLD:
@@ -1415,6 +1477,21 @@ func _apply_cannon_hit_impl(attacker_peer_id: int, defender_peer_id: int, damage
 		if helm_obj != null:
 			helm_obj.apply_hit()
 	# Mid-hull hits deal structural damage only (already applied above).
+	# --- Fire / flooding from impact ---
+	var d_dmg_state: Variant = d.get("damage_state")
+	if d_dmg_state != null:
+		var hull_frac: float = clampf(new_health / _hull_max(d), 0.0, 1.0)
+		var zone_idx: int = _DamageStateController.hit_h_to_zone_index(hit_h)
+		d_dmg_state.on_cannonball_hit(zone_idx, hit_h, hull_frac)
+	# --- Crew casualties based on hit zone ---
+	var d_crew: Variant = d.get("crew")
+	if d_crew != null:
+		var zone: String = "mid"
+		if hit_h >= _SAIL_HIT_H_MIN:
+			zone = "upper"
+		elif hit_h <= _HELM_HIT_H_MAX:
+			zone = "lower"
+		d_crew.apply_casualties(zone, damage)
 	# Scoreboard: track hit stats.
 	if _scoreboard.has(attacker_peer_id):
 		_scoreboard[attacker_peer_id]["shots_hit"] += 1
@@ -1457,6 +1534,12 @@ func _broadcast_my_state() -> void:
 	var sail_dmg: float = sail_obj.damage if sail_obj != null else 0.0
 	var rudder: float = helm_obj.rudder_angle if helm_obj != null else 0.0
 	var helm_dmg: float = helm_obj.damage if helm_obj != null else 0.0
+	var crew_obj: Variant = p.get("crew")
+	var crew_packed: int = crew_obj.encode_sync() if crew_obj != null else 0
+	var dmg_obj: Variant = p.get("damage_state")
+	var dmg_fa: int = dmg_obj.encode_fire_a() if dmg_obj != null else 0
+	var dmg_fb: int = dmg_obj.encode_fire_b() if dmg_obj != null else 0
+	var dmg_misc: int = dmg_obj.encode_misc() if dmg_obj != null else 0
 	_receive_naval_state.rpc(
 		int(p.peer_id),
 		float(p.wx), float(p.wy),
@@ -1464,10 +1547,11 @@ func _broadcast_my_state() -> void:
 		float(p.atk_time), bool(p.moving), float(p.walk_time),
 		float(p.get("move_speed", 0.0)),
 		float(p.get("angular_velocity", 0.0)),
-		float(p.get("health", HULL_HITS_MAX)),
+		float(p.get("health", _hull_max(p))),
 		bool(p.get("alive", true)),
 		sail_level, sail_state, rudder,
-		sail_dmg, helm_dmg
+		sail_dmg, helm_dmg, crew_packed,
+		dmg_fa, dmg_fb, dmg_misc
 	)
 
 
@@ -1480,7 +1564,9 @@ func _receive_naval_state(
 		move_speed: float, angular_velocity: float,
 		health: float, alive: bool,
 		sail_level: float, sail_state: int, rudder: float,
-		sail_dmg: float = 0.0, helm_dmg: float = 0.0) -> void:
+		sail_dmg: float = 0.0, helm_dmg: float = 0.0,
+		crew_packed: int = 0,
+		dmg_fa: int = 0, dmg_fb: int = 0, dmg_misc: int = 0) -> void:
 	if peer_id == multiplayer.get_unique_id():
 		return
 	var idx: int = _find_player_index_by_peer_id(peer_id)
@@ -1506,6 +1592,14 @@ func _receive_naval_state(
 	if helm_obj != null:
 		helm_obj.rudder_angle = rudder
 		helm_obj.damage = helm_dmg
+	if crew_packed != 0:
+		var crew_obj: Variant = p.get("crew")
+		if crew_obj != null:
+			crew_obj.decode_sync(crew_packed)
+	if dmg_fa != 0 or dmg_fb != 0 or dmg_misc != 0:
+		var dmg_obj: Variant = p.get("damage_state")
+		if dmg_obj != null:
+			dmg_obj.decode_sync_ints(dmg_fa, dmg_fb, dmg_misc)
 
 
 func _tick_ramming(delta: float) -> void:
@@ -1552,8 +1646,6 @@ func _respawn_ship(idx: int) -> void:
 	p.wx = sp.x
 	p.wy = sp.y
 	p.alive = true
-	p.health = HULL_HITS_MAX
-	p.erase("respawn_timer")
 	p["hit_landed"] = false
 	p["atk_time"] = 0.0
 	p["walk_time"] = 0.0
@@ -1571,14 +1663,46 @@ func _rpc_respawn_ship(idx: int) -> void:
 	_respawn_ship(idx)
 
 
-## Naval arena: use the base win condition (last ship standing).
+## Naval arena win condition: first to KILL_TARGET kills, or most kills at MATCH_TIME_LIMIT.
 func _check_win() -> void:
-	super._check_win()
+	if _winner != -2:
+		return
+	# --- Kill target check ---
+	for i in range(_players.size()):
+		var pid: int = int(_players[i].get("peer_id", i))
+		var kills: int = int(_scoreboard.get(pid, {}).get("kills", 0))
+		if kills >= KILL_TARGET:
+			_declare_winner(i)
+			return
+	# --- Time limit check ---
+	if _match_timer >= MATCH_TIME_LIMIT:
+		var top_kills: int = -1
+		var top_indices: Array[int] = []
+		for i in range(_players.size()):
+			var pid: int = int(_players[i].get("peer_id", i))
+			var kills: int = int(_scoreboard.get(pid, {}).get("kills", 0))
+			if kills > top_kills:
+				top_kills = kills
+				top_indices = [i]
+			elif kills == top_kills:
+				top_indices.append(i)
+		if top_indices.size() == 1:
+			_declare_winner(top_indices[0])
+		else:
+			_declare_winner(-1)  # draw
+
+
+func _declare_winner(idx: int) -> void:
+	if multiplayer.has_multiplayer_peer():
+		_set_winner.rpc(idx)
+	else:
+		_set_winner(idx)
 
 
 func _set_winner(next_winner: int) -> void:
 	super._set_winner(next_winner)
 	_match_over = true
+	GameManager.set_match_phase(GameManager.MatchPhase.GAME_OVER)
 
 
 func _draw_win_screen(vp: Vector2) -> void:
@@ -1609,7 +1733,10 @@ func _draw_win_screen(vp: Vector2) -> void:
 
 
 func _return_to_menu() -> void:
-	GameManager.match_phase = GameManager.MatchPhase.LOBBY
+	GameManager.set_match_phase(GameManager.MatchPhase.LOBBY)
+	_sound.stop_ocean_ambient()
+	if MusicPlayer != null:
+		MusicPlayer.play_song(MusicPlayer.DEFAULT_MENU_SONG)
 	# Clean up Steam lobby (this also closes multiplayer peer).
 	if SteamManager != null:
 		SteamManager.leave_lobby()
@@ -1626,6 +1753,12 @@ func _play_cannon_hit_sound() -> void:
 
 func _play_tone(freq_hz: float, duration_sec: float, volume: float) -> void:
 	_sound.play_tone(freq_hz, duration_sec, volume)
+
+func _play_cannon_fire_sound() -> void:
+	_sound.play_cannon_fire_sound()
+
+func _play_cannon_fire_distant() -> void:
+	_sound.play_cannon_fire_distant()
 
 func _draw_player(p: Dictionary) -> void:
 	var sp: Vector2 = _w2s(p.wx, p.wy)
@@ -1644,8 +1777,10 @@ func _draw_player(p: Dictionary) -> void:
 			sink_hull_v = sink_hull_v.normalized()
 			var sink_fwd: Vector2 = _dir_screen(sink_hull_v.x, sink_hull_v.y)
 			var sink_right: Vector2 = Vector2(-sink_fwd.y, sink_fwd.x)
-			var sink_px_len: float = maxf(14.0 * _zoom, (_w2s(p.wx + sink_hull_v.x * NC.SHIP_LENGTH_UNITS, p.wy + sink_hull_v.y * NC.SHIP_LENGTH_UNITS) - sp).length())
-			var sink_px_wid: float = maxf(8.0 * _zoom, (_w2s(p.wx + sink_right.x * NC.SHIP_WIDTH_UNITS, p.wy + sink_right.y * NC.SHIP_WIDTH_UNITS) - sp).length())
+			var sink_s_len: float = float(p.get("ship_length", NC.SHIP_LENGTH_UNITS))
+			var sink_s_wid: float = float(p.get("ship_width", NC.SHIP_WIDTH_UNITS))
+			var sink_px_len: float = maxf(14.0 * _zoom, (_w2s(p.wx + sink_hull_v.x * sink_s_len, p.wy + sink_hull_v.y * sink_s_len) - sp).length())
+			var sink_px_wid: float = maxf(8.0 * _zoom, (_w2s(p.wx + sink_right.x * sink_s_wid, p.wy + sink_right.y * sink_s_wid) - sp).length())
 
 			# Sink offset: ship drops downward on screen as it sinks.
 			var sink_drop: float = sink_frac * 18.0 * _zoom
@@ -1694,8 +1829,8 @@ func _draw_player(p: Dictionary) -> void:
 			# Fully sunk — wreck X marker sized to match the ship hull.
 			var wreck_alpha: float = clampf(respawn_t / (RESPAWN_DELAY_SEC - SINK_ANIM_DURATION), 0.0, 0.6)
 			if wreck_alpha > 0.02:
-				var wx_half_l: float = maxf(14.0 * _zoom, NC.SHIP_LENGTH_UNITS * _TD_SCALE * _zoom * 0.4)
-				var wx_half_w: float = maxf(8.0 * _zoom, NC.SHIP_WIDTH_UNITS * _TD_SCALE * _zoom * 0.4)
+				var wx_half_l: float = maxf(14.0 * _zoom, float(p.get("ship_length", NC.SHIP_LENGTH_UNITS)) * _TD_SCALE * _zoom * 0.4)
+				var wx_half_w: float = maxf(8.0 * _zoom, float(p.get("ship_width", NC.SHIP_WIDTH_UNITS)) * _TD_SCALE * _zoom * 0.4)
 				var wreck_col: Color = Color(0.55, 0.15, 0.1, wreck_alpha)
 				draw_line(draw_pos + Vector2(-wx_half_l, -wx_half_w), draw_pos + Vector2(wx_half_l, wx_half_w),
 					wreck_col, 3.0 * _zoom)
@@ -1708,8 +1843,10 @@ func _draw_player(p: Dictionary) -> void:
 	hull = hull.normalized()
 	var fwd: Vector2 = _dir_screen(hull.x, hull.y)
 	var right: Vector2 = Vector2(-fwd.y, fwd.x)
-	var px_len: float = maxf(14.0 * _zoom, (_w2s(p.wx + hull.x * NC.SHIP_LENGTH_UNITS, p.wy + hull.y * NC.SHIP_LENGTH_UNITS) - sp).length())
-	var px_wid: float = maxf(8.0 * _zoom, (_w2s(p.wx + right.x * NC.SHIP_WIDTH_UNITS, p.wy + right.y * NC.SHIP_WIDTH_UNITS) - sp).length())
+	var s_len: float = float(p.get("ship_length", NC.SHIP_LENGTH_UNITS))
+	var s_wid: float = float(p.get("ship_width", NC.SHIP_WIDTH_UNITS))
+	var px_len: float = maxf(14.0 * _zoom, (_w2s(p.wx + hull.x * s_len, p.wy + hull.y * s_len) - sp).length())
+	var px_wid: float = maxf(8.0 * _zoom, (_w2s(p.wx + right.x * s_wid, p.wy + right.y * s_wid) - sp).length())
 	var h_len: float = px_len
 	var h_wid: float = px_wid
 	# FTL-style schematic hull (same proportions as _draw_ftl_ship_hud), oriented with bow = fwd.
@@ -1726,7 +1863,7 @@ func _draw_player(p: Dictionary) -> void:
 	var stern_r: Vector2 = draw_pos - fwd * h_len * 0.38 + right * h_wid * 0.48
 	var transom: Vector2 = draw_pos - fwd * h_len * 0.35
 	var mod_color: Color = p.palette[0]
-	var hp_frac: float = clampf(float(p.get("health", HULL_HITS_MAX)) / HULL_HITS_MAX, 0.0, 1.0)
+	var hp_frac: float = clampf(float(p.get("health", _hull_max(p))) / _hull_max(p), 0.0, 1.0)
 	# Tint hull toward red/brown as damage accumulates.
 	var dmg_t: float = 1.0 - hp_frac
 	var base_r: float = lerpf(mod_color.r * 0.55, 0.35, dmg_t * 0.6)
@@ -1754,6 +1891,32 @@ func _draw_player(p: Dictionary) -> void:
 			var side_f: float = -0.3 if mi % 2 == 0 else 0.3
 			var mark_pos: Vector2 = draw_pos + fwd * h_len * along_off + right * h_wid * side_f
 			draw_circle(mark_pos, (1.5 + dmg_t * 1.5) * _zoom, mark_col)
+	# Fire visual effects — flickering glow on burning zones.
+	var p_dmg: Variant = p.get("damage_state")
+	if p_dmg != null and p_dmg.is_on_fire():
+		var game_t: float = float(Time.get_ticks_msec()) / 1000.0
+		for fi in range(p_dmg.fire_zones.size()):
+			var fire_i: float = p_dmg.fire_zones[fi]
+			if fire_i < 0.03:
+				continue
+			# Position along hull based on zone index (0=bow, 7=stern).
+			var ft: float = (float(fi) + 0.5) / 8.0
+			var along: float = lerpf(0.35, -0.35, ft)
+			var fire_pos: Vector2 = draw_pos + fwd * h_len * along
+			# Flickering fire particles.
+			var flicker: float = 0.6 + 0.4 * sin(game_t * 8.0 + float(fi) * 2.1)
+			var fire_r: float = (3.0 + fire_i * 6.0) * _zoom * flicker
+			var fire_alpha: float = fire_i * 0.7 * flicker
+			draw_circle(fire_pos, fire_r, Color(1.0, 0.55, 0.1, fire_alpha))
+			draw_circle(fire_pos + Vector2(0, -2.0 * _zoom), fire_r * 0.6, Color(1.0, 0.3, 0.05, fire_alpha * 0.7))
+	# Flooding visual — blue tint on lower hull when taking water.
+	if p_dmg != null and p_dmg.flood_level > 0.05:
+		var flood_alpha: float = p_dmg.flood_level * 0.3
+		var flood_col: Color = Color(0.1, 0.2, 0.6, flood_alpha)
+		# Overlay a blue tint on the stern/aft (lower) area.
+		var flood_poly := PackedVector2Array([mid_l, mid_r, aft_r, stern_r, transom, stern_l, aft_l])
+		if h_len > 1.0:
+			draw_colored_polygon(flood_poly, flood_col)
 	draw_line(draw_pos + fwd * h_len * 0.40, draw_pos + fwd * h_len * 0.52, Color(0.55, 0.45, 0.30, 0.75), 1.6 * _zoom, true)
 	draw_line(draw_pos + fwd * h_len * 0.06, draw_pos + fwd * h_len * 0.28, Color(0.48, 0.40, 0.28, 0.55), 1.2 * _zoom, true)
 	var ctr_w: Vector2 = Vector2(float(p.wx), float(p.wy))
@@ -1800,44 +1963,90 @@ func _draw_player(p: Dictionary) -> void:
 
 func _draw_hud(vp: Vector2) -> void:
 	var font: Font = ThemeDB.fallback_font
-	var bar_h: float = 20.0
-	var pad: float = 14.0
-	const MAX_COLS: int = 4
-	var bar_w: float = minf((vp.x - pad * (MAX_COLS + 1)) / MAX_COLS, 200.0)
-	var spacing: float = bar_w + pad
-	var row_stride: float = bar_h + 8.0
-	var status_y: float = pad + row_stride * 2.0 + 10.0
+
+	# --- Match timer + kill progress (top center) ---
+	if _winner == -2:
+		var remaining: float = maxf(MATCH_TIME_LIMIT - _match_timer, 0.0)
+		@warning_ignore("integer_division")
+		var mins: int = int(remaining) / 60
+		var secs: int = int(remaining) % 60
+		var timer_str: String = "%d:%02d" % [mins, secs]
+		var timer_col: Color = Color(0.95, 0.35, 0.3, 1.0) if remaining < 30.0 else _HUD_TEXT
+		draw_string(font, Vector2(vp.x * 0.5, 30.0), timer_str,
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 28, timer_col)
+		# Show kill leader or target info.
+		var best_kills: int = 0
+		var best_label: String = ""
+		for pi in range(_players.size()):
+			var pid: int = int(_players[pi].get("peer_id", pi))
+			var kills: int = int(_scoreboard.get(pid, {}).get("kills", 0))
+			if kills > best_kills:
+				best_kills = kills
+				best_label = str(_players[pi].get("label", ""))
+		var kill_str: String
+		if best_kills > 0:
+			kill_str = "%s leads — %d / %d kills" % [best_label, best_kills, KILL_TARGET]
+		else:
+			kill_str = "First to %d kills" % KILL_TARGET
+		draw_string(font, Vector2(vp.x * 0.5, 50.0), kill_str,
+			HORIZONTAL_ALIGNMENT_CENTER, -1, 14, _HUD_TEXT_MUTED)
+
+		# --- Match ending warnings ---
+		if remaining < 30.0 and remaining > 0.0:
+			if not _warned_30s:
+				_warned_30s = true
+				_play_tone(180.0, 0.15, 0.25)
+			if remaining < 10.0 and not _warned_10s:
+				_warned_10s = true
+				_play_tone(260.0, 0.2, 0.3)
+			var pulse_speed: float = 6.0 if remaining < 10.0 else 3.0
+			var pulse_alpha: float = 0.5 + 0.5 * sin(_match_timer * pulse_speed)
+			var warn_str: String = "FINAL 10 SECONDS" if remaining < 10.0 else "FINAL 30 SECONDS"
+			var warn_col: Color = Color(0.95, 0.35, 0.3, pulse_alpha)
+			draw_string(font, Vector2(vp.x * 0.5, 70.0), warn_str,
+				HORIZONTAL_ALIGNMENT_CENTER, -1, 18, warn_col)
+
+	# Status messages (top-left).
+	var pad: float = 10.0
 	for i in range(_status_messages.size()):
 		var entry: Dictionary = _status_messages[i]
-		draw_string(
-			font,
-			Vector2(pad, status_y + float(i) * 18.0),
-			str(entry.get("text", "")),
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1,
-			14,
-			_HUD_TEXT
-		)
+		draw_string(font, Vector2(pad, 70.0 + float(i) * 16.0),
+			str(entry.get("text", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, _HUD_TEXT)
+
+	# Player tags — compact bars across the top.
+	var tag_w: float = 120.0
+	var tag_h: float = 14.0
+	var tag_gap: float = 6.0
+	var total_tags_w: float = float(_players.size()) * tag_w + float(maxi(_players.size() - 1, 0)) * tag_gap
+	var tag_start_x: float = (vp.x - total_tags_w) * 0.5
+	var tag_y: float = 60.0
 	for i in range(_players.size()):
 		var p: Dictionary = _players[i]
-		var col_idx: int = i % MAX_COLS
-		@warning_ignore("integer_division")
-		var row_idx: int = i / MAX_COLS
-		var bx: float = pad + float(col_idx) * spacing
-		var by: float = pad + float(row_idx) * row_stride
-		var fill: float = bar_w * clampf(float(p.health) / HULL_HITS_MAX, 0.0, 1.0)
+		var tx: float = tag_start_x + float(i) * (tag_w + tag_gap)
+		var ty: float = tag_y
+		var hp_frac: float = clampf(float(p.health) / _hull_max(p), 0.0, 1.0)
 		var col: Color = p.palette[0]
-		draw_rect(Rect2(bx, by, bar_w, bar_h), _HUD_BG)
-		if p.alive and fill > 0.0:
-			draw_rect(Rect2(bx, by, fill, bar_h), col)
-		draw_rect(Rect2(bx, by, bar_w, bar_h), _HUD_BORDER, false, 1.5)
-		var bar_txt: String
+		draw_rect(Rect2(tx, ty, tag_w, tag_h), _HUD_BG)
+		if p.alive and hp_frac > 0.0:
+			draw_rect(Rect2(tx, ty, tag_w * hp_frac, tag_h), Color(col, 0.7))
+		draw_rect(Rect2(tx, ty, tag_w, tag_h), Color(_HUD_BORDER, 0.5), false, 1.0)
+		var pid: int = int(p.get("peer_id", i))
+		var p_kills: int = int(_scoreboard.get(pid, {}).get("kills", 0))
+		var tag_txt: String
 		if p.alive:
-			bar_txt = "%s  %d/%d" % [p.label, int(maxf(p.health, 0.0)), int(HULL_HITS_MAX)]
+			tag_txt = "%s %dK" % [p.label, p_kills]
 		else:
-			var rt: float = float(p.get("respawn_timer", 0.0))
-			bar_txt = "%s  respawn %.1fs" % [p.label, rt] if rt > 0.001 else "%s  —" % p.label
-		draw_string(font, Vector2(bx + 5.0, by + bar_h - 5.0), bar_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, _HUD_TEXT)
+			tag_txt = "%s \u2620" % p.label
+		draw_string(font, Vector2(tx + 3.0, ty + tag_h - 3.0), tag_txt,
+			HORIZONTAL_ALIGNMENT_LEFT, int(tag_w - 6.0), 9, _HUD_TEXT)
+		# Fire/flood pip on player tag.
+		var tag_dmg: Variant = p.get("damage_state")
+		if tag_dmg != null:
+			if tag_dmg.is_on_fire():
+				var f_pulse: float = 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.008)
+				draw_circle(Vector2(tx + tag_w - 8.0, ty + tag_h * 0.5), 3.0, Color(1.0, 0.45, 0.1, 0.9 * f_pulse))
+			if tag_dmg.flood_level > 0.1:
+				draw_circle(Vector2(tx + tag_w - 16.0, ty + tag_h * 0.5), 3.0, Color(0.2, 0.4, 0.9, 0.8))
 
 
 func _draw_scoreboard(vp: Vector2) -> void:
@@ -1859,12 +2068,13 @@ func _draw_scoreboard(vp: Vector2) -> void:
 	draw_rect(Rect2(panel_x, panel_y, total_w + pad * 2.0, total_h), Color(0.05, 0.05, 0.08, 0.88))
 	draw_rect(Rect2(panel_x, panel_y, total_w + pad * 2.0, total_h), _HUD_BORDER, false, 2.0)
 
-	# Column headers.
+	# Column headers — Player left-aligned, numerics right-aligned.
 	var headers: Array[String] = ["Player", "Kills", "Deaths", "K/D", "Shots", "Hits", "Accuracy", "Damage"]
 	var hx: float = panel_x + pad
 	var hy: float = panel_y + pad + 14.0
 	for ci in range(headers.size()):
-		draw_string(font, Vector2(hx, hy), headers[ci], HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[ci]), 13, _HUD_TEXT_MUTED)
+		var h_align: int = HORIZONTAL_ALIGNMENT_LEFT if ci == 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		draw_string(font, Vector2(hx, hy), headers[ci], h_align, int(col_widths[ci]), 13, _HUD_TEXT_MUTED)
 		hx += col_widths[ci]
 
 	# Header separator line.
@@ -1884,6 +2094,7 @@ func _draw_scoreboard(vp: Vector2) -> void:
 
 	# Rows.
 	var ry: float = panel_y + pad + header_h + 12.0
+	var row_idx: int = 0
 	for p in sorted_players:
 		var pid: int = int(p.get("peer_id", 0))
 		var stats: Dictionary = _scoreboard.get(pid, {})
@@ -1896,23 +2107,113 @@ func _draw_scoreboard(vp: Vector2) -> void:
 		var accuracy: float = (float(shots_hit) / float(shots_fired) * 100.0) if shots_fired > 0 else 0.0
 		var row_col: Color = Color(p.palette[0], 0.9)
 
+		# Alternating row background + MVP highlight for leading player.
+		var row_bg_y: float = ry - 14.0
+		if row_idx == 0:
+			draw_rect(Rect2(panel_x + pad - 4.0, row_bg_y, total_w + 8.0, row_h), Color(0.95, 0.75, 0.35, 0.10))
+		elif row_idx % 2 == 1:
+			draw_rect(Rect2(panel_x + pad - 4.0, row_bg_y, total_w + 8.0, row_h), Color(1.0, 1.0, 1.0, 0.03))
+
 		var rx: float = panel_x + pad
-		draw_string(font, Vector2(rx, ry), str(p.get("label", "?")), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[0]), 13, row_col)
+		# Player name + MVP badge for leader.
+		var label_str: String = str(p.get("label", "?"))
+		if row_idx == 0:
+			label_str = "\u2605 " + label_str  # Star prefix for MVP
+		draw_string(font, Vector2(rx, ry), label_str, HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[0]), 13, row_col)
 		rx += col_widths[0]
-		draw_string(font, Vector2(rx, ry), str(kills), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[1]), 13, row_col)
+		draw_string(font, Vector2(rx, ry), str(kills), HORIZONTAL_ALIGNMENT_RIGHT, int(col_widths[1]), 13, row_col)
 		rx += col_widths[1]
-		draw_string(font, Vector2(rx, ry), str(deaths), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[2]), 13, row_col)
+		draw_string(font, Vector2(rx, ry), str(deaths), HORIZONTAL_ALIGNMENT_RIGHT, int(col_widths[2]), 13, row_col)
 		rx += col_widths[2]
-		draw_string(font, Vector2(rx, ry), "%.1f" % kd, HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[3]), 13, row_col)
+		draw_string(font, Vector2(rx, ry), "%.1f" % kd, HORIZONTAL_ALIGNMENT_RIGHT, int(col_widths[3]), 13, row_col)
 		rx += col_widths[3]
-		draw_string(font, Vector2(rx, ry), str(shots_fired), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[4]), 13, row_col)
+		draw_string(font, Vector2(rx, ry), str(shots_fired), HORIZONTAL_ALIGNMENT_RIGHT, int(col_widths[4]), 13, row_col)
 		rx += col_widths[4]
-		draw_string(font, Vector2(rx, ry), str(shots_hit), HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[5]), 13, row_col)
+		draw_string(font, Vector2(rx, ry), str(shots_hit), HORIZONTAL_ALIGNMENT_RIGHT, int(col_widths[5]), 13, row_col)
 		rx += col_widths[5]
-		draw_string(font, Vector2(rx, ry), "%.0f%%" % accuracy, HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[6]), 13, row_col)
+		draw_string(font, Vector2(rx, ry), "%.0f%%" % accuracy, HORIZONTAL_ALIGNMENT_RIGHT, int(col_widths[6]), 13, row_col)
 		rx += col_widths[6]
-		draw_string(font, Vector2(rx, ry), "%.1f" % dmg_dealt, HORIZONTAL_ALIGNMENT_LEFT, int(col_widths[7]), 13, row_col)
+		draw_string(font, Vector2(rx, ry), "%.1f" % dmg_dealt, HORIZONTAL_ALIGNMENT_RIGHT, int(col_widths[7]), 13, row_col)
 		ry += row_h
+		row_idx += 1
+
+
+func _draw_crew_overlay(vp: Vector2) -> void:
+	if _players.is_empty():
+		return
+	var p: Dictionary = _players[clampi(_camera_follow_index, 0, _players.size() - 1)]
+	var crew: Variant = p.get("crew")
+	if crew == null:
+		return
+	var font: Font = ThemeDB.fallback_font
+
+	var panel_w: float = 240.0
+	var row_h: float = 24.0
+	var pad: float = 12.0
+	var panel_h: float = pad * 2.0 + row_h * 7.0 + 20.0  # 5 stations + header + footer
+	var panel_x: float = pad
+	var panel_y: float = vp.y * 0.5 - panel_h * 0.5
+
+	# Background panel.
+	draw_rect(Rect2(panel_x, panel_y, panel_w, panel_h), Color(0.05, 0.05, 0.08, 0.92))
+	draw_rect(Rect2(panel_x, panel_y, panel_w, panel_h), _HUD_BORDER, false, 2.0)
+
+	# Title.
+	var ty: float = panel_y + pad + 12.0
+	draw_string(font, Vector2(panel_x + pad, ty), "CREW MANAGEMENT",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, _HUD_TEXT)
+	draw_line(Vector2(panel_x + pad, ty + 4.0), Vector2(panel_x + panel_w - pad, ty + 4.0), _HUD_BORDER, 1.0)
+	ty += 20.0
+
+	# Station rows.
+	for si in range(_CrewController.STATION_COUNT):
+		var ry: float = ty + float(si) * row_h
+		var is_selected: bool = crew.selected_station == si
+		var count: int = crew.station_crew[si]
+		var eff: float = crew.get_station_efficiency(si)
+
+		# Selection highlight.
+		if is_selected:
+			draw_rect(Rect2(panel_x + 2.0, ry - 12.0, panel_w - 4.0, row_h), Color(0.95, 0.75, 0.35, 0.12))
+			draw_rect(Rect2(panel_x + 2.0, ry - 12.0, panel_w - 4.0, row_h), Color(0.95, 0.75, 0.35, 0.5), false, 1.0)
+
+		# Key label + station name.
+		var key_col: Color = Color(0.95, 0.75, 0.35, 1.0) if is_selected else _HUD_TEXT_MUTED
+		draw_string(font, Vector2(panel_x + pad, ry), "[%s]" % _CrewController.STATION_KEYS[si],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, key_col)
+		draw_string(font, Vector2(panel_x + pad + 24.0, ry), _CrewController.STATION_NAMES[si],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, _HUD_TEXT)
+
+		# Efficiency bar.
+		var bar_x: float = panel_x + pad + 120.0
+		var bar_w: float = 60.0
+		var bar_h: float = 8.0
+		var bar_y: float = ry - 8.0
+		draw_rect(Rect2(bar_x, bar_y, bar_w, bar_h), Color(0.15, 0.12, 0.10, 0.8))
+		var fill_frac: float = clampf(eff / 1.15, 0.0, 1.0)  # Normalize to max possible efficiency.
+		var bar_col: Color
+		if eff >= 0.8:
+			bar_col = Color(0.25, 0.65, 0.35, 0.9)  # Green
+		elif eff >= 0.5:
+			bar_col = Color(0.75, 0.65, 0.2, 0.9)  # Yellow
+		else:
+			bar_col = Color(0.75, 0.25, 0.2, 0.9)  # Red
+		draw_rect(Rect2(bar_x, bar_y, bar_w * fill_frac, bar_h), bar_col)
+		draw_rect(Rect2(bar_x, bar_y, bar_w, bar_h), Color(_HUD_BORDER, 0.5), false, 1.0)
+
+		# Crew count.
+		draw_string(font, Vector2(panel_x + pad + 190.0, ry), "%d" % count,
+			HORIZONTAL_ALIGNMENT_RIGHT, 30, 11, _HUD_TEXT)
+
+	# Footer.
+	var fy: float = ty + float(_CrewController.STATION_COUNT) * row_h + 8.0
+	draw_line(Vector2(panel_x + pad, fy - 4.0), Vector2(panel_x + panel_w - pad, fy - 4.0), _HUD_BORDER, 1.0)
+	draw_string(font, Vector2(panel_x + pad, fy + 10.0),
+		"Crew: %d / %d alive" % [crew.total_crew, crew.max_crew],
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, _HUD_TEXT)
+	draw_string(font, Vector2(panel_x + pad, fy + 24.0),
+		"+/- adjust \u00b7 1-5 select",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 9, _HUD_TEXT_MUTED)
 
 
 func _ballistic_splash_range_for_player(p: Dictionary) -> float:
@@ -2049,13 +2350,13 @@ func _build_ocean_ship_states() -> Array:
 		var motion_turn_amount: float = 0.85 if bool(p.get("motion_is_turning_hard", false)) else (0.35 if bool(p.get("motion_is_turning", false)) else 0.0)
 		var turn_amount: float = clampf(maxf(maxf(angular_turn_amount, absf(rudder)), motion_turn_amount), 0.0, 1.0)
 		var center_world := Vector2(float(p.get("wx", 0.0)), float(p.get("wy", 0.0)))
-		var stern_world: Vector2 = center_world - hull * (NC.SHIP_LENGTH_UNITS * 0.38)
+		var stern_world: Vector2 = center_world - hull * (float(p.get("ship_length", NC.SHIP_LENGTH_UNITS)) * 0.38)
 		states.append({
 			"id": str(p.get("peer_id", i)),
 			"center_world": center_world,
 			"stern_world": stern_world,
 			"heading": hull,
-			"speed_ratio": clampf(float(p.get("move_speed", 0.0)) / maxf(0.001, NC.MAX_SPEED), 0.0, 1.2),
+			"speed_ratio": clampf(float(p.get("move_speed", 0.0)) / maxf(0.001, _ship_max_speed(p)), 0.0, 1.2),
 			"turn_amount": turn_amount,
 			"alive": bool(p.get("alive", true)),
 		})
@@ -2154,6 +2455,8 @@ func _draw() -> void:
 	_draw_ability_bar(vp)
 	if _winner != -2:
 		_draw_win_screen(vp)
+	if _crew_overlay_visible and _winner == -2:
+		_draw_crew_overlay(vp)
 	if Input.is_action_pressed(SCOREBOARD_ACTION) or _match_over:
 		_draw_scoreboard(vp)
 
@@ -2335,16 +2638,19 @@ func _draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 	var spd: float = float(p.get("move_speed", 0.0))
 	var ang_vel: float = float(p.get("angular_velocity", 0.0))
 
+	var preview_max_speed: float = _ship_max_speed(p)
+	var preview_half: float = preview_max_speed * (NC.CRUISE_SPEED / NC.MAX_SPEED)
+	var preview_quarter: float = preview_max_speed * (NC.QUARTER_SPEED / NC.MAX_SPEED)
 	var prev_sail_eff: float = lerpf(1.0, _SailController.MIN_EFFICIENCY, sail.damage)
 	var target_cap: float = 0.0
 	var sails_provide_thrust: bool = true
 	match int(sail.sail_state):
 		_SailController.SailState.FULL:
-			target_cap = NC.MAX_SPEED * prev_sail_eff
+			target_cap = preview_max_speed * prev_sail_eff
 		_SailController.SailState.HALF:
-			target_cap = NC.CRUISE_SPEED * prev_sail_eff
+			target_cap = preview_half * prev_sail_eff
 		_SailController.SailState.QUARTER:
-			target_cap = NC.QUARTER_SPEED * prev_sail_eff
+			target_cap = preview_quarter * prev_sail_eff
 		_:
 			target_cap = NC.SAILS_DOWN_DRIFT_SPEED
 			sails_provide_thrust = false
@@ -2383,7 +2689,7 @@ func _draw_ship_trajectory_arc_preview(alpha_mult: float = 1.0) -> void:
 		spd = maxf(sim_drift_floor, spd - rud_abs * MOTION_TURNING_SPEED_LOSS * dt_step)
 		if rud_abs > MOTION_HARD_TURN_RUDDER:
 			spd = maxf(sim_drift_floor, spd - rud_abs * MOTION_HARD_TURN_SPEED_LOSS * dt_step)
-		spd = clampf(spd, 0.0, NC.MAX_SPEED * 1.05)
+		spd = clampf(spd, 0.0, preview_max_speed * 1.05)
 
 		wx += hull.x * spd * dt_step
 		wy += hull.y * spd * dt_step
@@ -2585,14 +2891,15 @@ func _draw_motion_battery_hud(_vp: Vector2) -> void:
 	var spd: float = float(p.get("move_speed", 0.0))
 	var cap: float = 0.0
 	var sail = p.get("sail")
+	var dbg_max_spd: float = _ship_max_speed(p)
 	if sail != null:
 		match sail.sail_state:
 			_SailController.SailState.FULL:
-				cap = NC.MAX_SPEED
+				cap = dbg_max_spd
 			_SailController.SailState.HALF:
-				cap = NC.CRUISE_SPEED
+				cap = dbg_max_spd * (NC.CRUISE_SPEED / NC.MAX_SPEED)
 			_SailController.SailState.QUARTER:
-				cap = NC.QUARTER_SPEED
+				cap = dbg_max_spd * (NC.QUARTER_SPEED / NC.MAX_SPEED)
 			_:
 				cap = NC.SAILS_DOWN_DRIFT_SPEED
 	draw_string(font, Vector2(x, y + 88.0), "Speed %.2f / %.1f" % [spd, cap], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, dim)
@@ -2686,8 +2993,9 @@ func _draw_ftl_ship_hud(vp: Vector2) -> void:
 	draw_line(Vector2(cx - 12.0, cy - hh * 0.28), Vector2(cx + 12.0, cy - hh * 0.28), Color(0.50, 0.42, 0.28, 0.6), 1.2, true)
 	draw_line(Vector2(cx, cy + 0.0), Vector2(cx, cy + hh * 0.15), Color(0.50, 0.42, 0.28, 0.6), 1.2, true)
 
-	var hp: float = float(p.get("health", HULL_HITS_MAX))
-	var hp_frac: float = clampf(hp / HULL_HITS_MAX, 0.0, 1.0)
+	var hp: float = float(p.get("health", _hull_max(p)))
+	var hull_max: float = _hull_max(p)
+	var hp_frac: float = clampf(hp / hull_max, 0.0, 1.0)
 
 	var zone_names: Array[String] = ["Bowsprit", "Bow", "Fwd Gun", "Mid", "Main", "Aft Gun", "Quarter", "Stern"]
 	var zone_count: int = zone_names.size()
@@ -2695,6 +3003,7 @@ func _draw_ftl_ship_hud(vp: Vector2) -> void:
 	var zone_total_h: float = hh * 0.80
 	var zone_h: float = zone_total_h / float(zone_count)
 
+	var arena_dmg: Variant = p.get("damage_state")
 	var zone_widths: Array[float] = [0.30, 0.50, 0.68, 0.72, 0.72, 0.65, 0.52, 0.40]
 	for zi in range(zone_count):
 		var zy: float = zone_y_start + float(zi) * zone_h
@@ -2712,9 +3021,26 @@ func _draw_ftl_ship_hud(vp: Vector2) -> void:
 		else:
 			zone_col = Color(0.78, 0.18, 0.12, 0.65)
 		draw_rect(Rect2(cx - zw * 0.5, zy + 1.0, zw, zone_h - 2.0), zone_col)
+		# Fire overlay.
+		if arena_dmg != null and zi < arena_dmg.fire_zones.size():
+			var fire_i: float = arena_dmg.fire_zones[zi]
+			if fire_i > 0.02:
+				var pulse: float = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008 + float(zi) * 1.5)
+				var fire_alpha: float = fire_i * 0.65 * pulse
+				draw_rect(Rect2(cx - zw * 0.5, zy + 1.0, zw, zone_h - 2.0), Color(1.0, lerpf(0.5, 0.15, fire_i), 0.05, fire_alpha))
 		draw_line(Vector2(cx - zw * 0.5, zy + zone_h - 1.0), Vector2(cx + zw * 0.5, zy + zone_h - 1.0), Color(0.40, 0.44, 0.52, 0.35), 0.8)
 		var lbl_col: Color = Color(0.82, 0.85, 0.92, 0.75)
-		draw_string(font, Vector2(cx - zw * 0.5 + 3.0, zy + zone_h - 4.0), zone_names[zi], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, lbl_col)
+		if arena_dmg != null and zi < arena_dmg.fire_zones.size() and arena_dmg.fire_zones[zi] > 0.02:
+			draw_string(font, Vector2(cx + zw * 0.5 - 28.0, zy + zone_h - 4.0), "FIRE", HORIZONTAL_ALIGNMENT_RIGHT, -1, 7, Color(1.0, 0.4, 0.1, 0.95))
+			draw_string(font, Vector2(cx - zw * 0.5 + 3.0, zy + zone_h - 4.0), zone_names[zi], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1.0, 0.7, 0.3, 0.9))
+		else:
+			draw_string(font, Vector2(cx - zw * 0.5 + 3.0, zy + zone_h - 4.0), zone_names[zi], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, lbl_col)
+	# Flood level indicator.
+	if arena_dmg != null and arena_dmg.flood_level > 0.01:
+		var flood_h: float = zone_total_h * clampf(arena_dmg.flood_level, 0.0, 1.0)
+		var flood_y: float = zone_y_start + zone_total_h - flood_h
+		var flood_alpha: float = 0.25 + 0.15 * sin(Time.get_ticks_msec() * 0.003)
+		draw_rect(Rect2(cx - hw * 0.35, flood_y, hw * 0.70, flood_h), Color(0.1, 0.3, 0.7, flood_alpha))
 
 	var bat_icon_r: float = 6.0
 	var bat_entries: Array[Dictionary] = []
@@ -2800,12 +3126,33 @@ func _draw_ftl_ship_hud(vp: Vector2) -> void:
 	else:
 		hp_col = Color(0.85, 0.22, 0.18, 0.92)
 	draw_rect(Rect2(hp_bar_x + 1.0, hp_bar_y + 1.0, (hp_bar_w - 2.0) * hp_frac, 10.0), hp_col)
-	for tick_i in range(1, int(HULL_HITS_MAX)):
-		var tx: float = hp_bar_x + hp_bar_w * (float(tick_i) / HULL_HITS_MAX)
+	for tick_i in range(1, int(hull_max)):
+		var tx: float = hp_bar_x + hp_bar_w * (float(tick_i) / hull_max)
 		draw_line(Vector2(tx, hp_bar_y + 1.0), Vector2(tx, hp_bar_y + 11.0), Color(0.12, 0.14, 0.18, 0.6), 0.8)
-	draw_string(font, Vector2(hp_bar_x, hp_bar_y + 24.0), "Hull %d / %d" % [int(maxf(hp, 0.0)), int(HULL_HITS_MAX)], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.85, 0.88, 0.95, 0.95))
+	var class_name_str: String = _ShipClassConfig.CLASS_NAMES[int(p.get("ship_class", _ShipClassConfig.ShipClass.BRIG))]
+	draw_string(font, Vector2(hp_bar_x, hp_bar_y + 24.0), "%s  Hull %d / %d" % [class_name_str, int(maxf(hp, 0.0)), int(hull_max)], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.85, 0.88, 0.95, 0.95))
+	# Integrity state + hazard indicators.
+	var status_y: float = hp_bar_y + 26.0
+	if arena_dmg != null:
+		var int_state: int = int(arena_dmg.integrity)
+		var int_name: String = _DamageStateController.INTEGRITY_NAMES[int_state] if int_state < _DamageStateController.INTEGRITY_NAMES.size() else "Unknown"
+		var int_col: Color = _DamageStateController.INTEGRITY_COLORS[int_state] if int_state < _DamageStateController.INTEGRITY_COLORS.size() else Color.WHITE
+		draw_string(font, Vector2(hp_bar_x + hp_bar_w - 2.0, hp_bar_y + 24.0), int_name, HORIZONTAL_ALIGNMENT_RIGHT, int(hp_bar_w * 0.4), 11, int_col)
+		if arena_dmg.flood_level > 0.01:
+			status_y += 14.0
+			var flood_bar_w: float = hp_bar_w * 0.5
+			draw_rect(Rect2(hp_bar_x, status_y, flood_bar_w, 8.0), Color(0.05, 0.08, 0.15, 0.9))
+			var flood_frac: float = clampf(arena_dmg.flood_level, 0.0, 1.0)
+			var flood_col: Color = Color(0.15, 0.4, 0.85, 0.9) if flood_frac < 0.6 else Color(0.2, 0.25, 0.95, 0.95)
+			draw_rect(Rect2(hp_bar_x + 1.0, status_y + 1.0, (flood_bar_w - 2.0) * flood_frac, 6.0), flood_col)
+			draw_string(font, Vector2(hp_bar_x + flood_bar_w + 4.0, status_y + 8.0), "Flooding %d%%" % int(flood_frac * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.5, 0.65, 0.95, 0.95))
+		var burning: int = arena_dmg.get_burning_zone_count()
+		if burning > 0:
+			status_y += 12.0
+			var fire_pulse: float = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.006)
+			draw_string(font, Vector2(hp_bar_x, status_y + 10.0), "%d zone%s ablaze" % [burning, "s" if burning > 1 else ""], HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(1.0, 0.5, 0.15, 0.95 * fire_pulse))
 
-	var elev_y: float = hp_bar_y + 36.0
+	var elev_y: float = maxf(hp_bar_y + 36.0, status_y + 16.0)
 	var elev_alpha: float = _hud_fade_alpha(_fade_elev_hud)
 	var ref_bat: Variant = p.get("battery_port") if sel_fire_port else p.get("battery_stbd")
 	if ref_bat != null and elev_alpha > 0.01:
@@ -2821,6 +3168,27 @@ func _draw_ftl_ship_hud(vp: Vector2) -> void:
 		draw_rect(Rect2(zero_x - 0.5, elev_y - 2.0, 1.0, 12.0), Color(1.0, 1.0, 0.6, 0.7 * elev_alpha))
 		var sign_str: String = "+" if elev_deg >= 0.0 else ""
 		draw_string(font, Vector2(hp_bar_x, elev_y + 20.0), "Quoin %s%.1f° (R/T)" % [sign_str, elev_deg], HORIZONTAL_ALIGNMENT_LEFT, -1, 10, elev_col)
+
+	# --- Crew station indicators on schematic ---
+	var schematic_crew: Variant = p.get("crew")
+	if schematic_crew != null:
+		var crew_y: float = panel_y + panel_h - 8.0
+		var crew_label_x: float = panel_x + 6.0
+		var crew_dim: Color = Color(0.65, 0.70, 0.78, 0.8)
+		# Compact row: station abbreviations with crew counts.
+		var abbrevs: Array[String] = ["GP", "GS", "Rig", "Hlm", "Rep"]
+		var ax: float = crew_label_x
+		for ai in range(_CrewController.STATION_COUNT):
+			var ac: int = schematic_crew.station_crew[ai]
+			var eff: float = schematic_crew.get_station_efficiency(ai)
+			var ac_col: Color = crew_dim
+			if eff < 0.5:
+				ac_col = Color(0.85, 0.3, 0.2, 0.9)
+			elif eff < 0.8:
+				ac_col = Color(0.8, 0.7, 0.2, 0.9)
+			draw_string(font, Vector2(ax, crew_y), "%s:%d" % [abbrevs[ai], ac], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, ac_col)
+			ax += 28.0
+		draw_string(font, Vector2(crew_label_x, crew_y + 12.0), "Crew %d/%d" % [schematic_crew.total_crew, schematic_crew.max_crew], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, crew_dim)
 
 
 func _draw_helm_sail_hud(vp: Vector2) -> void:

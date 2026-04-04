@@ -31,7 +31,6 @@ func init_whirlpool() -> void:
 	var u: float = NC.UNITS_PER_LOGIC_TILE
 	arena._whirlpool.center = Vector2(float(NC.MAP_TILES_WIDE) * 0.5 * u, float(NC.MAP_TILES_HIGH) * 0.5 * u)
 	arena._whirlpool.influence_radius = arena.whirlpool_influence_radius
-	arena._whirlpool._base_influence_radius = arena.whirlpool_influence_radius
 	arena._whirlpool.control_ring_radius = arena.whirlpool_control_radius
 	arena._whirlpool.danger_ring_radius = arena.whirlpool_danger_radius
 	arena._whirlpool.core_radius = arena.whirlpool_core_radius
