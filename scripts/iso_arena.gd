@@ -513,6 +513,14 @@ func _receive_player_state(
 		atk_time: float, moving: bool, walk_time: float) -> void:
 	if peer_id == multiplayer.get_unique_id():
 		return
+	# Server relay: forward non-host player state to all other clients.
+	if multiplayer.is_server():
+		var sender_id: int = multiplayer.get_remote_sender_id()
+		if sender_id != 0:
+			for relay_peer in multiplayer.get_peers():
+				if relay_peer != sender_id:
+					_receive_player_state.rpc_id(relay_peer, peer_id, wx, wy,
+						dir_x, dir_y, atk_time, moving, walk_time)
 	var idx: int = _find_player_index_by_peer_id(peer_id)
 	if idx < 0:
 		return

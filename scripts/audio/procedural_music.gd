@@ -375,6 +375,19 @@ func _s16_samples() -> int:
 	return int(60.0 / _bpm / 4.0 * SAMPLE_RATE)
 
 
+# Deferred wrappers so the analyzer sees explicit .emit() (string emit_signal does not).
+func _deferred_emit_phase_changed(id: String, label: String) -> void:
+	phase_changed.emit(id, label)
+
+
+func _deferred_emit_beat_fired(step: int, phase_id: String) -> void:
+	beat_fired.emit(step, phase_id)
+
+
+func _deferred_emit_chord_changed(chord_name: String) -> void:
+	chord_changed.emit(chord_name)
+
+
 # ── Tick (called every 16th note) ──
 
 func _tick() -> void:
@@ -398,9 +411,9 @@ func _tick() -> void:
 		# Update arp filter for new phase
 		var filter_hz: float = float(_phase_filter_hz.get(str(ph["id"]), 700.0))
 		arp.set_filter_cutoff(filter_hz)
-		call_deferred("emit_signal", "phase_changed", str(ph["id"]), str(ph["label"]))
+		call_deferred("_deferred_emit_phase_changed", str(ph["id"]), str(ph["label"]))
 
-	call_deferred("emit_signal", "beat_fired", bar_idx, str(ph.get("id", "")))
+	call_deferred("_deferred_emit_beat_fired", bar_idx, str(ph.get("id", "")))
 
 	# ── Arp layer ──
 	var freq: float = float(ph_arp[idx]) if idx < ph_arp.size() else 0.0
@@ -423,7 +436,7 @@ func _tick() -> void:
 			if seq.size() > 0:
 				var chord_name: String = str(seq[_piano_bar_count % seq.size()])
 				_last_played_chord = _resolve_chord(chord_name)
-				call_deferred("emit_signal", "chord_changed", chord_name)
+				call_deferred("_deferred_emit_chord_changed", chord_name)
 
 				# Bass root on beat 1
 				if not _last_played_chord.is_empty():
