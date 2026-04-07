@@ -6,6 +6,8 @@ extends RefCounted
 const NC := preload("res://scripts/shared/naval_combat_constants.gd")
 const _BatteryController := preload("res://scripts/shared/battery_controller.gd")
 const _MotionStateResolver := preload("res://scripts/shared/motion_state_resolver.gd")
+const _ShipRoom := preload("res://scripts/shared/ship_room.gd")
+const _ShipLayout := preload("res://scripts/shared/ship_layout.gd")
 
 var a = null  # Arena node reference (CanvasItem). Untyped: draw helper accesses arena-specific consts.
 
@@ -663,7 +665,10 @@ func draw_all() -> void:
 	draw_hull_strike_fx()
 	draw_motion_battery_hud(vp)
 	draw_helm_sail_hud(vp)
-	draw_ftl_ship_hud(vp)
+	if not a._crew_overlay_visible:
+		draw_ftl_ship_hud(vp)
+		draw_damage_status_icons(vp)
+	draw_damage_alerts(vp)
 	draw_offscreen_indicators(vp)
 	draw_hud(vp)
 	if a.pause_menu_panel != null and a.pause_menu_panel.visible:
@@ -1290,50 +1295,65 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 	var hp: float = float(p.get("health", hull_max))
 	var hp_frac: float = clampf(hp / hull_max, 0.0, 1.0)
 
-	var zone_names: Array[String] = ["Bowsprit", "Bow", "Fwd Gun", "Mid", "Main", "Aft Gun", "Quarter", "Stern"]
-	var zone_count: int = zone_names.size()
-	var zone_y_start: float = cy - hh * 0.42
-	var zone_total_h: float = hh * 0.80
-	var zone_h: float = zone_total_h / float(zone_count)
-
 	var dmg_state: Variant = p.get("damage_state")
-	var zone_widths: Array[float] = [0.30, 0.50, 0.68, 0.72, 0.72, 0.65, 0.52, 0.40]
-	for zi in range(zone_count):
-		var zy: float = zone_y_start + float(zi) * zone_h
-		var zw: float = hw * zone_widths[zi]
-		var zone_hp: float = hp_frac
-		var zone_col: Color
-		if hp <= 0.0:
-			zone_col = Color(0.12, 0.10, 0.08, 0.5)
-		elif zone_hp > 0.7:
-			zone_col = Color(0.18, 0.48, 0.28, 0.55)
-		elif zone_hp > 0.4:
-			zone_col = Color(0.62, 0.52, 0.18, 0.55)
-		elif zone_hp > 0.15:
-			zone_col = Color(0.72, 0.32, 0.14, 0.55)
-		else:
-			zone_col = Color(0.78, 0.18, 0.12, 0.65)
-		a.draw_rect(Rect2(cx - zw * 0.5, zy + 1.0, zw, zone_h - 2.0), zone_col)
-		# Fire overlay — pulsing orange/red glow on burning zones.
-		if dmg_state != null and zi < dmg_state.fire_zones.size():
-			var fire_i: float = dmg_state.fire_zones[zi]
-			if fire_i > 0.02:
+	var ship_layout: Variant = p.get("ship_layout")
+	var room_area_y: float = cy - hh * 0.42
+	var room_area_h: float = hh * 0.80
+	if ship_layout != null:
+		var sl: _ShipLayout = ship_layout as _ShipLayout
+		for room: _ShipRoom in sl.rooms:
+			var rpos: Vector2 = room.position_on_hull
+			var rx: float = panel_x + 4.0 + rpos.x * (panel_w - 8.0)
+			var ry: float = room_area_y + rpos.y * room_area_h
+			var rw: float = 42.0
+			var rht: float = 16.0
+			var room_rect := Rect2(rx - rw * 0.5, ry - rht * 0.5, rw, rht)
+			var room_bg: Color
+			if room.damage > 0.6:
+				room_bg = Color(0.55, 0.15, 0.10, 0.75)
+			elif room.damage > 0.2:
+				room_bg = Color(0.55, 0.42, 0.15, 0.65)
+			else:
+				room_bg = Color(0.15, 0.22, 0.30, 0.65)
+			a.draw_rect(room_rect, room_bg)
+			if room.fire_intensity > 0.02:
+				var pulse: float = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008 + float(room.room_index) * 1.5)
+				a.draw_rect(room_rect, Color(1.0, lerpf(0.5, 0.15, room.fire_intensity), 0.05, room.fire_intensity * 0.6 * pulse))
+			if room.flooded:
+				var fa: float = 0.2 + 0.1 * sin(Time.get_ticks_msec() * 0.003)
+				a.draw_rect(room_rect, Color(0.1, 0.3, 0.75, fa))
+			var border_col: Color = Color(0.45, 0.50, 0.60, 0.6) if room.crew_count > 0 else Color(0.55, 0.25, 0.20, 0.7)
+			a.draw_rect(room_rect, border_col, false, 1.0)
+			var short_name: String = room.display_name
+			if short_name.length() > 6:
+				short_name = short_name.substr(0, 5) + "."
+			a.draw_string(font, Vector2(rx - rw * 0.5 + 2.0, ry + 3.0), short_name, HORIZONTAL_ALIGNMENT_LEFT, int(rw - 14.0), 7, Color(0.82, 0.85, 0.92, 0.85))
+			a.draw_string(font, Vector2(rx + rw * 0.5 - 12.0, ry + 3.0), "%d" % room.crew_count, HORIZONTAL_ALIGNMENT_RIGHT, 10, 7, Color(0.90, 0.85, 0.70, 0.9))
+	else:
+		var zone_names: Array[String] = ["Bowsprit", "Bow", "Fwd Gun", "Mid", "Main", "Aft Gun", "Quarter", "Stern"]
+		var zone_count: int = zone_names.size()
+		var zone_h: float = room_area_h / float(zone_count)
+		var zone_widths: Array[float] = [0.30, 0.50, 0.68, 0.72, 0.72, 0.65, 0.52, 0.40]
+		for zi in range(zone_count):
+			var zy: float = room_area_y + float(zi) * zone_h
+			var zw: float = hw * zone_widths[zi]
+			var zone_col: Color
+			if hp <= 0.0:
+				zone_col = Color(0.12, 0.10, 0.08, 0.5)
+			elif hp_frac > 0.7:
+				zone_col = Color(0.18, 0.48, 0.28, 0.55)
+			elif hp_frac > 0.4:
+				zone_col = Color(0.62, 0.52, 0.18, 0.55)
+			else:
+				zone_col = Color(0.72, 0.32, 0.14, 0.55)
+			a.draw_rect(Rect2(cx - zw * 0.5, zy + 1.0, zw, zone_h - 2.0), zone_col)
+			if dmg_state != null and zi < dmg_state.fire_zones.size() and dmg_state.fire_zones[zi] > 0.02:
 				var pulse: float = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008 + float(zi) * 1.5)
-				var fire_alpha: float = fire_i * 0.65 * pulse
-				var fire_col: Color = Color(1.0, lerpf(0.5, 0.15, fire_i), 0.05, fire_alpha)
-				a.draw_rect(Rect2(cx - zw * 0.5, zy + 1.0, zw, zone_h - 2.0), fire_col)
-		a.draw_line(Vector2(cx - zw * 0.5, zy + zone_h - 1.0), Vector2(cx + zw * 0.5, zy + zone_h - 1.0), Color(0.40, 0.44, 0.52, 0.35), 0.8)
-		var lbl_col: Color = Color(0.82, 0.85, 0.92, 0.75)
-		# Show "FIRE" label on burning zones.
-		if dmg_state != null and zi < dmg_state.fire_zones.size() and dmg_state.fire_zones[zi] > 0.02:
-			a.draw_string(font, Vector2(cx + zw * 0.5 - 28.0, zy + zone_h - 4.0), "FIRE", HORIZONTAL_ALIGNMENT_RIGHT, -1, 7, Color(1.0, 0.4, 0.1, 0.95))
-			a.draw_string(font, Vector2(cx - zw * 0.5 + 3.0, zy + zone_h - 4.0), zone_names[zi], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1.0, 0.7, 0.3, 0.9))
-		else:
-			a.draw_string(font, Vector2(cx - zw * 0.5 + 3.0, zy + zone_h - 4.0), zone_names[zi], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, lbl_col)
-	# Flood level indicator — rising blue from bottom of hull schematic.
+				a.draw_rect(Rect2(cx - zw * 0.5, zy + 1.0, zw, zone_h - 2.0), Color(1.0, 0.5, 0.05, dmg_state.fire_zones[zi] * 0.65 * pulse))
+			a.draw_string(font, Vector2(cx - zw * 0.5 + 3.0, zy + zone_h - 4.0), zone_names[zi], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.82, 0.85, 0.92, 0.75))
 	if dmg_state != null and dmg_state.flood_level > 0.01:
-		var flood_h: float = zone_total_h * clampf(dmg_state.flood_level, 0.0, 1.0)
-		var flood_y: float = zone_y_start + zone_total_h - flood_h
+		var flood_h: float = room_area_h * clampf(dmg_state.flood_level, 0.0, 1.0)
+		var flood_y: float = room_area_y + room_area_h - flood_h
 		var flood_alpha: float = 0.25 + 0.15 * sin(Time.get_ticks_msec() * 0.003)
 		a.draw_rect(Rect2(cx - hw * 0.35, flood_y, hw * 0.70, flood_h), Color(0.1, 0.3, 0.7, flood_alpha))
 
@@ -1399,7 +1419,7 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 	var gun_count: int = 8
 	for gi in range(gun_count):
 		var t: float = 0.18 + float(gi) / float(gun_count - 1) * 0.58
-		var gy: float = cy - hh * 0.42 + zone_total_h * t
+		var gy: float = cy - hh * 0.42 + room_area_h * t
 		var gw_t: float = lerpf(0.50, 0.72, clampf((t - 0.1) / 0.4, 0.0, 1.0))
 		if t > 0.6:
 			gw_t = lerpf(0.72, 0.45, clampf((t - 0.6) / 0.3, 0.0, 1.0))
@@ -1468,6 +1488,156 @@ func draw_ftl_ship_hud(vp: Vector2) -> void:
 		a.draw_rect(Rect2(zero_x - 0.5, elev_y - 2.0, 1.0, 12.0), Color(1.0, 1.0, 0.6, 0.7 * elev_alpha))
 		var sign_str: String = "+" if elev_deg >= 0.0 else ""
 		a.draw_string(font, Vector2(hp_bar_x, elev_y + 20.0), "Quoin %s%.1f° (R/T)" % [sign_str, elev_deg], HORIZONTAL_ALIGNMENT_LEFT, -1, 10, elev_col)
+
+
+# ── Damage status icons (persistent, below ship schematic panel) ─────
+
+func draw_damage_status_icons(vp: Vector2) -> void:
+	if a._players.is_empty():
+		return
+	var p: Dictionary = a._players[a._my_index]
+	if not bool(p.get("alive", true)):
+		return
+	var font: Font = ThemeDB.fallback_font
+	var sail: Variant = p.get("sail")
+	var helm: Variant = p.get("helm")
+	var dmg_state: Variant = p.get("damage_state")
+	var crew: Variant = p.get("crew")
+
+	# Position: below the ship schematic panel (matching its x/width).
+	var hw: float = 64.0
+	var hh: float = 180.0
+	var cx: float = vp.x - hw - 20.0
+	var panel_x: float = cx - hw - 10.0
+	var panel_w: float = hw * 2.0 + 20.0
+	var base_y: float = vp.y * 0.5 + hh * 0.5 + 52.0  # below panel
+
+	# Collect active status entries: { icon: String, label: String, color: Color }.
+	var entries: Array[Dictionary] = []
+	var t: float = Time.get_ticks_msec() * 0.001
+
+	if sail != null and sail.damage > 0.3:
+		var severity: float = sail.damage
+		var col: Color
+		var lbl: String
+		if severity >= 0.95:
+			col = Color(1.0, 0.3, 0.15)
+			lbl = "SAILS DESTROYED"
+		elif severity >= 0.5:
+			col = Color(0.95, 0.65, 0.2)
+			lbl = "SAILS TORN"
+		else:
+			col = Color(0.8, 0.75, 0.4)
+			lbl = "SAILS FRAYING"
+		entries.append({"icon": "~", "label": lbl, "color": col, "pulse": severity >= 0.95})
+
+	if helm != null and helm.damage > 0.3:
+		var severity: float = helm.damage
+		var col: Color
+		var lbl: String
+		if severity >= 0.95:
+			col = Color(1.0, 0.3, 0.15)
+			lbl = "HELM WRECKED"
+		elif severity >= 0.5:
+			col = Color(0.95, 0.65, 0.2)
+			lbl = "HELM DAMAGED"
+		else:
+			col = Color(0.8, 0.75, 0.4)
+			lbl = "HELM STIFF"
+		entries.append({"icon": "#", "label": lbl, "color": col, "pulse": severity >= 0.95})
+
+	if dmg_state != null:
+		if dmg_state.get_burning_zone_count() > 0:
+			var fc: int = dmg_state.get_burning_zone_count()
+			var col: Color = Color(1.0, 0.5, 0.15) if fc >= 3 else Color(1.0, 0.7, 0.25)
+			entries.append({"icon": "*", "label": "FIRE x%d" % fc, "color": col, "pulse": true})
+
+		if dmg_state.flood_level > 0.05:
+			var fl: float = dmg_state.flood_level
+			var col: Color = Color(0.3, 0.5, 1.0) if fl >= 0.5 else Color(0.4, 0.65, 0.9)
+			entries.append({"icon": "=", "label": "FLOOD %d%%" % int(fl * 100.0), "color": col, "pulse": fl >= 0.6})
+
+	if crew != null:
+		var alive: int = int(crew.total_crew)
+		var max_c: int = int(crew.max_crew)
+		if max_c > 0 and alive < max_c:
+			var frac: float = float(alive) / float(max_c)
+			if frac < 0.75:
+				var col: Color
+				var lbl: String
+				if frac < 0.3:
+					col = Color(0.85, 0.2, 0.15)
+					lbl = "CREW CRITICAL"
+				elif frac < 0.5:
+					col = Color(0.85, 0.55, 0.2)
+					lbl = "CREW LOW"
+				else:
+					col = Color(0.8, 0.75, 0.4)
+					lbl = "CREW REDUCED"
+				entries.append({"icon": "+", "label": "%s %d/%d" % [lbl, alive, max_c], "color": col, "pulse": frac < 0.3})
+
+	if entries.is_empty():
+		return
+
+	# Draw compact icon strip.
+	var row_h: float = 16.0
+	var strip_h: float = float(entries.size()) * row_h + 6.0
+	a.draw_rect(Rect2(panel_x, base_y, panel_w, strip_h), Color(0.05, 0.04, 0.06, 0.85))
+	a.draw_rect(Rect2(panel_x, base_y, panel_w, strip_h), Color(0.45, 0.25, 0.15, 0.7), false, 1.0)
+
+	for i in range(entries.size()):
+		var e: Dictionary = entries[i]
+		var ey: float = base_y + 3.0 + float(i) * row_h
+		var col: Color = e.color
+		if bool(e.get("pulse", false)):
+			col.a = 0.7 + 0.3 * sin(t * 4.0 + float(i) * 1.5)
+		# Status dot.
+		a.draw_circle(Vector2(panel_x + 8.0, ey + 7.0), 3.0, col)
+		# Label.
+		a.draw_string(font, Vector2(panel_x + 16.0, ey + 12.0), str(e.label), HORIZONTAL_ALIGNMENT_LEFT, int(panel_w - 22.0), 10, col)
+
+
+# ── Damage flash alerts (centered near ship panel, fade out) ─────────
+
+func draw_damage_alerts(vp: Vector2) -> void:
+	if a._damage_alerts.is_empty():
+		return
+	var font: Font = ThemeDB.fallback_font
+	# Position: centered horizontally near the ship schematic, above center.
+	var hw: float = 64.0
+	var cx: float = vp.x - hw - 20.0
+	var base_y: float = vp.y * 0.5 - 120.0
+
+	for i in range(a._damage_alerts.size()):
+		var alert: Dictionary = a._damage_alerts[i]
+		var time_left: float = float(alert.get("time_left", 0.0))
+		var col: Color = alert.get("color", Color.WHITE)
+		var text: String = str(alert.get("text", ""))
+
+		# Fade in fast, fade out over last 1.0s.
+		var alpha: float = 1.0
+		var total: float = a._ALERT_DURATION
+		var age: float = total - time_left
+		if age < 0.15:
+			alpha = age / 0.15
+		elif time_left < 1.0:
+			alpha = time_left
+		col.a = clampf(alpha, 0.0, 1.0)
+
+		# Slight scale pulse on entry.
+		var font_size: int = 14
+		if age < 0.3:
+			font_size = 16
+
+		var ay: float = base_y + float(i) * 22.0
+
+		# Dark backing for readability.
+		var text_w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
+		var bg_rect := Rect2(cx - text_w * 0.5 - 6.0, ay - 12.0, text_w + 12.0, 18.0)
+		a.draw_rect(bg_rect, Color(0.08, 0.04, 0.04, 0.75 * col.a))
+		a.draw_rect(bg_rect, Color(col.r, col.g, col.b, 0.5 * col.a), false, 1.0)
+
+		a.draw_string(font, Vector2(cx, ay), text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, col)
 
 
 # ── Helm / Sail HUD ──────────────────────────────────────────────────

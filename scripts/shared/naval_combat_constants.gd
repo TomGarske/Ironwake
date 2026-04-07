@@ -58,6 +58,10 @@ static func turn_rate_deg_for_speed(speed: float) -> float:
 ## 1,600-ton hull has rotational inertia — tuned for responsive gameplay feel.
 const HELM_TURN_LAG_SEC: float = 0.01
 
+## Displacement reference: Brig stock load (~131.5 DU). weight_ratio = 1.0 for a Brig.
+## Schooner sits below 1.0 (faster), Galley above (slower).
+const REFERENCE_DISPLACEMENT: float = 131.5
+
 ## Speed at which rudder reaches full steering authority (linear ramp MIN→1).
 ## Need ~3 knots (≈8 u/s) of way on before rudder bites fully.
 const RUDDER_AUTHORITY_SPEED: float = 8.0
@@ -81,12 +85,15 @@ static func rudder_effectiveness(rudder: float) -> float:
 ## Unified turning computation. All ship heading rotation goes through this.
 ## rudder: normalized -1..+1 (caller applies deadzone if needed).
 ## turn_scalar: whirlpool penalty or similar; defaults to 1.0.
+## weight_ratio: ship displacement / REFERENCE_DISPLACEMENT; heavier = wider turns.
 ## Returns the new angular velocity (rad/s).
 static func compute_angular_velocity(
 	rudder: float, speed: float, angular_velocity: float,
-	delta: float, turn_scalar: float = 1.0
+	delta: float, turn_scalar: float = 1.0, weight_ratio: float = 1.0
 ) -> float:
 	var max_turn_rad: float = deg_to_rad(turn_rate_deg_for_speed(speed))
+	if weight_ratio > 0.01:
+		max_turn_rad /= pow(weight_ratio, 0.6)
 	var steer_auth: float = maxf(RUDDER_AUTHORITY_MIN, clampf(speed / RUDDER_AUTHORITY_SPEED, 0.0, 1.0)) * turn_scalar
 	var eff_rudder: float = rudder_effectiveness(rudder)
 	var target_av: float = max_turn_rad * eff_rudder * steer_auth
@@ -114,7 +121,7 @@ static func broadside_quality(angle_from_bow_deg: float) -> float:
 	var t: float = (off_beam - BROADSIDE_QUALITY_FALLOFF_START_DEG) / (BROADSIDE_QUALITY_FALLOFF_END_DEG - BROADSIDE_QUALITY_FALLOFF_START_DEG)
 	return lerpf(1.0, 0.3, t)
 
-const RELOAD_TIME_SEC: float = 8.4
+const RELOAD_TIME_SEC: float = 14.0
 
 ## §4.1 Max engagement (same unit space as wx, wy)
 ## Calibrated to 24-pounder long gun ballistics (410 m/s muzzle velocity, 9.81 g).

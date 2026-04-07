@@ -45,7 +45,8 @@ var rudder_follow_rate: float = 0.167
 var wheel_return_rate: float = 0.15
 ## Damping factor when counter-steering (input opposes wheel position).
 ## Simulates fighting the rope tension wound around the drum.
-var counter_steer_damping: float = 0.3
+## Higher = snappier reversal (was 0.3 — felt like input lag / “stuck” after port→stbd).
+var counter_steer_damping: float = 0.72
 
 var center_threshold: float = 0.04
 ## Crew manning multiplier: scales rudder responsiveness. Set by arena from CrewController efficiency.
@@ -101,7 +102,11 @@ func process_steer(delta: float, left_strength: float, right_strength: float) ->
 	var l: float = clampf(left_strength, 0.0, 1.0)
 	var r: float = clampf(right_strength, 0.0, 1.0)
 	var dominant: float = absf(l - r)
-	var active: bool = dominant > 0.02
+	# Loose threshold + one-sided guard: float noise / near-cancelling inputs used to drop
+	# below 0.02 and stall the wheel for random frames (felt like “no helm input”).
+	var max_lr: float = maxf(l, r)
+	var min_lr: float = minf(l, r)
+	var active: bool = dominant > 0.004 or (max_lr >= 0.88 and min_lr <= 0.06)
 	_had_steering_input = active
 	_steer_left = active and l > r
 	_steer_right = active and r > l

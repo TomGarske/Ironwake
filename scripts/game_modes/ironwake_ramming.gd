@@ -182,6 +182,10 @@ func apply_ram_damage(p: Dictionary, damage: float, idx: int, other_idx: int = -
 	var ram_dmg_state: Variant = p.get("damage_state")
 	if ram_dmg_state != null:
 		ram_dmg_state.on_ram_hit()
+	# Track last attacker so fire/flood kills from ramming credit the rammer.
+	if other_idx >= 0 and other_idx < arena._players.size():
+		var ram_atk_pid: int = int(arena._players[other_idx].get("peer_id", 0))
+		p["last_attacker_peer_id"] = ram_atk_pid
 	# Scoreboard: track ramming damage.
 	var def_pid: int = int(p.get("peer_id", 0))
 	if arena._scoreboard.has(def_pid):
