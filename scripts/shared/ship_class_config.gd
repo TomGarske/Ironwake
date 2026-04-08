@@ -53,11 +53,17 @@ static func _schooner() -> Dictionary:
 		"wheel_max_spin": 0.70,
 		"wheel_friction": 2.8,
 		"rudder_follow_rate": 0.65,
-		# Battery
+		# Battery (broadside)
 		"cannon_count": 8,
 		"reload_time": 10.0,
 		"fire_sequence_duration": 4.0,
 		"battery_damage": 45.0,
+		# Chase guns (bow/stern)
+		"chase_cannon_count": 2,
+		"chase_damage": 15.0,
+		"chase_arc_degrees": 22.0,
+		"chase_reload_time": 8.0,
+		"chase_fire_sequence_duration": 1.5,
 		# Damage resistance
 		"flood_resistance": 0.7,
 	}
@@ -86,6 +92,12 @@ static func _brig() -> Dictionary:
 		"reload_time": 14.0,
 		"fire_sequence_duration": 6.5,
 		"battery_damage": 75.0,
+		# Chase guns (bow/stern)
+		"chase_cannon_count": 2,
+		"chase_damage": 20.0,
+		"chase_arc_degrees": 20.0,
+		"chase_reload_time": 9.0,
+		"chase_fire_sequence_duration": 1.5,
 		"flood_resistance": 1.0,
 	}
 
@@ -114,5 +126,11 @@ static func _galley() -> Dictionary:
 		"reload_time": 12.0,
 		"fire_sequence_duration": 5.0,
 		"battery_damage": 118.0,
+		# Chase guns (bow/stern)
+		"chase_cannon_count": 4,
+		"chase_damage": 30.0,
+		"chase_arc_degrees": 18.0,
+		"chase_reload_time": 10.0,
+		"chase_fire_sequence_duration": 2.5,
 		"flood_resistance": 1.4,
 	}

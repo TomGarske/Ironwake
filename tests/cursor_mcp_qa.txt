@@ -1,0 +1,24 @@
+Cursor MCP (user-godot-qa) — read run_project / get_debug_output / stop_project schemas first.
+
+Smoke (stays open until stop):
+  res://tests/test_game_flow_smoke.tscn        → GAME_FLOW_SMOKE: PASS
+  res://tests/test_naval_multiplayer_smoke.tscn → NAVAL_MP_SMOKE: PASS (nav / turn / combat / spawn ring)
+
+Start game (same as menu Test = Fleet Battle):
+  res://tests/offline_match_bootstrap.tscn
+
+Ironwake duel arena:
+  res://tests/offline_ironwake_bootstrap.tscn
+
+Fleet systems (prints + assert):
+  res://tests/test_fleet_systems.tscn
+
+LimboAI:
+  res://tests/test_bt_player_init.tscn
+
+Main menu:
+  run_project without scene (main_scene = home_screen)
+
+Two real Steam clients: dev/test-multiplayer-local.sh or dev/test-multiplayer-local.ps1 (GODOT_EXE or PATH).
+
+Steam breakpad lines in MCP "errors" = native SDK stderr, not game bugs.

@@ -140,10 +140,13 @@ func tick_ramming(delta: float) -> void:
 			var a_mult: float = lerpf(1.0, RAM_BOW_STERN_DAMAGE_MULT, a_bow_factor)
 			var b_mult: float = lerpf(1.0, RAM_BOW_STERN_DAMAGE_MULT, b_bow_factor)
 
+			# Fleet-aware: allies still separate (no clipping) but deal no ram damage.
+			var is_ally: bool = arena._fleet_registry != null and arena._fleet_registry.are_allies(i, j)
+
 			# Apply damage -- server authoritative; clients only see visual FX.
 			var dmg_a: float = base_damage * a_receive * a_mult
 			var dmg_b: float = base_damage * b_receive * b_mult
-			if not arena.multiplayer.has_multiplayer_peer() or arena.multiplayer.is_server():
+			if not is_ally and (not arena.multiplayer.has_multiplayer_peer() or arena.multiplayer.is_server()):
 				apply_ram_damage(a, dmg_a, i, j)
 				apply_ram_damage(b, dmg_b, j, i)
 				if arena.multiplayer.has_multiplayer_peer():

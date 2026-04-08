@@ -1,14 +1,37 @@
 #!/usr/bin/env bash
 #
 # test-multiplayer-local.sh
-# Launches two Godot instances side-by-side for local multiplayer testing.
+# Launches up to 4 Godot instances in a grid for local multiplayer testing.
 # The user hosts/joins manually through the in-game Steam lobby UI.
+#
+# Usage:
+#   ./test-multiplayer-local.sh        # 2 players (default)
+#   ./test-multiplayer-local.sh 3      # 3 players
+#   ./test-multiplayer-local.sh 4      # 4 players
 
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WINDOW_W=960
-WINDOW_H=540
+PLAYER_COUNT="${1:-2}"
+
+if [ "$PLAYER_COUNT" -lt 2 ] || [ "$PLAYER_COUNT" -gt 4 ]; then
+    echo "Usage: $0 [2|3|4]"
+    echo "  Launches 2-4 Godot instances for local multiplayer testing."
+    exit 1
+fi
+
+# Window sizing: 2 players = side-by-side, 3-4 = 2x2 grid
+if [ "$PLAYER_COUNT" -le 2 ]; then
+    WINDOW_W=960
+    WINDOW_H=540
+else
+    WINDOW_W=960
+    WINDOW_H=540
+fi
+
+# Grid positions: [x,y] for each player slot
+POSITIONS=("0,0" "${WINDOW_W},0" "0,${WINDOW_H}" "${WINDOW_W},${WINDOW_H}")
+LABELS=("Host (top-left)" "Client 1 (top-right)" "Client 2 (bottom-left)" "Client 3 (bottom-right)")
 
 # ---------------------------------------------------------------------------
 # Find Godot binary
@@ -36,64 +59,59 @@ if [ -z "$GODOT" ]; then
 fi
 
 echo "Using Godot: $GODOT"
+echo "Launching $PLAYER_COUNT instances..."
 echo ""
 
 # ---------------------------------------------------------------------------
-# Clean shutdown -- kill both instances on Ctrl-C
+# Clean shutdown -- kill all instances on Ctrl-C
 # ---------------------------------------------------------------------------
-HOST_PID=""
-CLIENT_PID=""
+PIDS=()
 
 cleanup() {
     echo ""
     echo "Shutting down..."
-    [ -n "$HOST_PID" ]   && kill "$HOST_PID"   2>/dev/null || true
-    [ -n "$CLIENT_PID" ] && kill "$CLIENT_PID" 2>/dev/null || true
+    for pid in "${PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+    done
     wait 2>/dev/null || true
     echo "Done."
 }
 trap cleanup SIGINT SIGTERM EXIT
 
 # ---------------------------------------------------------------------------
-# Launch Host (left half)
+# Launch instances
 # ---------------------------------------------------------------------------
-echo "Launching HOST instance (left half)..."
-"$GODOT" \
-    --path "$PROJECT_DIR" \
-    --position 0,0 \
-    --resolution "${WINDOW_W}x${WINDOW_H}" \
-    &
-HOST_PID=$!
-
-# Small delay so Steam doesn't collide on init
-sleep 2
-
-# ---------------------------------------------------------------------------
-# Launch Client (right half)
-# ---------------------------------------------------------------------------
-echo "Launching CLIENT instance (right half)..."
-"$GODOT" \
-    --path "$PROJECT_DIR" \
-    --position ${WINDOW_W},0 \
-    --resolution "${WINDOW_W}x${WINDOW_H}" \
-    &
-CLIENT_PID=$!
+for i in $(seq 0 $((PLAYER_COUNT - 1))); do
+    POS="${POSITIONS[$i]}"
+    LABEL="${LABELS[$i]}"
+    echo "Launching ${LABEL}..."
+    "$GODOT" \
+        --path "$PROJECT_DIR" \
+        --position "${POS}" \
+        --resolution "${WINDOW_W}x${WINDOW_H}" \
+        &
+    PIDS+=($!)
+    # Stagger launches so Steam doesn't collide on init
+    sleep 2
+done
 
 # ---------------------------------------------------------------------------
 # Instructions
 # ---------------------------------------------------------------------------
 echo ""
 echo "============================================"
-echo "  Two Godot instances are now running."
+echo "  $PLAYER_COUNT Godot instances are now running."
 echo ""
-echo "  LEFT  window = Host"
-echo "  RIGHT window = Client"
+for i in $(seq 0 $((PLAYER_COUNT - 1))); do
+    echo "  ${LABELS[$i]}"
+done
 echo ""
-echo "  1. In the LEFT window, create/host a lobby."
-echo "  2. In the RIGHT window, join that lobby."
-echo "  3. Press Ctrl-C here to close both."
+echo "  1. In the HOST window, create/host a lobby."
+echo "  2. In other windows, join that lobby."
+echo "  3. Host selects game mode (Ironwake or Fleet Battle)."
+echo "  4. Press Ctrl-C here to close all instances."
 echo "============================================"
 echo ""
 
-# Wait for either process to exit
+# Wait for any process to exit
 wait

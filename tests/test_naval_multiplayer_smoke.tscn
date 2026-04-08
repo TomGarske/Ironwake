@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dmcp_naval_mp_smoke"]
+
+[ext_resource type="Script" path="res://tests/test_naval_multiplayer_smoke.gd" id="1"]
+
+[node name="NavalMultiplayerSmoke" type="Node"]
+script = ExtResource("1")

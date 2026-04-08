@@ -1,0 +1,144 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/game_modes/ironwake_fleet_arena.gd" id="1_fleet"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pause_panel"]
+bg_color = Color(0.14, 0.11, 0.09, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.48, 0.35, 0.22, 0.84)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 18
+
+[node name="IronwakeFleetArena" type="Node2D"]
+y_sort_enabled = true
+script = ExtResource("1_fleet")
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+
+[node name="PauseBackdrop" type="ColorRect" parent="UILayer"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.02, 0.02, 0.02, 0.52)
+
+[node name="QuitGameButton" type="Button" parent="UILayer"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -170.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 52.0
+grow_horizontal = 0
+text = "Quit Game"
+
+[node name="PauseMenuPanel" type="PanelContainer" parent="UILayer"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_top = -200.0
+offset_right = 180.0
+offset_bottom = 200.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_pause_panel")
+
+[node name="PauseMenuMargin" type="MarginContainer" parent="UILayer/PauseMenuPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="PauseMenuVBox" type="VBoxContainer" parent="UILayer/PauseMenuPanel/PauseMenuMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PauseMenuTitle" type="Label" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.9, 0.83, 1)
+theme_override_font_sizes/font_size = 22
+text = "Pause Menu"
+horizontal_alignment = 1
+
+[node name="SettingsSeparator" type="HSeparator" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+
+[node name="SongRow" type="HBoxContainer" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/SongRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "Song"
+
+[node name="SongSelector" type="OptionButton" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/SongRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MusicVolumeRow" type="HBoxContainer" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/MusicVolumeRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "Music"
+
+[node name="MusicVolumeSlider" type="HSlider" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/MusicVolumeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 1.0
+step = 0.01
+value = 0.55
+
+[node name="SfxVolumeRow" type="HBoxContainer" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/SfxVolumeRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "SFX"
+
+[node name="SfxVolumeSlider" type="HSlider" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox/SfxVolumeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 1.0
+step = 0.01
+value = 0.45
+
+[node name="SettingsSeparator2" type="HSeparator" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+
+[node name="PauseResumeButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+text = "Resume"
+
+[node name="PauseQuitButton" type="Button" parent="UILayer/PauseMenuPanel/PauseMenuMargin/PauseMenuVBox"]
+layout_mode = 2
+text = "Quit Match"
+
+[node name="QuitConfirmDialog" type="ConfirmationDialog" parent="UILayer"]
+title = "Leave Match?"
+initial_position = 1
+ok_button_text = "Yes, bail out"
+dialog_text = "Abandon the fleet?
+
+Quit the match anyway?"

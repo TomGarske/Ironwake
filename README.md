@@ -44,7 +44,7 @@ Short version:
 - In lobby, ready up and host launches the match.
 - **Solo Sim (Offline)** starts local testing with AI bots (no Steam required).
 - **Tab** opens the scoreboard (kills, deaths, shots, accuracy, damage).
-- **Local MP testing:** `./dev/test-multiplayer-local.sh` launches two side-by-side Godot windows.
+- **Local MP testing:** `dev/test-multiplayer-local.sh` or `dev/test-multiplayer-local.ps1` (`GODOT_EXE` or `PATH`) launches two side-by-side Godot windows.
 
 ---
 

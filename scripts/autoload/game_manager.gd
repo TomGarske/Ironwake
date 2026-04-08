@@ -6,6 +6,7 @@ extends Node
 enum MatchPhase { LOBBY, IN_MATCH, GAME_OVER }
 const MATCH_SCENE_PATH: String = "res://scenes/game/ironwake/ironwake_arena.tscn"
 const IRONWAKE_SCENE_PATH: String = "res://scenes/game/ironwake/ironwake_arena.tscn"
+const FLEET_SCENE_PATH: String = "res://scenes/game/ironwake/ironwake_fleet_arena.tscn"
 const HOME_SCREEN_SCENE_PATH: String = "res://scenes/screens/home_screen.tscn"
 const LOBBY_SCENE_PATH: String = "res://scenes/screens/lobby.tscn"
 const DEFAULT_GAME_MODE_ID: String = "ironwake"
@@ -16,6 +17,7 @@ const DEFAULT_MUSIC_PROFILE: Dictionary = {
 }
 const MODE_MUSIC_PROFILES: Dictionary = {
 	"ironwake": {"intensity": 1.05, "speed": 0.95, "tone": 0.96},
+	"fleet_battle": {"intensity": 1.15, "speed": 0.90, "tone": 0.92},
 }
 const GAME_MODES: Array[Dictionary] = [
 	{
@@ -25,6 +27,15 @@ const GAME_MODES: Array[Dictionary] = [
 		"badge": "[NAVAL]",
 		"scene_path": IRONWAKE_SCENE_PATH,
 		"description": "Command a 74-gun third-rate warship in age-of-sail naval combat. Helm, sail, and battery controls with realistic ballistics.",
+		"enabled": true,
+	},
+	{
+		"id": "fleet_battle",
+		"label": "Fleet Battle",
+		"subtitle": "PVE Fleet Combat",
+		"badge": "[FLEET]",
+		"scene_path": FLEET_SCENE_PATH,
+		"description": "Command a fleet of 5 ships against enemy fleets. Captain your flagship and issue orders to wingmen.",
 		"enabled": true,
 	},
 ]
@@ -230,7 +241,7 @@ func _register_player(peer_id: int, steam_id: int, username: String) -> void:
 		"username": username,
 		"team": team
 	}
-	print("[GameManager] Registered player '%s' as team %d (peer %d)" % [username, team, peer_id])
+	DebugOverlay.log_message("[GameManager] Registered player '%s' as team %d (peer %d)" % [username, team, peer_id])
 
 # ---------------------------------------------------------------------------
 # Match flow
@@ -251,7 +262,7 @@ func start_match() -> void:
 	if target_scene_path.is_empty():
 		target_scene_path = MATCH_SCENE_PATH
 	set_match_phase(MatchPhase.IN_MATCH)
-	print("[GameManager] Starting '%s' with %d players." % [str(mode.get("label", "Ironwake")), players.size()])
+	DebugOverlay.log_message("[GameManager] Starting '%s' with %d players." % [str(mode.get("label", "Ironwake")), players.size()])
 	_load_match_scene.rpc(target_scene_path)
 
 @rpc("authority", "call_local", "reliable")
@@ -263,7 +274,7 @@ func _load_match_scene(scene_path: String = MATCH_SCENE_PATH) -> void:
 # ---------------------------------------------------------------------------
 func _on_peer_disconnected(peer_id: int) -> void:
 	if players.has(peer_id):
-		print("[GameManager] Player '%s' (peer %d) disconnected." % [players[peer_id]["username"], peer_id])
+		DebugOverlay.log_message("[GameManager] Player '%s' (peer %d) disconnected." % [players[peer_id]["username"], peer_id])
 		players.erase(peer_id)
 
 func reset() -> void:
@@ -287,4 +298,21 @@ func setup_offline_test() -> void:
 	selected_game_mode_id = DEFAULT_GAME_MODE_ID
 	_apply_music_profile_for_mode(selected_game_mode_id)
 	set_match_phase(MatchPhase.IN_MATCH)
-	print("[GameManager] Offline test mode: 2 players registered.")
+	DebugOverlay.log_message("[GameManager] Offline test mode: 2 players registered.")
+
+
+## Offline **Test** flow from home screen and MCP bootstraps: leave Steam lobby if any, seed test players, load mode scene.
+func start_offline_test_match(offline_mode_id: String = "fleet_battle") -> void:
+	if SteamManager != null and SteamManager.lobby_id != 0:
+		SteamManager.leave_lobby()
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()
+		multiplayer.multiplayer_peer = null
+	setup_offline_test()
+	if not _is_valid_game_mode_id(offline_mode_id):
+		offline_mode_id = DEFAULT_GAME_MODE_ID
+	selected_game_mode_id = offline_mode_id
+	_apply_music_profile_for_mode(selected_game_mode_id)
+	var mode: Dictionary = get_selected_game_mode()
+	var scene_path: String = str(mode.get("scene_path", MATCH_SCENE_PATH))
+	get_tree().change_scene_to_file(scene_path)

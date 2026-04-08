@@ -485,8 +485,6 @@ func _emit_debug(message: String, is_error: bool) -> void:
 		debug_history.pop_front()
 	if is_error:
 		push_error(message)
-	else:
-		print(message)
 	debug_message.emit(message, is_error)
 
 func _set_invite_state(friend_steam_id: int, state: InviteState, extra: Dictionary = {}) -> void:

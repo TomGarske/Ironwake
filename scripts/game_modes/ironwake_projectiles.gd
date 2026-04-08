@@ -36,6 +36,16 @@ func init(arena_node: Node) -> void:
 	arena = arena_node
 
 
+# ── Peer lookup ──────────────────────────────────────────────────────────────
+
+## Returns the _players index for a given peer_id, or -1 if not found.
+func _find_index_by_peer(peer_id: int) -> int:
+	for i in range(arena._players.size()):
+		if int(arena._players[i].get("peer_id", -1)) == peer_id:
+			return i
+	return -1
+
+
 # ── Geometry / hit detection ─────────────────────────────────────────────────
 
 func point_hits_ship_ellipse(point: Vector2, ship: Dictionary) -> bool:
@@ -306,6 +316,11 @@ func tick_projectiles(delta: float) -> void:
 					continue
 				if int(q.get("peer_id", -1)) == owner_peer:
 					continue
+				# Fleet-aware friendly-fire prevention: skip allies.
+				if arena._fleet_registry != null and arena._fleet_registry.has_fleets():
+					var owner_idx: int = _find_index_by_peer(owner_peer)
+					if owner_idx >= 0 and arena._fleet_registry.are_allies(owner_idx, j):
+						continue
 				if not point_hits_ship_ellipse(Vector2(wx, wy), q):
 					continue
 				if h < h_min or h > h_max:

@@ -95,8 +95,6 @@ func _build_ui() -> void:
 	_log.add_theme_color_override("default_color", UiStyleScript.TEXT_SECONDARY)
 	margin.add_child(_log)
 
-	log_message("[DebugOverlay] Enabled (toggle with F3).")
-	
 	# Apply collapsed state by default
 	_apply_collapsed_state()
 	_sync_version_label_visibility()
@@ -111,7 +109,6 @@ func _try_connect_steam() -> void:
 		return
 	steam.debug_message.connect(_on_steam_debug_message)
 	_connected_to_steam = true
-	log_message("[DebugOverlay] Connected to SteamManager log stream.")
 	# Replay startup logs so early init errors are visible after scene load.
 	for entry in steam.debug_history:
 		log_message(str(entry.get("message", "")), bool(entry.get("is_error", false)))

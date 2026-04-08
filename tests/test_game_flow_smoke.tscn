@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dmcp_game_flow_smoke"]
+
+[ext_resource type="Script" path="res://tests/test_game_flow_smoke.gd" id="1"]
+
+[node name="GameFlowSmoke" type="Node"]
+script = ExtResource("1")

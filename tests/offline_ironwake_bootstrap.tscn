@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dmcp_offline_ironwake"]
+
+[ext_resource type="Script" path="res://tests/offline_ironwake_bootstrap.gd" id="1"]
+
+[node name="OfflineIronwakeBootstrap" type="Node"]
+script = ExtResource("1")

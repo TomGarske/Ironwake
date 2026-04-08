@@ -35,6 +35,12 @@ func get_battery_port() -> Variant:
 func get_battery_stbd() -> Variant:
 	return ship_dict.get("battery_stbd")
 
+func get_battery_bow() -> Variant:
+	return ship_dict.get("battery_bow")
+
+func get_battery_stern() -> Variant:
+	return ship_dict.get("battery_stern")
+
 func is_alive() -> bool:
 	return bool(ship_dict.get("alive", false))
 

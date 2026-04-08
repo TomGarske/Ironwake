@@ -124,7 +124,8 @@ func process_steer(delta: float, left_strength: float, right_strength: float) ->
 	wheel_position = clampf(wheel_position + wheel_velocity * delta, -1.0, 1.0)
 	if absf(wheel_position) >= 1.0:
 		wheel_velocity = 0.0
-	if absf(wheel_position) < 0.005:
+	# Snap only when nearly centered and idle — at 60 Hz, |velocity|*delta can stay below 0.005 while steering.
+	if absf(wheel_position) < 0.005 and not _had_steering_input and absf(wheel_velocity) < 0.001:
 		wheel_position = 0.0
 
 	var eff_follow: float = rudder_follow_rate * lerpf(1.0, MIN_RUDDER_EFFICIENCY, damage) * crew_helm_mult

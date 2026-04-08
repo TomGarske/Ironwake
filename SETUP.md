@@ -53,8 +53,9 @@ This file is git-ignored and must never be committed.
 ## 5. Run & Test
 - **Steam must be running** before launching the game
 - Press **F5** (Run Project) in Godot
-- **Solo Sim** mode on the home screen runs offline with AI bots (no Steam required)
-- **Local multiplayer testing:** use `./dev/test-multiplayer-local.sh` to launch two Godot windows side-by-side on the same machine. Host a lobby in the left window, join from the right.
+- **Solo Sim** mode on the home screen runs offline Fleet Battle (no Steam required)
+- **Local multiplayer testing:** `./dev/test-multiplayer-local.sh` (Unix) or `dev/test-multiplayer-local.ps1` (Windows; set `GODOT_EXE` or `PATH`). Host in the left window, join from the right.
+- **Automated smoke / Cursor MCP:** see `tests/cursor_mcp_qa.txt` (game flow, naval systems, fleet systems, offline bootstraps).
 - **Remote multiplayer:** run two separate exports on different machines on the same LAN, both logged into Steam
 
 ## 6. Project Structure
@@ -63,7 +64,8 @@ This file is git-ignored and must never be committed.
 |------|-------------|
 | `scenes/screens/home_screen.tscn` | Main menu |
 | `scenes/screens/lobby.tscn` | Multiplayer lobby |
-| `scenes/game/ironwake/ironwake_arena.tscn` | Naval combat arena |
+| `scenes/game/ironwake/ironwake_arena.tscn` | Naval duel arena |
+| `scenes/game/ironwake/ironwake_fleet_arena.tscn` | Fleet Battle (PVE) arena |
 | `scripts/game_modes/ironwake_arena.gd` | Arena logic (~3000 lines) |
 | `scripts/shared/` | Ship systems: sail, helm, battery, motion, ballistics |
 | `scripts/autoload/game_manager.gd` | Match flow and mode routing |

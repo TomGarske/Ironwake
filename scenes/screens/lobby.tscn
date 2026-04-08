@@ -44,102 +44,129 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -235.0
-offset_top = -235.0
-offset_right = 235.0
-offset_bottom = 235.0
+offset_left = -480.0
+offset_top = -270.0
+offset_right = 480.0
+offset_bottom = 270.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_lobby_card")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="LobbyCard"]
+[node name="MainHBox" type="HBoxContainer" parent="LobbyCard"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-alignment = 1
-theme_override_constants/separation = 12
+theme_override_constants/separation = 16
 
-[node name="LobbyIdLabel" type="Label" parent="LobbyCard/VBoxContainer"]
+[node name="LeftPanel" type="VBoxContainer" parent="LobbyCard/MainHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.0
+theme_override_constants/separation = 8
+
+[node name="LobbyIdLabel" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Crew Status: Standby"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.90, 0.97, 1.0, 1.0)
 
-[node name="LobbyStatusLabel" type="Label" parent="LobbyCard/VBoxContainer"]
+[node name="LobbyStatusLabel" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Crew: 0/4"
 horizontal_alignment = 1
 theme_override_colors/font_color = Color(0.79, 0.7, 0.6, 0.95)
-
-[node name="GameModeTitle" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Mission Profile:"
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
-
-[node name="GameModeSelector" type="OptionButton" parent="LobbyCard/VBoxContainer"]
-size_flags_horizontal = 3
-
-[node name="GameModeDescriptionLabel" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Select a game mode before starting the match."
-horizontal_alignment = 1
-autowrap_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
-
-[node name="ShipClassTitle" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Ship Class:"
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
-
-[node name="ShipClassSelector" type="OptionButton" parent="LobbyCard/VBoxContainer"]
-size_flags_horizontal = 3
-
-[node name="ShipClassDesc" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Balanced warship — 20 crew, standard broadside."
-horizontal_alignment = 1
-autowrap_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
 theme_override_font_sizes/font_size = 11
 
-[node name="PlayersTitle" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Crew Roster:"
-theme_override_font_sizes/font_size = 16
+[node name="Sep1" type="HSeparator" parent="LobbyCard/MainHBox/LeftPanel"]
+
+[node name="GameModeTitle" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
+text = "Game Mode:"
+theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
 
-[node name="PlayerList" type="VBoxContainer" parent="LobbyCard/VBoxContainer"]
-theme_override_constants/separation = 4
-
-[node name="HandshakeStatusLabel" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Signal handshake: Idle"
-autowrap_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
-
-[node name="FriendsTitle" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Invite Operatives:"
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
-
-[node name="FriendsScroll" type="ScrollContainer" parent="LobbyCard/VBoxContainer"]
-custom_minimum_size = Vector2(0, 140)
-
-[node name="FriendsList" type="VBoxContainer" parent="LobbyCard/VBoxContainer/FriendsScroll"]
+[node name="GameModeSelector" type="OptionButton" parent="LobbyCard/MainHBox/LeftPanel"]
 size_flags_horizontal = 3
-theme_override_constants/separation = 6
 
-[node name="InviteNoteLabel" type="Label" parent="LobbyCard/VBoxContainer"]
-text = "Note: Invites appear as Ironwake."
+[node name="GameModeDescriptionLabel" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
+text = "Select a game mode before starting the match."
 autowrap_mode = 2
 theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
+theme_override_font_sizes/font_size = 10
 
-[node name="ReadyButton" type="Button" parent="LobbyCard/VBoxContainer"]
+[node name="ShipClassTitle" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
+text = "Ship Class:"
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
+
+[node name="ShipClassSelector" type="OptionButton" parent="LobbyCard/MainHBox/LeftPanel"]
+size_flags_horizontal = 3
+
+[node name="ShipClassDesc" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
+text = "Balanced warship — 20 crew, standard broadside."
+autowrap_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
+theme_override_font_sizes/font_size = 10
+
+[node name="Sep2" type="HSeparator" parent="LobbyCard/MainHBox/LeftPanel"]
+
+[node name="ReadyButton" type="CheckBox" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Ready"
 
-[node name="StartButton" type="Button" parent="LobbyCard/VBoxContainer"]
+[node name="StartButton" type="Button" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Launch Mission"
 visible = false
 
-[node name="BackButton" type="Button" parent="LobbyCard/VBoxContainer"]
+[node name="BackButton" type="Button" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Return to Command Hub"
+
+[node name="CenterPanel" type="VBoxContainer" parent="LobbyCard/MainHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.0
+theme_override_constants/separation = 6
+
+
+
+[node name="PlayersTitle" type="Label" parent="LobbyCard/MainHBox/CenterPanel"]
+text = "Crew Roster:"
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
+
+[node name="PlayerList" type="VBoxContainer" parent="LobbyCard/MainHBox/CenterPanel"]
+size_flags_vertical = 3
+theme_override_constants/separation = 4
+
+[node name="HandshakeStatusLabel" type="Label" parent="LobbyCard/MainHBox/CenterPanel"]
+text = "Signal handshake: Idle"
+autowrap_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
+theme_override_font_sizes/font_size = 9
+
+[node name="RightPanel" type="VBoxContainer" parent="LobbyCard/MainHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.0
+theme_override_constants/separation = 6
+
+[node name="FriendsTitle" type="Label" parent="LobbyCard/MainHBox/RightPanel"]
+text = "Invite Operatives:"
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
+
+[node name="FriendsScroll" type="ScrollContainer" parent="LobbyCard/MainHBox/RightPanel"]
+size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 80)
+
+[node name="FriendsList" type="VBoxContainer" parent="LobbyCard/MainHBox/RightPanel/FriendsScroll"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="InviteNoteLabel" type="Label" parent="LobbyCard/MainHBox/RightPanel"]
+text = "Note: Invites appear as Ironwake."
+autowrap_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
+theme_override_font_sizes/font_size = 9
 
 [node name="RefreshTimer" type="Timer" parent="."]
 wait_time = 2.0
 autostart = false
 
-[connection signal="pressed" from="LobbyCard/VBoxContainer/StartButton" to="." method="_on_start_button_pressed"]
-[connection signal="pressed" from="LobbyCard/VBoxContainer/BackButton" to="." method="_on_back_button_pressed"]
+[connection signal="pressed" from="LobbyCard/MainHBox/LeftPanel/StartButton" to="." method="_on_start_button_pressed"]
+[connection signal="pressed" from="LobbyCard/MainHBox/LeftPanel/BackButton" to="." method="_on_back_button_pressed"]

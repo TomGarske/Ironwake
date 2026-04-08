@@ -67,9 +67,10 @@ func get_ripple_interval() -> float:
 func _broadside_perp(hull_dir: Vector2) -> Vector2:
 	match side:
 		BatterySide.PORT:
-			return hull_dir.rotated(PI * 0.5).normalized()
-		BatterySide.STARBOARD:
+			# Port = ship's left when facing along hull_dir (e.g. north -> west).
 			return hull_dir.rotated(-PI * 0.5).normalized()
+		BatterySide.STARBOARD:
+			return hull_dir.rotated(PI * 0.5).normalized()
 		BatterySide.FORWARD:
 			return hull_dir.normalized()
 		BatterySide.AFT:

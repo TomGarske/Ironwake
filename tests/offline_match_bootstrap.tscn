@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dmcp_offline_fleet"]
+
+[ext_resource type="Script" path="res://tests/offline_match_bootstrap.gd" id="1"]
+
+[node name="OfflineMatchBootstrap" type="Node"]
+script = ExtResource("1")
