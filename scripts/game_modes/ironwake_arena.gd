@@ -115,7 +115,7 @@ var _prev_elev_adjusting: bool = false
 
 
 @export_group("Whirlpool (req-whirlpool-arena-v1)")
-@export var whirlpool_enabled: bool = true
+@export var whirlpool_enabled: bool = false
 @export var whirlpool_influence_radius: float = 600.0
 @export var whirlpool_control_radius: float = 280.0
 @export var whirlpool_danger_radius: float = 120.0
