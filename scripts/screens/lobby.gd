@@ -17,9 +17,10 @@ const _FleetSpawner := preload("res://scripts/shared/fleet_spawner.gd")
 @onready var ready_button: Button = $LobbyCard/MainHBox/LeftPanel/ReadyButton
 @onready var start_button: Button = $LobbyCard/MainHBox/LeftPanel/StartButton
 @onready var back_button: Button = $LobbyCard/MainHBox/LeftPanel/BackButton
-# Right panel — roster + invites
-@onready var player_list: VBoxContainer = $LobbyCard/MainHBox/RightPanel/PlayerList
-@onready var handshake_status_label: Label = $LobbyCard/MainHBox/RightPanel/HandshakeStatusLabel
+# Center panel — crew roster
+@onready var player_list: VBoxContainer = $LobbyCard/MainHBox/CenterPanel/PlayerList
+@onready var handshake_status_label: Label = $LobbyCard/MainHBox/CenterPanel/HandshakeStatusLabel
+# Right panel — invites
 @onready var friends_title: Label = $LobbyCard/MainHBox/RightPanel/FriendsTitle
 @onready var friends_list: VBoxContainer = $LobbyCard/MainHBox/RightPanel/FriendsScroll/FriendsList
 @onready var invite_note_label: Label = $LobbyCard/MainHBox/RightPanel/InviteNoteLabel

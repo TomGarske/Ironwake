@@ -44,40 +44,41 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -375.0
-offset_top = -260.0
-offset_right = 375.0
-offset_bottom = 260.0
+offset_left = -480.0
+offset_top = -270.0
+offset_right = 480.0
+offset_bottom = 270.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_lobby_card")
 
 [node name="MainHBox" type="HBoxContainer" parent="LobbyCard"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/separation = 20
+theme_override_constants/separation = 16
 
 [node name="LeftPanel" type="VBoxContainer" parent="LobbyCard/MainHBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(260, 0)
+custom_minimum_size = Vector2(240, 0)
 size_flags_horizontal = 0
 theme_override_constants/separation = 8
 
 [node name="LobbyIdLabel" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Crew Status: Standby"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.90, 0.97, 1.0, 1.0)
 
 [node name="LobbyStatusLabel" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Crew: 0/4"
 horizontal_alignment = 1
 theme_override_colors/font_color = Color(0.79, 0.7, 0.6, 0.95)
+theme_override_font_sizes/font_size = 11
 
 [node name="Sep1" type="HSeparator" parent="LobbyCard/MainHBox/LeftPanel"]
 
 [node name="GameModeTitle" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Mission Profile:"
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
 
 [node name="GameModeSelector" type="OptionButton" parent="LobbyCard/MainHBox/LeftPanel"]
@@ -87,11 +88,11 @@ size_flags_horizontal = 3
 text = "Select a game mode before starting the match."
 autowrap_mode = 2
 theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 10
 
 [node name="ShipClassTitle" type="Label" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Ship Class:"
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
 
 [node name="ShipClassSelector" type="OptionButton" parent="LobbyCard/MainHBox/LeftPanel"]
@@ -101,7 +102,7 @@ size_flags_horizontal = 3
 text = "Balanced warship — 20 crew, standard broadside."
 autowrap_mode = 2
 theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 10
 
 [node name="Sep2" type="HSeparator" parent="LobbyCard/MainHBox/LeftPanel"]
 
@@ -115,35 +116,41 @@ visible = false
 [node name="BackButton" type="Button" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Return to Command Hub"
 
-[node name="RightPanel" type="VBoxContainer" parent="LobbyCard/MainHBox"]
+[node name="CenterPanel" type="VBoxContainer" parent="LobbyCard/MainHBox"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 8
+size_flags_stretch_ratio = 1.0
+theme_override_constants/separation = 6
 
-[node name="PlayersTitle" type="Label" parent="LobbyCard/MainHBox/RightPanel"]
+[node name="PlayersTitle" type="Label" parent="LobbyCard/MainHBox/CenterPanel"]
 text = "Crew Roster:"
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
 
-[node name="PlayerList" type="VBoxContainer" parent="LobbyCard/MainHBox/RightPanel"]
+[node name="PlayerList" type="VBoxContainer" parent="LobbyCard/MainHBox/CenterPanel"]
+size_flags_vertical = 3
 theme_override_constants/separation = 4
 
-[node name="HandshakeStatusLabel" type="Label" parent="LobbyCard/MainHBox/RightPanel"]
+[node name="HandshakeStatusLabel" type="Label" parent="LobbyCard/MainHBox/CenterPanel"]
 text = "Signal handshake: Idle"
 autowrap_mode = 2
 theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 9
 
-[node name="Sep3" type="HSeparator" parent="LobbyCard/MainHBox/RightPanel"]
+[node name="RightPanel" type="VBoxContainer" parent="LobbyCard/MainHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.2
+theme_override_constants/separation = 6
 
 [node name="FriendsTitle" type="Label" parent="LobbyCard/MainHBox/RightPanel"]
 text = "Invite Operatives:"
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(0.9, 0.8, 0.69, 1)
 
 [node name="FriendsScroll" type="ScrollContainer" parent="LobbyCard/MainHBox/RightPanel"]
 size_flags_vertical = 3
-custom_minimum_size = Vector2(0, 100)
+custom_minimum_size = Vector2(0, 80)
 
 [node name="FriendsList" type="VBoxContainer" parent="LobbyCard/MainHBox/RightPanel/FriendsScroll"]
 size_flags_horizontal = 3
@@ -153,7 +160,7 @@ theme_override_constants/separation = 6
 text = "Note: Invites appear as Ironwake."
 autowrap_mode = 2
 theme_override_colors/font_color = Color(0.62, 0.56, 0.5, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 9
 
 [node name="RefreshTimer" type="Timer" parent="."]
 wait_time = 2.0
