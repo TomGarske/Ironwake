@@ -98,7 +98,7 @@ const PHASE_NAMES: Dictionary = {
 var _cam_dist: float = CAM_DIST_DEFAULT
 var _cam_dist_target: float = CAM_DIST_DEFAULT
 ## Camera starts looking at Africa. Godot convention: -X = prime meridian, +Y = north.
-var _cam_dir: Vector3 = Vector3(-0.95, 0.15, -0.27).normalized()
+var _cam_dir: Vector3 = Vector3(0.95, 0.15, 0.27).normalized()
 var _cam_up: Vector3 = Vector3.UP  # Y=up in Godot convention
 var _default_quat: Quaternion
 ## Timer for auto-advancing setup phases (roll display, AI draft turns).
@@ -125,6 +125,8 @@ var _name_labels: Dictionary = {}
 var _region_labels: Dictionary = {}
 ## Hex terrain types parallel to _hex_territory_map.
 var _hex_terrain_types: Array[int] = []
+## Land mask: 1 = land, 0 = ocean. Loaded from hex_land_mask.json.
+var _hex_land_mask: Array[int] = []
 
 # ---------------------------------------------------------------------------
 # Conquest state
@@ -140,7 +142,7 @@ var _pending_attack_from: String = ""
 
 ## Recent combat log lines.
 var _combat_log: Array[String] = []
-const COMBAT_LOG_MAX: int = 6
+const COMBAT_LOG_MAX: int = 12
 
 ## Dice display state.
 var _dice_display_timer: float = 0.0
@@ -163,6 +165,9 @@ var _end_turn_button: Button = null
 var _combat_log_label: Label = null
 var _quit_button: Button = null
 var _continue_button: Button = null
+var _next_unclaimed_button: Button = null
+## Index into unclaimed territory list for cycling.
+var _unclaimed_cycle_index: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +263,7 @@ func _advance_setup_phase() -> void:
 			ConquestSpawn.begin_draft(_cqs)
 			_log_combat("Territory draft begins! Claim territories in turn order.")
 			_territory_mesh_dirty = true
+			_update_button_visibility()
 			# If first player is AI, auto-draft.
 			_try_ai_draft_turn()
 		ConquestData.ConquestPhase.TERRITORY_DRAFT:
@@ -391,13 +397,23 @@ func _load_hex_data() -> void:
 		})
 	DebugOverlay.log_message("[ConquestArena] Loaded %d goldberg hexes." % _hex_data.size())
 
+	# Load land mask.
+	var lf := FileAccess.open("res://assets/data/hex_land_mask.json", FileAccess.READ)
+	if lf != null:
+		var lm_parsed = JSON.parse_string(lf.get_as_text())
+		lf.close()
+		if lm_parsed is Array:
+			_hex_land_mask.clear()
+			for v in lm_parsed:
+				_hex_land_mask.append(int(v))
+			DebugOverlay.log_message("[ConquestArena] Land mask loaded: %d land hexes." % _hex_land_mask.count(1))
+	else:
+		push_warning("[ConquestArena] hex_land_mask.json not found — using threshold fallback.")
+
 
 # ---------------------------------------------------------------------------
-# Territory → hex assignment (Voronoi on sphere, land only)
+# Territory → hex assignment (Voronoi on sphere + land mask from globe texture)
 # ---------------------------------------------------------------------------
-## Angular distance threshold: hexes farther than this from any territory
-## center are left unassigned (ocean). cos(14°) ≈ 0.970.
-const HEX_ASSIGN_THRESHOLD: float = 0.970
 
 func _assign_hexes_to_territories() -> void:
 	if _cqs == null or _hex_data.is_empty():
@@ -410,24 +426,23 @@ func _assign_hexes_to_territories() -> void:
 		t.hex_indices.clear()
 
 	var assigned_count: int = 0
+	var has_land_mask: bool = _hex_land_mask.size() == _hex_data.size()
 
-	# For each hex, find the nearest territory center on the unit sphere.
-	# Only assign if the hex is within HEX_ASSIGN_THRESHOLD (i.e., on land).
 	for i in range(_hex_data.size()):
-		# Transform hex center from goldberg to Godot convention for comparison with sphere_pos.
+		# Skip ocean hexes using land mask (sampled from globe texture).
+		if has_land_mask and _hex_land_mask[i] == 0:
+			_hex_territory_map[i] = ""
+			continue
+
+		# Voronoi: assign to nearest territory center.
 		var hex_center: Vector3 = _g2d(_hex_data[i]["c"] as Vector3)
 		var best_tid: String = ""
-		var best_dot: float = -2.0  # dot product: higher = closer on sphere
+		var best_dot: float = -2.0
 		for t in _cqs.territories.values():
 			var d: float = hex_center.dot(t.sphere_pos)
 			if d > best_dot:
 				best_dot = d
 				best_tid = t.territory_id
-
-		# Skip ocean hexes — too far from any territory center.
-		if best_dot < HEX_ASSIGN_THRESHOLD:
-			_hex_territory_map[i] = ""
-			continue
 
 		_hex_territory_map[i] = best_tid
 		if not best_tid.is_empty():
@@ -436,7 +451,7 @@ func _assign_hexes_to_territories() -> void:
 				terr.hex_indices.append(i)
 				assigned_count += 1
 
-	DebugOverlay.log_message("[ConquestArena] Hex assignment: %d/%d hexes assigned to territories." % [assigned_count, _hex_data.size()])
+	DebugOverlay.log_message("[ConquestArena] Hex assignment: %d/%d hexes on land." % [assigned_count, _hex_data.size()])
 
 	# DEBUG: log territory hex counts and sphere positions for key territories.
 	for check_tid in ["india", "alaska", "egypt", "brazil", "eastern_australia"]:
@@ -462,9 +477,8 @@ func _setup_territory_overlay() -> void:
 	mat.vertex_color_use_as_albedo = true
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.cull_mode = BaseMaterial3D.CULL_BACK
-	# MUST keep depth test ON so back-side hexes don't bleed through the globe.
 	mat.no_depth_test = false
-	mat.render_priority = 1  # Render after globe to avoid sort-order depth issues.
+	mat.render_priority = 1
 
 	_territory_overlay = MeshInstance3D.new()
 	_territory_overlay.name = "TerritoryOverlay"
@@ -481,7 +495,7 @@ func _setup_selection_overlay() -> void:
 	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	mat.no_depth_test = false
 	mat.cull_mode = BaseMaterial3D.CULL_BACK
-	mat.render_priority = 2  # Render after territory overlay.
+	mat.render_priority = 2
 
 	_selection_overlay = MeshInstance3D.new()
 	_selection_overlay.name = "SelectionOverlay"
@@ -493,7 +507,7 @@ func _setup_selection_overlay() -> void:
 ## Goldberg: X=prime meridian, Y=90E, Z=north pole.
 ## Godot:    -X=prime meridian, -Z=90E, Y=north pole.
 func _g2d(v: Vector3) -> Vector3:
-	return Vector3(-v.x, v.z, -v.y)
+	return Vector3(v.x, v.z, v.y)
 
 
 ## Rebuild the territory color mesh from current ownership state.
@@ -544,11 +558,11 @@ func _rebuild_territory_mesh() -> void:
 			center += _g2d(v)
 		center = (center / float(n)).normalized() * 1.02
 
-		# Triangle fan.
+		# Triangle fan — reversed winding for outward-facing with CULL_BACK.
 		for j in range(n):
 			verts.append(center)
-			verts.append(_g2d(poly[j]) * 1.02)
 			verts.append(_g2d(poly[(j + 1) % n]) * 1.02)
+			verts.append(_g2d(poly[j]) * 1.02)
 			colors.append(col)
 			colors.append(col)
 			colors.append(col)
@@ -594,8 +608,8 @@ func _rebuild_selection_mesh() -> void:
 		center = (center / float(n)).normalized() * 1.025
 		for j in range(n):
 			verts.append(center)
-			verts.append(_g2d(poly[j]) * 1.025)
 			verts.append(_g2d(poly[(j + 1) % n]) * 1.025)
+			verts.append(_g2d(poly[j]) * 1.025)
 			colors.append(col)
 			colors.append(col)
 			colors.append(col)
@@ -617,26 +631,21 @@ func _rebuild_selection_mesh() -> void:
 # Border overlay — lines between territories
 # ---------------------------------------------------------------------------
 func _setup_border_overlay() -> void:
-	var shader_code := """
-shader_type spatial;
-render_mode unshaded, cull_back;
-void vertex() {
-	VERTEX = VERTEX * 1.009;
-}
-void fragment() {
-	ALBEDO = vec3(0.05, 0.03, 0.02);
-	ALPHA = 0.75;
-}
-"""
-	var shader := Shader.new()
-	shader.code = shader_code
-	var mat := ShaderMaterial.new()
-	mat.shader = shader
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.08, 0.05, 0.03, 0.85)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.no_depth_test = false
+	mat.render_priority = 3
+
 	_border_overlay = MeshInstance3D.new()
 	_border_overlay.name = "BorderOverlay"
 	_border_overlay.material_override = mat
 	_globe_root.add_child(_border_overlay)
 
+
+## Border line thickness on the unit sphere.
+const BORDER_WIDTH: float = 0.006
 
 func _rebuild_border_mesh() -> void:
 	if _cqs == null or _hex_data.is_empty() or _hex_territory_map.is_empty():
@@ -654,13 +663,12 @@ func _rebuild_border_mesh() -> void:
 		for ni in neighbors:
 			var j: int = int(ni)
 			if j <= i:
-				continue  # avoid double-drawing
+				continue
 			if j >= _hex_territory_map.size():
 				continue
 			var tid_b: String = _hex_territory_map[j]
 			if tid_b.is_empty() or tid_b == tid_a:
 				continue
-			# Find shared edge: vertices that appear in both polygons.
 			var poly_b: PackedVector3Array = _hex_data[j]["p"] as PackedVector3Array
 			var shared: PackedVector3Array = PackedVector3Array()
 			for va in poly_a:
@@ -669,8 +677,20 @@ func _rebuild_border_mesh() -> void:
 						shared.append(va)
 						break
 			if shared.size() >= 2:
-				verts.append(_g2d(shared[0]) * 1.015)
-				verts.append(_g2d(shared[1]) * 1.015)
+				# Build a thick quad from the shared edge.
+				var p0: Vector3 = _g2d(shared[0]).normalized()
+				var p1: Vector3 = _g2d(shared[1]).normalized()
+				var edge_dir: Vector3 = (p1 - p0).normalized()
+				var normal: Vector3 = ((p0 + p1) * 0.5).normalized()
+				var offset: Vector3 = edge_dir.cross(normal).normalized() * BORDER_WIDTH
+				var r: float = 1.022
+				# Two triangles forming a quad — reversed winding.
+				verts.append((p0 + offset) * r)
+				verts.append((p1 + offset) * r)
+				verts.append((p0 - offset) * r)
+				verts.append((p1 + offset) * r)
+				verts.append((p1 - offset) * r)
+				verts.append((p0 - offset) * r)
 
 	if verts.is_empty():
 		_border_overlay.mesh = null
@@ -680,7 +700,7 @@ func _rebuild_border_mesh() -> void:
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	var arr_mesh := ArrayMesh.new()
-	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	_border_overlay.mesh = arr_mesh
 
 
@@ -694,8 +714,8 @@ func _create_territory_labels() -> void:
 		var army_label := Label3D.new()
 		army_label.name = "ArmyLabel_" + t.territory_id
 		army_label.text = ""
-		army_label.font_size = 32
-		army_label.pixel_size = 0.0012
+		army_label.font_size = 36
+		army_label.pixel_size = 0.0015
 		army_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		army_label.no_depth_test = false
 		army_label.render_priority = 10
@@ -765,14 +785,36 @@ func _update_army_labels() -> void:
 		if t.army_count > 0:
 			label.text = str(t.army_count)
 			label.visible = true
-			# Tint by owner color.
 			if t.owner_player_id >= 0:
 				var player: ConquestData.ConquestPlayer = _cqs.players.get(t.owner_player_id)
 				if player != null:
-					label.modulate = Color(1, 1, 1, 1)
-					label.outline_modulate = Color(player.color.r * 0.3, player.color.g * 0.3, player.color.b * 0.3, 1)
+					# Show army count in player's color with dark outline for readability.
+					label.modulate = player.color
+					label.outline_modulate = Color(0, 0, 0, 1)
+			else:
+				# Neutral — grey.
+				label.modulate = Color(0.7, 0.7, 0.7, 1)
+				label.outline_modulate = Color(0, 0, 0, 1)
 		else:
 			label.visible = false
+
+	# Update territory name labels to show owner.
+	for tid in _name_labels.keys():
+		var name_label: Label3D = _name_labels[tid]
+		var t: ConquestData.ConquestTerritory = _cqs.territories.get(tid)
+		if t == null:
+			continue
+		var owner_tag: String = ""
+		if t.owner_player_id >= 0:
+			var player: ConquestData.ConquestPlayer = _cqs.players.get(t.owner_player_id)
+			if player != null:
+				owner_tag = " [%s]" % player.display_name
+				name_label.modulate = Color(player.color.r * 0.5 + 0.5, player.color.g * 0.5 + 0.5, player.color.b * 0.5 + 0.5, 0.95)
+			else:
+				name_label.modulate = Color(0.9, 0.88, 0.83, 0.85)
+		else:
+			name_label.modulate = Color(0.75, 0.73, 0.70, 0.7)
+		name_label.text = t.display_name + owner_tag
 
 
 func _update_name_label_visibility() -> void:
@@ -1003,17 +1045,35 @@ func _setup_ui() -> void:
 	_end_turn_button.pressed.connect(_on_end_turn_pressed)
 	_ui_layer.add_child(_end_turn_button)
 
-	# Combat log.
+	# Game log panel (bottom-left) — scrollable, with dark background.
+	var log_panel := PanelContainer.new()
+	log_panel.name = "LogPanel"
+	log_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	log_panel.size = Vector2(420, 180)
+	log_panel.position = Vector2(12, -192)
+	var log_style := StyleBoxFlat.new()
+	log_style.bg_color = Color(0.06, 0.05, 0.04, 0.88)
+	log_style.border_color = Color(0.35, 0.28, 0.20, 0.6)
+	log_style.set_border_width_all(1)
+	log_style.set_corner_radius_all(6)
+	log_style.set_content_margin_all(8)
+	log_panel.add_theme_stylebox_override("panel", log_style)
+	log_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui_layer.add_child(log_panel)
+
+	var log_scroll := ScrollContainer.new()
+	log_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	log_scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	log_panel.add_child(log_scroll)
+
 	_combat_log_label = Label.new()
 	_combat_log_label.name = "CombatLog"
-	_combat_log_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_combat_log_label.size = Vector2(380, 130)
-	_combat_log_label.position = Vector2(16, -146)
-	_combat_log_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	_combat_log_label.add_theme_font_size_override("font_size", 11)
-	_combat_log_label.add_theme_color_override("font_color", Color(0.90, 0.86, 0.78, 0.88))
+	_combat_log_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_combat_log_label.add_theme_font_size_override("font_size", 12)
+	_combat_log_label.add_theme_color_override("font_color", Color(0.92, 0.88, 0.80, 0.95))
+	_combat_log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_combat_log_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ui_layer.add_child(_combat_log_label)
+	log_scroll.add_child(_combat_log_label)
 
 	# Quit button (top-right).
 	_quit_button = Button.new()
@@ -1024,6 +1084,15 @@ func _setup_ui() -> void:
 	_quit_button.position = Vector2(-146, 16)
 	_quit_button.pressed.connect(_request_quit)
 	_ui_layer.add_child(_quit_button)
+
+	# Next Unclaimed button (shown during draft).
+	_next_unclaimed_button = Button.new()
+	_next_unclaimed_button.name = "NextUnclaimedBtn"
+	_next_unclaimed_button.text = "Find Unclaimed"
+	_next_unclaimed_button.size = Vector2(160, 40)
+	_next_unclaimed_button.visible = false
+	_next_unclaimed_button.pressed.connect(func(): _on_next_unclaimed_pressed())
+	_ui_layer.add_child(_next_unclaimed_button)
 
 	# Continue button — used for roll-for-order screen.
 	_continue_button = Button.new()
@@ -1054,6 +1123,8 @@ func _on_hud_draw() -> void:
 		_end_phase_button.position = Vector2(vp.x * 0.5 - 200, vp.y - 60)
 	if _end_turn_button != null:
 		_end_turn_button.position = Vector2(vp.x * 0.5 + 30, vp.y - 60)
+	if _next_unclaimed_button != null:
+		_next_unclaimed_button.position = Vector2(vp.x * 0.5 - 80, vp.y - 60)
 
 	# Roll-for-order is a full-screen overlay — draw ONLY that.
 	if _cqs.current_phase == ConquestData.ConquestPhase.ROLL_FOR_ORDER:
@@ -1769,6 +1840,23 @@ func _on_end_turn_pressed() -> void:
 		_end_turn()
 
 
+func _on_next_unclaimed_pressed() -> void:
+	if _cqs == null:
+		return
+	var unclaimed: Array[String] = ConquestSpawn.unclaimed_territories(_cqs)
+	if unclaimed.is_empty():
+		_log_combat("All territories have been claimed!")
+		_check_draft_complete()
+		return
+	_unclaimed_cycle_index = _unclaimed_cycle_index % unclaimed.size()
+	var tid: String = unclaimed[_unclaimed_cycle_index]
+	_selected_territory_id = tid
+	_look_at_territory(tid)
+	_territory_mesh_dirty = true
+	_log_combat("Unclaimed: %s (%d/%d remaining)" % [_territory_name(tid), _unclaimed_cycle_index + 1, unclaimed.size()])
+	_unclaimed_cycle_index = (_unclaimed_cycle_index + 1) % unclaimed.size()
+
+
 # ---------------------------------------------------------------------------
 # Phase transitions
 # ---------------------------------------------------------------------------
@@ -1984,6 +2072,8 @@ func _update_button_visibility() -> void:
 			is_local_turn and
 			(phase == ConquestData.ConquestPhase.ATTACK or phase == ConquestData.ConquestPhase.FORTIFY)
 		)
+	if _next_unclaimed_button != null:
+		_next_unclaimed_button.visible = (phase == ConquestData.ConquestPhase.TERRITORY_DRAFT and is_local_turn)
 
 
 func _log_combat(line: String) -> void:
