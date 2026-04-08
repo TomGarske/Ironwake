@@ -91,9 +91,9 @@ static func _compute_sphere_positions(state: ConquestData.ConquestGameState) -> 
 		var lat_rad: float = deg_to_rad(lat_deg)
 		# Godot SphereMesh convention: -X = prime meridian, +Y = north pole, -Z = 90E.
 		t.sphere_pos = Vector3(
-			cos(lat_rad) * cos(lon_rad),
+			-cos(lat_rad) * cos(lon_rad),
 			sin(lat_rad),
-			cos(lat_rad) * sin(lon_rad)
+			-cos(lat_rad) * sin(lon_rad)
 		).normalized()
 
 

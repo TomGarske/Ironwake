@@ -471,14 +471,16 @@ func _assign_hexes_to_territories() -> void:
 # Territory color overlay mesh
 # ---------------------------------------------------------------------------
 func _setup_territory_overlay() -> void:
-	# Use StandardMaterial3D with vertex colors for maximum compatibility.
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.vertex_color_use_as_albedo = true
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# Alpha scissor renders in the OPAQUE pass with proper depth testing.
+	# This avoids the transparent-pass sort-order bug where the overlay
+	# renders behind the globe because both have the same origin.
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.1
 	mat.cull_mode = BaseMaterial3D.CULL_BACK
 	mat.no_depth_test = false
-	mat.render_priority = 1
 
 	_territory_overlay = MeshInstance3D.new()
 	_territory_overlay.name = "TerritoryOverlay"
@@ -491,11 +493,11 @@ func _setup_selection_overlay() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.vertex_color_use_as_albedo = true
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.1
 	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	mat.no_depth_test = false
 	mat.cull_mode = BaseMaterial3D.CULL_BACK
-	mat.render_priority = 2
 
 	_selection_overlay = MeshInstance3D.new()
 	_selection_overlay.name = "SelectionOverlay"
@@ -507,7 +509,7 @@ func _setup_selection_overlay() -> void:
 ## Goldberg: X=prime meridian, Y=90E, Z=north pole.
 ## Godot:    -X=prime meridian, -Z=90E, Y=north pole.
 func _g2d(v: Vector3) -> Vector3:
-	return Vector3(v.x, v.z, v.y)
+	return Vector3(-v.x, v.z, -v.y)
 
 
 ## Rebuild the territory color mesh from current ownership state.
@@ -558,11 +560,11 @@ func _rebuild_territory_mesh() -> void:
 			center += _g2d(v)
 		center = (center / float(n)).normalized() * 1.02
 
-		# Triangle fan — reversed winding for outward-facing with CULL_BACK.
+		# Triangle fan.
 		for j in range(n):
 			verts.append(center)
-			verts.append(_g2d(poly[(j + 1) % n]) * 1.02)
 			verts.append(_g2d(poly[j]) * 1.02)
+			verts.append(_g2d(poly[(j + 1) % n]) * 1.02)
 			colors.append(col)
 			colors.append(col)
 			colors.append(col)
@@ -608,8 +610,8 @@ func _rebuild_selection_mesh() -> void:
 		center = (center / float(n)).normalized() * 1.025
 		for j in range(n):
 			verts.append(center)
-			verts.append(_g2d(poly[(j + 1) % n]) * 1.025)
 			verts.append(_g2d(poly[j]) * 1.025)
+			verts.append(_g2d(poly[(j + 1) % n]) * 1.025)
 			colors.append(col)
 			colors.append(col)
 			colors.append(col)
@@ -684,13 +686,13 @@ func _rebuild_border_mesh() -> void:
 				var normal: Vector3 = ((p0 + p1) * 0.5).normalized()
 				var offset: Vector3 = edge_dir.cross(normal).normalized() * BORDER_WIDTH
 				var r: float = 1.022
-				# Two triangles forming a quad — reversed winding.
+				# Two triangles forming a quad.
 				verts.append((p0 + offset) * r)
-				verts.append((p1 + offset) * r)
 				verts.append((p0 - offset) * r)
 				verts.append((p1 + offset) * r)
+				verts.append((p1 + offset) * r)
+				verts.append((p0 - offset) * r)
 				verts.append((p1 - offset) * r)
-				verts.append((p0 - offset) * r)
 
 	if verts.is_empty():
 		_border_overlay.mesh = null
