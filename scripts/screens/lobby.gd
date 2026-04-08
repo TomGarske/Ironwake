@@ -14,7 +14,7 @@ const _FleetSpawner := preload("res://scripts/shared/fleet_spawner.gd")
 @onready var ship_class_title: Label = $LobbyCard/MainHBox/LeftPanel/ShipClassTitle
 @onready var ship_class_selector: OptionButton = $LobbyCard/MainHBox/LeftPanel/ShipClassSelector
 @onready var ship_class_desc: Label = $LobbyCard/MainHBox/LeftPanel/ShipClassDesc
-@onready var ready_button: Button = $LobbyCard/MainHBox/LeftPanel/ReadyButton
+@onready var ready_button: CheckBox = $LobbyCard/MainHBox/LeftPanel/ReadyButton
 @onready var start_button: Button = $LobbyCard/MainHBox/LeftPanel/StartButton
 @onready var back_button: Button = $LobbyCard/MainHBox/LeftPanel/BackButton
 # Center panel — crew roster
@@ -44,7 +44,8 @@ func _ready() -> void:
 	_configure_navigation()
 	start_button.disabled = true
 	ready_button.text = "Ready"
-	ready_button.pressed.connect(_on_ready_button_pressed)
+	ready_button.button_pressed = SteamManager.local_ready
+	ready_button.toggled.connect(_on_ready_toggled)
 	if not game_mode_selector.item_selected.is_connected(_on_game_mode_selector_item_selected):
 		game_mode_selector.item_selected.connect(_on_game_mode_selector_item_selected)
 	if GameManager != null and not GameManager.selected_game_mode_changed.is_connected(_on_selected_game_mode_changed):
@@ -252,7 +253,7 @@ func _refresh_player_list(_peer_id: int) -> void:
 
 		var label := Label.new()
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var ready_text: String = "Ready" if SteamManager.is_member_ready(member_id) else "Not Ready"
+		var ready_icon: String = "\u2611" if SteamManager.is_member_ready(member_id) else "\u2610"
 		var mode_id: String = str(GameManager.get_selected_game_mode().get("id", ""))
 		var role_label: String
 		if mode_id == "fleet_battle":
@@ -260,14 +261,14 @@ func _refresh_player_list(_peer_id: int) -> void:
 		else:
 			var cls: int = GameManager.get_ship_class_for_steam_id(member_id)
 			role_label = ShipClassConfig.CLASS_NAMES[cls] if cls >= 0 and cls < ShipClassConfig.CLASS_COUNT else "Brig"
-		label.text = "%s [%s] (%s)" % [member_name, role_label, ready_text]
+		label.text = "%s %s [%s]" % [ready_icon, member_name, role_label]
 		UiStyleScript.style_body(label)
 		row.add_child(label)
 
 	var ready_counts: Dictionary = SteamManager.get_ready_counts()
 	_refresh_crew_status()
 	lobby_status_label.text = "Crew: %d/%d | Ready: %d/%d" % [member_count, GameConstants.MAX_PLAYERS, int(ready_counts.get("ready", 0)), int(ready_counts.get("total", 0))]
-	ready_button.text = "Unready" if SteamManager.local_ready else "Ready"
+	ready_button.button_pressed = SteamManager.local_ready
 
 	# Host can only start when all currently joined lobby members are ready.
 	start_button.disabled = not SteamManager.are_all_lobby_members_ready()
@@ -352,8 +353,8 @@ func _on_invite_friend_pressed(friend_steam_id: int) -> void:
 		SteamManager.invite_friend_to_lobby(friend_steam_id)
 	_refresh_online_friends()
 
-func _on_ready_button_pressed() -> void:
-	SteamManager.set_local_ready_state(not SteamManager.local_ready)
+func _on_ready_toggled(toggled_on: bool) -> void:
+	SteamManager.set_local_ready_state(toggled_on)
 	_refresh_player_list(0)
 
 func _on_refresh_timer_timeout() -> void:

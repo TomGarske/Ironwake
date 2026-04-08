@@ -106,7 +106,7 @@ theme_override_font_sizes/font_size = 10
 
 [node name="Sep2" type="HSeparator" parent="LobbyCard/MainHBox/LeftPanel"]
 
-[node name="ReadyButton" type="Button" parent="LobbyCard/MainHBox/LeftPanel"]
+[node name="ReadyButton" type="CheckBox" parent="LobbyCard/MainHBox/LeftPanel"]
 text = "Ready"
 
 [node name="StartButton" type="Button" parent="LobbyCard/MainHBox/LeftPanel"]
